@@ -31,10 +31,20 @@ await sql`
   VALUES (${t.id}, 'florecomesticos.store', 't.florecomesticos.store', ${SITE_KEY}, true)
   ON CONFLICT (domain) DO UPDATE SET tenant_id = ${t.id}, public_key = ${SITE_KEY}`;
 
-const [conn] = await sql`
-  INSERT INTO gateway_connections (tenant_id, gateway, label, credentials, webhook_secret, active)
-  VALUES (${t.id}, 'pagou', 'Pagou.ai — Florè', '{}'::jsonb, ${SEGREDO}, true)
-  RETURNING id`;
+/* Uma conexão por gateway, cada uma com seu próprio segredo de webhook. */
+const conexoes = {};
+for (const [id, label] of [
+  ["pagou", "Pagou.ai"],
+  ["appmax", "Appmax"],
+  ["millions", "MillionsPay"],
+]) {
+  const segredo = "whsec_" + Buffer.from(wc.getRandomValues(new Uint8Array(24))).toString("hex");
+  const [c] = await sql`
+    INSERT INTO gateway_connections (tenant_id, gateway, label, credentials, webhook_secret, active)
+    VALUES (${t.id}, ${id}, ${label}, '{}'::jsonb, ${segredo}, true)
+    RETURNING id`;
+  conexoes[id] = { connectionId: c.id, webhookSecret: segredo };
+}
 
 /*
  * Destino Meta com token falso de propósito: o disparo vai montar o payload
@@ -48,7 +58,8 @@ await sql`
 
 console.log(JSON.stringify({
   tenantId: t.id,
-  connectionId: conn.id,
   siteKey: SITE_KEY,
-  webhookSecret: SEGREDO,
+  /* Compatibilidade com o teste original, que usa o pagou. */
+  webhookSecret: conexoes.pagou.webhookSecret,
+  gateways: conexoes,
 }, null, 2));

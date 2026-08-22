@@ -83,15 +83,35 @@ async function buildUserData(
 
   /*
    * external_id é o identificador de primeira parte mais subestimado que
-   * existe. Ele não depende de o comprador ter preenchido nada, sobrevive a
+   * existe. Não depende de o comprador ter preenchido nada, sobrevive a
    * bloqueio de cookie de terceiros, e liga eventos anônimos de navegação à
-   * compra que veio depois. Quando não há um id de sessão, o e-mail hasheado
-   * serve como identificador estável.
+   * compra que veio depois.
+   *
+   * A Meta aceita vários, e vale mandar todos os que temos: cada um é uma
+   * chance a mais de reconhecer a mesma pessoa. Os dois têm forças diferentes.
+   * O id de sessão identifica o navegador e some quando a pessoa troca de
+   * aparelho; o CPF identifica a pessoa e atravessa aparelho, navegador e
+   * limpeza de cookie — é o que faz um comprador recorrente ser reconhecido na
+   * segunda compra mesmo vindo de outro celular.
    */
-  const ext = click?.clickId
-    ?? (c?.email ? await sha256(normalizeEmail(c.email) ?? "") : undefined);
-  if (ext) {
-    ud.external_id = [await sha256(ext)];
+  const externalIds: string[] = [];
+
+  if (click?.clickId) externalIds.push(await sha256(click.clickId));
+
+  if (c?.document) {
+    const doc = c.document.replace(/\D/g, "");
+    /* 11 dígitos é CPF, 14 é CNPJ; menos que isso é lixo de formulário. */
+    if (doc.length === 11 || doc.length === 14) externalIds.push(await sha256(doc));
+  }
+
+  /* Sem sessão nem documento, o e-mail hasheado ainda serve de âncora. */
+  if (externalIds.length === 0 && c?.email) {
+    const em = normalizeEmail(c.email);
+    if (em) externalIds.push(await sha256(em));
+  }
+
+  if (externalIds.length) {
+    ud.external_id = externalIds;
     keys.push("external_id");
   }
 
