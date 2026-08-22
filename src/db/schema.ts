@@ -264,6 +264,31 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
   index("deliveries_tenant_time").on(t.tenantId, t.receivedAt),
 ]);
 
+/*
+ * Reivindicação de pedido.
+ *
+ * Nem todo gateway devolve o que a gente mandou. A Appmax é o caso: o webhook
+ * de pedido não traz campo de repasse nenhum, e o `tracking` que ela aceita
+ * vive no cliente, não no pedido. Sem isso, a venda chega órfã por construção.
+ *
+ * A saída é a loja avisar: no instante em que ela cria o pedido no gateway, ela
+ * já conhece as duas pontas — o clickId que estava no navegador e o id que o
+ * gateway acabou de devolver. Uma chamada registra o par aqui, e quando o
+ * webhook chegar a junção encontra o dono.
+ *
+ * Vale para qualquer gateway sem repasse, não só a Appmax.
+ */
+export const orderClaims = pgTable("order_claims", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  gateway: text("gateway").notNull(),
+  gatewayOrderId: text("gateway_order_id").notNull(),
+  clickId: uuid("click_id").notNull().references(() => clickSessions.clickId, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("claims_tenant_gateway_order").on(t.tenantId, t.gateway, t.gatewayOrderId),
+]);
+
 /* ------------------------------------------------------------- disparos -- */
 
 /*

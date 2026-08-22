@@ -18,6 +18,7 @@ import { getGateway } from "@/gateways/registry";
 import { resolveAttribution } from "@/core/attribution";
 import { dispatchOrder } from "@/core/dispatch";
 import { ORDER_STATUS_RANK } from "@/core/types";
+import { decryptRecord } from "@/core/crypto";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,18 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   if (!pedido) return Response.json({ ok: true, ignorado: true });
 
   /*
+   * Completa o que o webhook não trouxe. A Appmax não manda comprador nenhum
+   * no webhook de pedido, então sem isto a venda dela chegaria só com as
+   * chaves de navegador. Melhor-esforço: falhar aqui não derruba a venda.
+   */
+  if (adapter.enrich && Object.keys(conexao.credentials).length > 0) {
+    try {
+      const cred = await decryptRecord(conexao.credentials);
+      pedido = await adapter.enrich(pedido, cred);
+    } catch { /* segue com o que o webhook trouxe */ }
+  }
+
+  /*
    * Registra a entrega antes de processar. O índice único em
    * (conexão, gatewayEventId) faz a reentrega colidir aqui e sair sem efeito —
    * é o que garante que um webhook repetido não vire venda repetida.
@@ -92,7 +105,7 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   if (!entrega[0]) return Response.json({ ok: true, duplicado: true });
 
   try {
-    const atribuicao = await resolveAttribution(conexao.tenantId, pedido);
+    const atribuicao = await resolveAttribution(conexao.tenantId, pedido, gateway);
 
     const [existente] = await db
       .select()

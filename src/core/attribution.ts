@@ -12,11 +12,12 @@
 
 import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "../db/index";
-import { clickSessions } from "../db/schema";
+import { clickSessions, orderClaims } from "../db/schema";
 import type { CanonicalOrder } from "./types";
 
 export type AttributionMethod =
   | "click_id"
+  | "order_claim"
   | "fbp_match"
   | "gateway_attribution"
   | "unattributed";
@@ -61,6 +62,7 @@ const FBP_WINDOW_DAYS = 30;
 export async function resolveAttribution(
   tenantId: string,
   order: CanonicalOrder,
+  gateway?: string,
 ): Promise<ResolvedAttribution> {
   /* 1. O clickId voltou pelo repasse. É certeza, não inferência. */
   for (const candidate of candidateClickIds(order)) {
@@ -74,7 +76,37 @@ export async function resolveAttribution(
   }
 
   /*
-   * 2. O gateway devolveu o fbp. Vale procurar a sessão por ele: além dos
+   * 2. A loja reivindicou o pedido no momento em que o criou.
+   *
+   * Tão confiável quanto o repasse — é a mesma informação, só que entregue por
+   * outro caminho. Existe porque há gateway que não devolve nada, e sem isto a
+   * venda por lá seria órfã sempre. Fica com nome próprio para o painel poder
+   * distinguir de onde veio a certeza.
+   */
+  if (gateway) {
+    const [reivindicado] = await db
+      .select({ clickId: orderClaims.clickId })
+      .from(orderClaims)
+      .where(and(
+        eq(orderClaims.tenantId, tenantId),
+        eq(orderClaims.gateway, gateway),
+        eq(orderClaims.gatewayOrderId, order.gatewayOrderId),
+      ))
+      .limit(1);
+
+    if (reivindicado) {
+      const [sessao] = await db
+        .select()
+        .from(clickSessions)
+        .where(eq(clickSessions.clickId, reivindicado.clickId))
+        .limit(1);
+
+      if (sessao) return { method: "order_claim", clickId: sessao.clickId, session: sessao };
+    }
+  }
+
+  /*
+   * 3. O gateway devolveu o fbp. Vale procurar a sessão por ele: além dos
    *    UTMs, recupera ip, user-agent e fbc — que o gateway não manda e que
    *    fazem diferença real na correspondência.
    */
@@ -97,7 +129,7 @@ export async function resolveAttribution(
   }
 
   /*
-   * 3. Sem sessão nossa, mas o gateway registrou a origem no checkout. Dá para
+   * 4. Sem sessão nossa, mas o gateway registrou a origem no checkout. Dá para
    *    creditar a campanha no painel; não dá para enriquecer o CAPI, porque
    *    não há fbp, ip nem user-agent.
    */
@@ -107,7 +139,7 @@ export async function resolveAttribution(
   }
 
   /*
-   * 4. Órfã. Continua valendo como faturamento — a venda existe — mas não
+   * 5. Órfã. Continua valendo como faturamento — a venda existe — mas não
    *    entra em nenhum ROAS por campanha, e é o número a vigiar: órfã demais
    *    significa que o carimbo no checkout parou de funcionar.
    */

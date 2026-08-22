@@ -53,6 +53,19 @@ export interface GatewayAdapter {
    * Opcional — nem todo gateway expõe leitura.
    */
   fetchOrder?(orderId: string, credentials: GatewayCredentials): Promise<CanonicalOrder | null>;
+
+  /*
+   * Completa uma venda com o que o webhook não trouxe.
+   *
+   * Existe porque a Appmax não manda comprador nenhum no webhook de pedido —
+   * só o pedido. Sem uma consulta à API, a venda chegaria sem e-mail, sem nome
+   * e sem documento, e o CAPI receberia só as chaves de navegador.
+   *
+   * É chamado depois do `parse` e antes da junção, e apenas quando a conexão
+   * tem credenciais. Falha aqui não derruba a venda: ela entra com menos
+   * chaves, o que é melhor que não entrar.
+   */
+  enrich?(order: CanonicalOrder, credentials: GatewayCredentials): Promise<CanonicalOrder>;
 }
 
 export interface GatewayCredentials {
