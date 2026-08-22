@@ -12,7 +12,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "node scripts/seed.mjs",
-    "test:e2e": "node scripts/teste-e2e.mjs"
+    "test:e2e": "node scripts/teste-e2e.mjs",
+    "cadastrar": "node scripts/cadastrar.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
