@@ -6,7 +6,7 @@
  * de src/gateways/ precisa mudar.
  */
 
-import type { CanonicalOrder } from "../core/types.js";
+import type { CanonicalOrder } from "../core/types";
 
 export interface WebhookRequest {
   headers: Record<string, string>;

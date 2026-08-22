@@ -22,12 +22,12 @@
 
 import type {
   DestinationAdapter, DispatchInput, DestinationConfig, DispatchResult, ConversionEvent,
-} from "./types.js";
+} from "./types";
 import {
   normalizeEmail, normalizePhone, normalizeZip, normalizeCity,
   normalizeState, normalizeCountry, splitName, hashOrUndefined, sha256,
-} from "../core/hash.js";
-import { isValidFbc, isValidFbp } from "../core/identity.js";
+} from "../core/hash";
+import { isValidFbc, isValidFbp } from "../core/identity";
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v21.0";
 

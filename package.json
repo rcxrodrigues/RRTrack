@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "seed": "node scripts/seed.mjs",
+    "test:e2e": "node scripts/teste-e2e.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

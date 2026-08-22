@@ -19,10 +19,10 @@
  * agora, e serve de fonte secundária quando o clickId não resolve.
  */
 
-import type { GatewayAdapter, WebhookRequest, VerifyResult } from "./types.js";
+import type { GatewayAdapter, WebhookRequest, VerifyResult } from "./types";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
-} from "../core/types.js";
+} from "../core/types";
 
 /** `transaction.paid` e `paid` chegam nas duas formas conforme a versão. */
 const STATUS_MAP: Record<string, OrderStatus> = {

@@ -162,15 +162,21 @@
      * sendBeacon sobrevive à navegação — indispensável no clique do checkout,
      * onde a página é abandonada no mesmo instante. Onde não houver, fetch com
      * keepalive faz o mesmo papel.
+     *
+     * O tipo é text/plain, e isso é obrigatório, não preferência: o coletor
+     * vive num subdomínio (t.loja.com.br) e a página noutro, então a requisição
+     * é entre origens. application/json exigiria uma verificação prévia de CORS
+     * que o sendBeacon não sabe fazer — a requisição não sairia. text/plain
+     * está na lista de tipos isentos. O servidor lê o texto e converte.
      */
     if (navigator.sendBeacon) {
-      var blob = new Blob([json], { type: "application/json" });
+      var blob = new Blob([json], { type: "text/plain;charset=UTF-8" });
       if (navigator.sendBeacon(endpoint, blob)) return;
     }
     try {
       fetch(endpoint, {
-        method: "POST", body: json, keepalive: true,
-        headers: { "content-type": "application/json" }
+        method: "POST", body: json, keepalive: true, mode: "cors",
+        headers: { "content-type": "text/plain;charset=UTF-8" }
       });
     } catch (e) {}
   }

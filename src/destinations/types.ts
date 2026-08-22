@@ -6,7 +6,7 @@
  * novo aqui; nada no resto do sistema muda.
  */
 
-import type { CanonicalOrder, ClickContext } from "../core/types.js";
+import type { CanonicalOrder, ClickContext } from "../core/types";
 
 /** Nomes de evento canônicos, traduzidos por cada destino para o dialeto dele. */
 export type ConversionEvent =
