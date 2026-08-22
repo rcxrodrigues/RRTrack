@@ -14,7 +14,8 @@ import { webcrypto as wc, createHmac } from "node:crypto";
 
 process.loadEnvFile(".env");
 const sql = neon(process.env.DATABASE_URL);
-const BASE = "http://localhost:3000";
+/* Aponta para produção com RR_BASE=https://... ; local por padrão. */
+const BASE = process.env.RR_BASE || "http://localhost:3000";
 const seed = JSON.parse(process.argv[2]);
 
 let falhas = 0;
