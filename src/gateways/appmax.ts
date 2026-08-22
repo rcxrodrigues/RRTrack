@@ -21,7 +21,9 @@
  *    tabela `order_claims` e a rota /api/claim.
  *
  * 3. Não há assinatura. A própria documentação recomenda confirmar o evento
- *    pela API, que é o que o `enrich` acaba fazendo de quebra.
+ *    pela API. O `enrich` consulta o pedido e portanto prova que ele existe —
+ *    mas só quando há credencial configurada, e ele não compara o valor
+ *    recebido com o valor real. Confirmação de verdade continua pendente.
  *
  * O status vem em português no payload (`aprovado`, `estornado`), enquanto o
  * nome do evento vem em inglês (`order_approved`). Mapeamos os dois.

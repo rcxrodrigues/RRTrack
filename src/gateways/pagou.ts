@@ -6,9 +6,14 @@
  *
  * Duas particularidades deste gateway, ambas documentadas por eles:
  *
- * 1. Não há assinatura HMAC. `verify` devolve `sem_assinatura`, e o roteador
- *    então exige o segredo no path e confirma o valor pela API antes de
- *    contabilizar a venda ou disparar conversão.
+ * 1. Não há assinatura HMAC. `verify` devolve `sem_assinatura`, e a venda
+ *    entra marcada como não verificada — a barreira é só o segredo no caminho
+ *    da URL.
+ *
+ *    PENDENTE: a documentação do pagou.ai recomenda confirmar por
+ *    `GET /v2/transactions/{id}` quando o resultado for incerto, e é o que
+ *    `fetchOrder` deveria fazer. Ainda não está implementado, então uma venda
+ *    forjada por quem descobrisse a URL passaria.
  *
  * 2. O CPF do comprador nunca vem no webhook. Isso custa as chaves `ct`, `st`
  *    e `zp` no CAPI — não há como contornar pelo webhook; só consultando a
@@ -132,9 +137,9 @@ export const pagouAdapter: GatewayAdapter = {
   async verify(_req: WebhookRequest, _secret: string): Promise<VerifyResult> {
     /*
      * A documentação do pagou.ai não define assinatura de webhook. Recusar
-     * aqui é deliberado: o roteador trata `sem_assinatura` exigindo o segredo
-     * no path e confirmando o valor pela API antes de contabilizar. Se um dia
-     * publicarem HMAC, a verificação entra aqui e o resto do sistema não muda.
+     * aqui é deliberado: o roteador trata `sem_assinatura` deixando a venda
+     * marcada como não verificada, em vez de fingir que está provada. Se um
+     * dia publicarem HMAC, a verificação entra aqui e o resto não muda.
      */
     return { ok: false, reason: "sem_assinatura" };
   },
