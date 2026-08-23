@@ -248,6 +248,36 @@ export function Integracoes({
         </div>
       </div>
 
+      {/*
+        O script fica ACIMA das abas, sempre visível.
+        Ele estava dentro de Webhooks, e é o item mais pedido da tela inteira —
+        quem abre Integrações quase sempre veio buscar exatamente isto. Item
+        mais usado não se esconde atrás de uma aba.
+      */}
+      {site && (
+        <div style={{ padding: "18px 24px 0" }}>
+          <div style={{
+            background: "var(--painel)", border: "1px solid var(--acento)",
+            borderRadius: 8, padding: "16px 18px", maxWidth: 1100,
+          }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, fontSize: 13.5 }}>Script de rastreamento</span>
+              <span style={{ fontSize: 11.5, color: "var(--ink-tenue)" }}>
+                cole antes do <span className="num">&lt;/head&gt;</span> em todas as páginas
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-fraco)", marginBottom: 12, lineHeight: 1.5 }}>
+              O mesmo código serve para quantas páginas e domínios você quiser — a loja é
+              identificada pela chave, não pelo endereço. Landing, página de vendas e
+              obrigado usam este mesmo trecho.
+            </div>
+            <Copiavel valor={
+              `<script>window.RRTrackConfig={siteKey:"${site.chave}",endpoint:"${base}/rr/collect"}</script><script src="${base}/rr.js" async></script>`
+            } />
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: 24, flexGrow: 1 }}>
         {erro && (
           <div style={{
@@ -408,10 +438,12 @@ export function Integracoes({
                     <div className="num" style={{ fontSize: 12.5 }}>{site.dominio}</div>
                   </div>
                   <Copiavel rotulo="Chave do site" valor={site.chave} />
-                  <div style={{ marginTop: 16 }}>
-                    <Copiavel rotulo="Cole antes do </head>" valor={
-                      `<script>window.RRTrackConfig={siteKey:"${site.chave}",endpoint:"${base}/rr/collect"}</script><script src="${base}/rr.js" async></script>`
-                    } />
+                  <div style={{
+                    fontSize: 11, color: "var(--ink-tenue)", marginTop: 12, lineHeight: 1.5,
+                  }}>
+                    O script para colar está no topo desta tela. Esta chave é o que ele
+                    carrega — quem tiver ela pode mandar evento para esta loja, então
+                    trate como segredo de configuração, não como identificador público.
                   </div>
                 </>
               ) : (

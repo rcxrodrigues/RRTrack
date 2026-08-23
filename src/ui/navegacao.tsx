@@ -2,7 +2,6 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
 import type { LojaDoUsuario } from "@/core/auth";
 
 /*
@@ -57,15 +56,13 @@ const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: strin
 ];
 
 export function Navegacao({
-  lojas, lojaAtual, usuario,
+  lojaAtual, usuario,
 }: {
-  lojas: LojaDoUsuario[];
   lojaAtual: LojaDoUsuario | null;
   usuario: { nome: string | null; email: string };
 }) {
   const caminho = usePathname();
   const router = useRouter();
-  const [abrindoLojas, setAbrindoLojas] = useState(false);
 
   const iniciais = (usuario.nome ?? usuario.email)
     .split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -74,17 +71,6 @@ export function Navegacao({
     await fetch("/api/auth/sair", { method: "POST" });
     router.refresh();
     router.push("/entrar");
-  }
-
-  function trocarLoja(slug: string) {
-    /*
-     * A loja escolhida vira cookie, e não parâmetro na URL: assim ela
-     * sobrevive à navegação entre telas e a um link colado sem contexto —
-     * ninguém abre "/meta" e vê a loja errada porque esqueceu o parâmetro.
-     */
-    document.cookie = `rr_loja=${slug}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-    setAbrindoLojas(false);
-    router.refresh();
   }
 
   return (
@@ -102,52 +88,23 @@ export function Navegacao({
         <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-.2px" }}>RRTrack</span>
       </div>
 
-      {/* seletor de loja */}
-      <div style={{ padding: "0 10px 12px", position: "relative" }}>
-        <button
-          onClick={() => setAbrindoLojas((v) => !v)}
-          style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 8,
-            padding: "8px 10px", borderRadius: 6, textAlign: "left",
-            background: "var(--painel-alto)", border: "1px solid var(--linha-forte)",
-            color: "var(--ink)",
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink-fraco)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+      {/*
+        A loja aparece como rótulo, não como seletor.
+        Havia um menu de troca aqui; o usuário apontou que não precisa dele —
+        é uma operação só, e a distinção entre negócios vem da campanha, não de
+        trocar de contexto na barra lateral. O modelo de dados continua
+        multi-loja: o que saiu foi a troca manual, não o isolamento.
+      */}
+      <div style={{ padding: "0 14px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ink-tenue)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
             <path d="M2.5 6h11l-1 7.5h-9L2.5 6zM5.5 6V4a2.5 2.5 0 0 1 5 0v2" />
           </svg>
           <span style={{
-            flexGrow: 1, fontSize: 12, fontWeight: 500, overflow: "hidden",
-            textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{lojaAtual?.nome ?? "Escolher loja"}</span>
-          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="var(--ink-tenue)" strokeWidth="2" style={{ flexShrink: 0 }}>
-            <path d="M4 6.5L8 10.5l4-4" />
-          </svg>
-        </button>
-
-        {abrindoLojas && (
-          <div style={{
-            position: "absolute", left: 10, right: 10, top: "100%", zIndex: 20,
-            background: "var(--painel-alto)", border: "1px solid var(--linha-forte)",
-            borderRadius: 6, marginTop: 4, overflow: "hidden",
-            boxShadow: "0 8px 28px rgba(0,0,0,.5)",
-          }}>
-            {lojas.map((l) => (
-              <button key={l.id} onClick={() => trocarLoja(l.slug)} style={{
-                width: "100%", textAlign: "left", padding: "9px 11px",
-                background: l.id === lojaAtual?.id ? "var(--acento-fundo)" : "transparent",
-                border: "none", color: l.id === lojaAtual?.id ? "var(--acento)" : "var(--ink-medio)",
-                fontSize: 12, fontWeight: 500,
-                borderBottom: "1px solid var(--linha)",
-              }}>{l.nome}</button>
-            ))}
-            {lojas.length === 0 && (
-              <div style={{ padding: "10px 11px", fontSize: 11.5, color: "var(--ink-tenue)" }}>
-                Nenhuma loja ainda
-              </div>
-            )}
-          </div>
-        )}
+            fontSize: 11.5, fontWeight: 500, color: "var(--ink-fraco)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{lojaAtual?.nome ?? "sem loja"}</span>
+        </div>
       </div>
 
       {/* navegação */}

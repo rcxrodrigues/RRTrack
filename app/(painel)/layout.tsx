@@ -16,7 +16,7 @@ export default async function PainelLayout({ children }: { children: React.React
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Navegacao lojas={ctx.lojas} lojaAtual={loja} usuario={ctx.usuario} />
+      <Navegacao lojaAtual={loja} usuario={ctx.usuario} />
       <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {children}
       </main>
