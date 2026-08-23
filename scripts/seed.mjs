@@ -1,4 +1,10 @@
-/* Semeia uma loja de teste: tenant, site, conexão de gateway e destino Meta. */
+/*
+ * Semeia uma loja de teste — genérica de propósito.
+ *
+ * O RRTrack é multi-loja: nenhuma loja real pertence a este script. O que
+ * existe aqui é dado descartável para os testes automatizados rodarem contra
+ * um estado conhecido. Loja de verdade se cadastra pelo scripts/cadastrar.mjs.
+ */
 import { neon } from "@neondatabase/serverless";
 import { webcrypto as wc } from "node:crypto";
 
@@ -16,19 +22,19 @@ async function encrypt(plain) {
 }
 
 const SEGREDO = "whsec_" + Buffer.from(wc.getRandomValues(new Uint8Array(24))).toString("hex");
-const SITE_KEY = "pk_flore_" + Buffer.from(wc.getRandomValues(new Uint8Array(8))).toString("hex");
+const SITE_KEY = "pk_teste_" + Buffer.from(wc.getRandomValues(new Uint8Array(8))).toString("hex");
 
 /* Limpa execuções anteriores para o teste ser sempre do zero. */
-await sql`DELETE FROM tenants WHERE slug = 'flore'`;
+await sql`DELETE FROM tenants WHERE slug = 'loja-de-teste'`;
 
 const [t] = await sql`
   INSERT INTO tenants (name, slug, timezone, currency)
-  VALUES ('Florè Cosméticos', 'flore', 'America/Sao_Paulo', 'BRL')
+  VALUES ('Loja de Teste', 'loja-de-teste', 'America/Sao_Paulo', 'BRL')
   RETURNING id`;
 
 await sql`
   INSERT INTO sites (tenant_id, domain, collector_host, public_key, active)
-  VALUES (${t.id}, 'florecomesticos.store', 't.florecomesticos.store', ${SITE_KEY}, true)
+  VALUES (${t.id}, 'loja-de-teste.exemplo.com.br', 't.loja-de-teste.exemplo.com.br', ${SITE_KEY}, true)
   ON CONFLICT (domain) DO UPDATE SET tenant_id = ${t.id}, public_key = ${SITE_KEY}`;
 
 /* Uma conexão por gateway, cada uma com seu próprio segredo de webhook. */
@@ -54,7 +60,7 @@ for (const [id, label] of [
 const creds = JSON.stringify({ accessToken: await encrypt("EAA_token_falso_para_teste") });
 await sql`
   INSERT INTO destinations (tenant_id, platform, label, external_id, credentials, config, active)
-  VALUES (${t.id}, 'meta', 'Pixel Florè', '1234567890123456', ${creds}::jsonb, '{}'::jsonb, true)`;
+  VALUES (${t.id}, 'meta', 'Pixel de teste', '1234567890123456', ${creds}::jsonb, '{}'::jsonb, true)`;
 
 console.log(JSON.stringify({
   tenantId: t.id,
