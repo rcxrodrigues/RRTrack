@@ -40,8 +40,42 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   name: text("name"),
+  /*
+   * PBKDF2-SHA256, guardado como "iteracoes.sal.hash" em base64.
+   *
+   * Nunca a senha, obviamente — mas também nunca um hash rápido como SHA-256
+   * puro: uma placa de vídeo testa bilhões desses por segundo. PBKDF2 é lento
+   * de propósito, e o número de iterações fica gravado junto para poder subir
+   * com o tempo sem invalidar quem já tem senha.
+   */
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 });
+
+/*
+ * Sessões de login.
+ *
+ * Ficam no banco, e não num JWT assinado, por um motivo prático: sessão em
+ * JWT não se revoga. Se um token vazar, ou o usuário quiser derrubar os outros
+ * aparelhos, não há o que fazer até expirar. Com linha no banco, apagar
+ * encerra na hora.
+ *
+ * O cookie carrega só o hash do token — quem ler o banco não consegue montar
+ * um cookie válido a partir dele.
+ */
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("sessions_user").on(t.userId),
+  index("sessions_expira").on(t.expiresAt),
+]);
 
 export const memberships = pgTable("memberships", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -1,0 +1,82 @@
+/*
+ * Sistema visual do painel — terminal denso, escuro.
+ *
+ * Os tokens vivem aqui e não em cada componente para que trocar a cor de
+ * acento seja uma linha, e para que os números sempre saiam em fonte
+ * monoespaçada com largura fixa: coluna de valor que dança a cada dígito é
+ * ilegível quando se compara vinte anúncios de uma vez.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --fundo: #0B1014;
+  --painel: #0F171C;
+  --painel-alto: #121C22;
+  --linha: #1B2830;
+  --linha-forte: #223038;
+
+  --ink: #E4EDF1;
+  --ink-medio: #B4C6CE;
+  --ink-fraco: #7B8F9A;
+  --ink-tenue: #566871;
+
+  --acento: #45C4D0;
+  --acento-fundo: #16303A;
+  --positivo: #4FBF8B;
+  --positivo-fundo: #12241C;
+  --alerta: #D6A344;
+  --alerta-fundo: #2A2113;
+  --negativo: #E5786E;
+  --negativo-fundo: #2B1614;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--fundo);
+  color: var(--ink);
+  font-family: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--acento); text-decoration: none; }
+a:hover { color: #7BD8E1; }
+
+.num {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+button { font-family: inherit; font-size: inherit; cursor: pointer; }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--painel-alto);
+  border: 1px solid var(--linha-forte);
+  border-radius: 5px;
+  padding: 9px 11px;
+  width: 100%;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--acento);
+}
+
+input::placeholder { color: var(--ink-tenue); }
+
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; border-radius: 3px; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--linha-forte); border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

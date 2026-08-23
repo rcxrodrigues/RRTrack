@@ -1,6 +1,8 @@
+import "./globals.css";
+
 export const metadata = {
   title: "RRTrack",
-  description: "Servidor de atribuição e conversões",
+  description: "Rastreamento e atribuição",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
