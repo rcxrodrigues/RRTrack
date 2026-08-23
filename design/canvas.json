@@ -1,0 +1,30 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1600, "h": 1180, "title": "Painel — desktop" },
+    { "file": "Celular.dc.html", "x": 1680, "y": 0, "w": 390, "h": 844, "title": "Celular" }
+  ],
+  "annotations": [
+    {
+      "id": "nota-abas",
+      "x": 0,
+      "y": -150,
+      "w": 460,
+      "text": "As abas funcionam: clique em Resumo, Campanhas e Rastreamento.\nNa aba Campanhas, clique numa linha para abrir conjuntos e anúncios."
+    },
+    {
+      "id": "nota-rastreio",
+      "x": 500,
+      "y": -150,
+      "w": 460,
+      "text": "A aba Rastreamento é o que a Utmify não tem: mostra de onde veio a certeza de cada atribuição e quantas chaves cada disparo levou para a Meta."
+    },
+    {
+      "id": "nota-celular",
+      "x": 1680,
+      "y": -150,
+      "w": 390,
+      "text": "No celular só entra o que se decide de pé: lucro do dia, o trio gasto/faturamento/ROAS, campanhas ordenadas por ROAS e o alerta quando o disparo falha."
+    }
+  ],
+  "launch": { "view": "focused", "file": "Main.dc.html" }
+}

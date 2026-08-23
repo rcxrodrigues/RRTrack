@@ -224,10 +224,95 @@
     });
   }
 
+  /* --------------------------------------------- eventos por atributo */
+
+  /*
+   * A maioria dos sites não quer escrever JavaScript para rastrear. Então o
+   * snippet lê atributos do HTML:
+   *
+   *   <div data-rr-view='{"id":"1313","name":"Carimbo","price":89.90}'></div>
+   *   <button data-rr-event="add_to_cart" data-rr-product='{"id":"1313","price":89.90}'>
+   *
+   * Quem preferir chamar na mão continua podendo — rr('track', ...) faz o
+   * mesmo. Os dois caminhos existem porque loja em plataforma fechada muitas
+   * vezes só deixa mexer no HTML.
+   */
+
+  function lerProduto(el, attr) {
+    var bruto = el.getAttribute(attr);
+    if (!bruto) return null;
+    try {
+      var p = JSON.parse(bruto);
+      return p && p.id ? p : null;
+    } catch (e) {
+      /* Também aceita a forma curta "sku|preco", para quem não quer JSON. */
+      var partes = bruto.split("|");
+      if (!partes[0]) return null;
+      return { id: partes[0].trim(), price: partes[1] ? parseFloat(partes[1]) : undefined };
+    }
+  }
+
+  function paramsDe(produto) {
+    if (!produto) return {};
+    var preco = typeof produto.price === "number" ? produto.price : undefined;
+    var qtd = produto.quantity || 1;
+    var p = {
+      items: [{
+        item_id: String(produto.id),
+        item_name: produto.name,
+        price: preco,
+        quantity: qtd
+      }],
+      currency: produto.currency || "BRL"
+    };
+    if (preco !== undefined) p.value = preco * qtd;
+    return p;
+  }
+
+  /* Produto da página: dispara view_content uma vez, quando a página carrega. */
+  function verProduto() {
+    var el = document.querySelector("[data-rr-view]");
+    if (!el || el.getAttribute("data-rr-visto") === "1") return;
+    var produto = lerProduto(el, "data-rr-view");
+    if (!produto) return;
+    el.setAttribute("data-rr-visto", "1");
+    send("view_content", paramsDe(produto));
+  }
+
+  /*
+   * Cliques. Um só ouvinte na raiz, em vez de um por botão: o botão pode ser
+   * criado depois pelo JavaScript da loja, e ouvinte na raiz pega os dois casos.
+   */
+  document.addEventListener("click", function (ev) {
+    var el = ev.target && ev.target.closest ? ev.target.closest("[data-rr-event]") : null;
+    if (el) {
+      var nome = el.getAttribute("data-rr-event");
+      if (nome) send(nome, paramsDe(lerProduto(el, "data-rr-product")));
+      return;
+    }
+
+    /*
+     * Clique no checkout vira início de compra. É o evento de maior intenção
+     * que o navegador ainda consegue ver — depois disso a pessoa está no
+     * domínio do gateway, onde não temos alcance nenhum.
+     */
+    var sel = cfg.checkoutSelector || "[data-checkout-link], a[href*='checkout']";
+    var link = ev.target && ev.target.closest ? ev.target.closest(sel) : null;
+    if (link && link.getAttribute("data-rr-ic") !== "1") {
+      link.setAttribute("data-rr-ic", "1");
+      send("begin_checkout", paramsDe(lerProduto(link, "data-rr-product")));
+    }
+  }, true);
+
   /* ------------------------------------------------------------ interface */
 
   var api = {
+    /* rr('track', 'add_to_cart', { value: 89.90, items: [...] }) */
     track: function (name, params_, eventId) { send(name, params_, eventId); },
+    /* Atalhos, para quem prefere ler o código depois. */
+    viewContent: function (produto) { send("view_content", paramsDe(produto)); },
+    addToCart: function (produto) { send("add_to_cart", paramsDe(produto)); },
+    beginCheckout: function (produto) { send("begin_checkout", paramsDe(produto)); },
     /* Exposto para quem precisa montar a URL do checkout na mão. */
     decorate: decorate,
     clickId: function () { return state.click_id; },
@@ -243,4 +328,7 @@
   for (var j = 0; j < fila.length; j++) window.rr.apply(null, fila[j]);
 
   send("page_view");
+
+  if (document.readyState !== "loading") verProduto();
+  document.addEventListener("DOMContentLoaded", verProduto);
 })(window, document);

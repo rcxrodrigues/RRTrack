@@ -6,10 +6,12 @@
  * gravar o evento. Nada de disparo para plataforma acontece aqui.
  */
 
+import { after } from "next/server";
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import { clickSessions, events, sites } from "@/db/schema";
+import { dispatchBrowserEvent, normalizarEvento } from "@/core/dispatch";
 
 export const runtime = "nodejs";
 
@@ -115,7 +117,7 @@ export async function POST(req: Request): Promise<Response> {
    * um campo vazio nunca apaga o que já existia. É o que impede a segunda
    * visita — sem UTM na URL — de apagar a campanha que trouxe a pessoa.
    */
-  await db.insert(clickSessions).values(valores).onConflictDoUpdate({
+  const [sessao] = await db.insert(clickSessions).values(valores).onConflictDoUpdate({
     target: clickSessions.clickId,
     set: {
       lastSeenAt: agora,
@@ -133,7 +135,7 @@ export async function POST(req: Request): Promise<Response> {
       ip: sql`COALESCE(EXCLUDED.ip, ${clickSessions.ip})`,
       userAgent: sql`COALESCE(EXCLUDED.user_agent, ${clickSessions.userAgent})`,
     },
-  });
+  }).returning();
 
   const eventId = str(body.event_id) ?? `${eventName}.${clickId}.${Date.now()}`;
   const params = (body.params ?? {}) as Record<string, unknown>;
@@ -156,5 +158,74 @@ export async function POST(req: Request): Promise<Response> {
     })(),
   }).onConflictDoNothing();
 
+  /*
+   * O disparo para as plataformas acontece DEPOIS da resposta.
+   *
+   * `after` deixa o 204 sair na hora e roda o resto em seguida. Sem isso, cada
+   * página vista esperaria a Meta responder antes de liberar o navegador — e
+   * um pico de tráfego, ou uma lentidão do lado deles, viraria lentidão no site
+   * do cliente. O visitante nunca paga o preço do nosso rastreamento.
+   */
+  const canonico = normalizarEvento(eventName);
+  if (canonico && sessao) {
+    after(async () => {
+      try {
+        await dispatchBrowserEvent({
+          tenantId: site.tenantId,
+          evento: canonico,
+          eventId,
+          occurredAt: new Date(),
+          pageUrl: str(body.page_url) ?? undefined,
+          valueCents: valor ?? undefined,
+          currency: str(params.currency) ?? undefined,
+          contents: lerProdutos(params),
+          click: {
+            clickId: sessao.clickId,
+            fbp: sessao.fbp ?? undefined,
+            fbc: sessao.fbc ?? undefined,
+            ip: sessao.ip ?? undefined,
+            userAgent: sessao.userAgent ?? undefined,
+          },
+        });
+      } catch (e) {
+        /* Falha de disparo não pode derrubar a coleta: o evento já está gravado
+           e pode ser reprocessado; o visitante já foi embora faz tempo. */
+        console.error("[collect] falha ao disparar", e);
+      }
+    });
+  }
+
   return new Response(null, { status: 204, headers });
+}
+
+/*
+ * Produtos vindos do site. Aceita o formato de e-commerce do GA4 (`items`,
+ * com `item_id` e `price` em reais) e uma forma curta, porque quem instala à
+ * mão escreve a curta e quem vem de GTM já tem a do GA4 pronta.
+ */
+function lerProdutos(params: Record<string, unknown>) {
+  const bruto = params.items ?? params.contents ?? params.content_ids;
+  if (!Array.isArray(bruto) || bruto.length === 0) return undefined;
+
+  /* Lista de SKUs pura: ["1313", "1414"] */
+  if (typeof bruto[0] === "string") {
+    return (bruto as string[]).map((id) => ({ id }));
+  }
+
+  const out = [];
+  for (const it of bruto) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const id = str(o.item_id) ?? str(o.id) ?? str(o.sku);
+    if (!id) continue;
+    const preco = typeof o.price === "number" ? o.price
+      : typeof o.item_price === "number" ? o.item_price : undefined;
+    out.push({
+      id,
+      quantity: typeof o.quantity === "number" ? o.quantity : 1,
+      priceCents: preco !== undefined ? Math.round(preco * 100) : undefined,
+      name: str(o.item_name) ?? str(o.name) ?? undefined,
+    });
+  }
+  return out.length ? out : undefined;
 }

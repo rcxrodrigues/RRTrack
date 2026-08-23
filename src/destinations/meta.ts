@@ -145,6 +145,16 @@ function buildCustomData(input: DispatchInput): Record<string, unknown> {
       }));
       data.num_items = items.reduce((s, i) => s + i.quantity, 0);
     }
+  } else if (input.contents?.length) {
+    /* Evento de navegação: os produtos vêm soltos, sem pedido por trás. */
+    data.content_type = "product";
+    data.content_ids = input.contents.map((c) => c.id);
+    data.contents = input.contents.map((c) => ({
+      id: c.id,
+      quantity: c.quantity ?? 1,
+      ...(c.priceCents !== undefined ? { item_price: c.priceCents / 100 } : {}),
+    }));
+    data.num_items = input.contents.reduce((s, c) => s + (c.quantity ?? 1), 0);
   }
   return data;
 }

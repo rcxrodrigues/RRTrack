@@ -29,6 +29,13 @@ export interface DispatchInput {
   sourceUrl?: string;
   valueCents?: number;
   currency?: string;
+  /*
+   * Produtos de um evento que não é venda — ver um item, jogar no carrinho.
+   * Aqui não existe pedido, então os produtos chegam soltos: é o que permite
+   * à Meta casar o evento de navegação com o catálogo e montar remarketing
+   * dinâmico. Sem isso o evento chega vazio de conteúdo e serve para pouco.
+   */
+  contents?: Array<{ id: string; quantity?: number; priceCents?: number; name?: string }>;
 }
 
 export interface DestinationCredentials {

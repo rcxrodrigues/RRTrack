@@ -1,0 +1,911 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0B1014;
+      color: #E4EDF1;
+      font-family: "Instrument Sans", system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #45C4D0; text-decoration: none; }
+    a:hover { color: #7BD8E1; }
+    .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .card { background: #0F171C; border: 1px solid #1B2830; border-radius: 7px; }
+    .row:hover { background: #16222A; }
+    .tab:hover { color: #E4EDF1; }
+    .chip:hover { border-color: #2C4049; }
+    .rail:hover { background: #16222A; color: #E4EDF1; }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: #1E2C34; border-radius: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</helmet>
+
+<div style="width: 1600px; height: 1180px; display: flex; background: #0B1014; overflow: hidden">
+
+  <!-- ============================================ trilho de navegação -->
+  <div style="width: 52px; flex-shrink: 0; border-right: 1px solid #1B2830; background: #0D1419; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 3px">
+    <div style="margin-bottom: 14px">
+      <svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="#45C4D0" stroke-width="1.6">
+        <circle cx="9" cy="9" r="1.8" fill="#45C4D0" stroke="none"></circle>
+        <path d="M4.2 4.2a6.8 6.8 0 0 0 0 9.6M13.8 4.2a6.8 6.8 0 0 1 0 9.6"></path>
+        <path d="M1.6 1.6a10.4 10.4 0 0 0 0 14.8M16.4 1.6a10.4 10.4 0 0 1 0 14.8" opacity=".45"></path>
+      </svg>
+    </div>
+    <sc-for list="{{trilho}}" as="t" hint-placeholder-count="7">
+      <div class="rail" style="width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: {{t.fundo}}; color: {{t.cor}}">
+        <div style="width: 17px; height: 17px" innerHTML="{{t.icone}}"></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+
+    <!-- ============================================ topo -->
+    <div style="display: flex; align-items: center; gap: 16px; height: 54px; padding: 0 20px; border-bottom: 1px solid #1B2830; background: #0D1419; flex-shrink: 0">
+      <div style="display: flex; align-items: baseline; gap: 10px">
+        <span style="font-weight: 700; font-size: 15px; letter-spacing: -.2px">Resumo</span>
+        <span class="num" style="font-size: 11.5px; color: #566871">{{lojaAtual}}</span>
+      </div>
+
+      <div style="flex-grow: 1"></div>
+
+      <div style="display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #566871">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #4FBF8B; box-shadow: 0 0 8px #4FBF8B"></span>
+        <span>coletando</span>
+        <span style="color: #3E4E56">·</span>
+        <span class="num">gasto sincronizado 12min atrás</span>
+      </div>
+
+      <div class="chip" style="display: flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid #223038; border-radius: 5px; background: #121C22; cursor: pointer; font-weight: 500; font-size: 12px">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#45C4D0" stroke-width="1.7"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3.5H10"></path></svg>
+        <span>Atualizar</span>
+      </div>
+
+      <div style="width: 1px; height: 22px; background: #1B2830"></div>
+
+      <div style="display: flex; align-items: center; gap: 9px">
+        <div style="text-align: right">
+          <div style="font-weight: 600; font-size: 12px">Ryan Rodrigues</div>
+          <div style="font-size: 10.5px; color: #566871">Proprietário</div>
+        </div>
+        <div class="num" style="width: 28px; height: 28px; border-radius: 6px; background: #16303A; color: #45C4D0; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 11px">RR</div>
+      </div>
+    </div>
+
+    <!-- ============================================ filtros -->
+    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid #1B2830; background: #0D1419; flex-shrink: 0">
+      <sc-for list="{{filtros}}" as="f" hint-placeholder-count="5">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: #566871; font-weight: 600; margin-bottom: 5px">{{f.rotulo}}</div>
+          <div class="chip" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid #223038; border-radius: 5px; background: #121C22; cursor: pointer">
+            <span style="font-size: 12px; font-weight: 500; color: {{f.cor}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{f.valor}}</span>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#566871" stroke-width="1.8" style="flex-shrink: 0"><path d="M4 6.5L8 10.5l4-4"></path></svg>
+          </div>
+        </div>
+      </sc-for>
+      <div style="align-self: flex-end">
+        <div class="chip" style="display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid #223038; border-radius: 5px; background: transparent; cursor: pointer; font-size: 12px; color: #7B8F9A">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#7B8F9A" stroke-width="1.6"><path d="M2.5 4h11M4.5 8h7M6.5 12h3"></path></svg>
+          <span>Mais filtros</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ abas -->
+    <div style="display: flex; align-items: center; gap: 26px; padding: 0 20px; height: 40px; border-bottom: 1px solid #1B2830; flex-shrink: 0; background: #0B1014">
+      <sc-for list="{{abas}}" as="a" hint-placeholder-count="3">
+        <div class="tab" onClick="{{a.abrir}}" style="display: flex; align-items: center; gap: 7px; height: 40px; cursor: pointer; font-weight: {{a.peso}}; font-size: 12.5px; color: {{a.cor}}; box-shadow: {{a.sublinhado}}">
+          <span>{{a.rotulo}}</span>
+          <sc-if value="{{a.temAviso}}" hint-placeholder-val="{{true}}">
+            <span class="num" style="font-size: 10px; padding: 1px 5px; border-radius: 8px; background: #3A2018; color: #E5786E; font-weight: 600">{{a.aviso}}</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- ============================================ conteúdo -->
+    <div style="flex-grow: 1; overflow-y: auto; padding: 16px 20px 28px">
+
+      <!-- ------------------------------------------------ RESUMO -->
+      <sc-if value="{{ehResumo}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; flex-direction: column; gap: 14px">
+
+          <!-- grade de indicadores -->
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+            <sc-for list="{{indicadores}}" as="i" hint-placeholder-count="12">
+              <div class="card" style="padding: 13px 15px; background: {{i.fundo}}">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px">
+                  <span style="font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #566871; font-weight: 600">{{i.rotulo}}</span>
+                  <sc-if value="{{i.temDelta}}" hint-placeholder-val="{{true}}">
+                    <span class="num" style="font-size: 11px; font-weight: 500; color: {{i.corDelta}}">{{i.delta}}</span>
+                  </sc-if>
+                </div>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px">
+                  <span class="num" style="font-size: 21px; font-weight: 600; letter-spacing: -.5px; color: {{i.cor}}">{{i.valor}}</span>
+                  <sc-if value="{{i.temLinha}}" hint-placeholder-val="{{true}}">
+                    <svg width="72" height="20" viewBox="0 0 72 20" preserveAspectRatio="none" style="display: block; flex-shrink: 0">
+                      <polyline points="{{i.linha}}" fill="none" stroke="{{i.corLinha}}" stroke-width="1.4" vector-effect="non-scaling-stroke"></polyline>
+                    </svg>
+                  </sc-if>
+                </div>
+                <sc-if value="{{i.temNota}}" hint-placeholder-val="{{true}}">
+                  <div style="font-size: 10.5px; color: #566871; margin-top: 6px">{{i.nota}}</div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- funil horizontal -->
+          <div class="card" style="padding: 16px 18px">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px">
+              <div style="display: flex; align-items: baseline; gap: 10px">
+                <span style="font-weight: 600; font-size: 13.5px">Funil de conversão</span>
+                <span style="font-size: 11.5px; color: #566871">do clique no anúncio à venda aprovada</span>
+              </div>
+              <span class="num" style="font-size: 11.5px; color: #45C4D0">{{conversaoGeral}} de conversão total</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0">
+              <sc-for list="{{funil}}" as="f" hint-placeholder-count="5">
+                <div style="position: relative; padding: 0 16px; border-left: 1px solid {{f.borda}}">
+                  <div style="font-size: 11px; color: #7B8F9A; font-weight: 500; margin-bottom: 10px">{{f.rotulo}}</div>
+                  <div class="num" style="font-size: 24px; font-weight: 600; letter-spacing: -.6px; color: {{f.cor}}">{{f.valor}}</div>
+                  <div style="display: flex; align-items: center; gap: 7px; margin-top: 9px">
+                    <div style="flex-grow: 1; height: 5px; border-radius: 3px; background: #16222A; overflow: hidden">
+                      <div style="height: 100%; width: {{f.largura}}%; background: {{f.cor}}; border-radius: 3px"></div>
+                    </div>
+                    <span class="num" style="font-size: 11px; font-weight: 600; color: {{f.corTaxa}}; min-width: 42px; text-align: right">{{f.taxa}}</span>
+                  </div>
+                  <sc-if value="{{f.temPerda}}" hint-placeholder-val="{{true}}">
+                    <div class="num" style="font-size: 10.5px; color: #566871; margin-top: 6px">−{{f.perda}} saíram aqui</div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- vendas e lucro por horário -->
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px">
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px">
+                <span style="font-weight: 600; font-size: 13.5px">Faturamento, gasto e lucro por hora</span>
+                <div style="display: flex; gap: 14px">
+                  <sc-for list="{{legenda}}" as="l" hint-placeholder-count="3">
+                    <div style="display: flex; align-items: center; gap: 6px">
+                      <span style="width: 9px; height: 2.5px; border-radius: 2px; background: {{l.cor}}"></span>
+                      <span style="font-size: 11px; color: #7B8F9A">{{l.rotulo}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 14px">Acumulado do dia · fuso da loja</div>
+
+              <svg width="100%" height="190" viewBox="0 0 700 190" preserveAspectRatio="none" style="display: block; overflow: visible">
+                <sc-for list="{{grade}}" as="g" hint-placeholder-count="4">
+                  <line x1="0" y1="{{g}}" x2="700" y2="{{g}}" stroke="#16222A" stroke-width="1" vector-effect="non-scaling-stroke"></line>
+                </sc-for>
+                <polygon points="{{areaLucro}}" fill="#4FBF8B" opacity=".09"></polygon>
+                <polyline points="{{linhaFat}}" fill="none" stroke="#45C4D0" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{linhaGasto}}" fill="none" stroke="#D6A344" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{linhaLucro}}" fill="none" stroke="#4FBF8B" stroke-width="2.2" vector-effect="non-scaling-stroke"></polyline>
+              </svg>
+
+              <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); margin-top: 8px">
+                <sc-for list="{{horasEixo}}" as="h" hint-placeholder-count="8">
+                  <div class="num" style="font-size: 10px; color: #3E4E56; text-align: center">{{h}}</div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="font-weight: 600; font-size: 13.5px; margin-bottom: 4px">Taxa de aprovação</div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 18px">Quanto de cada método vira dinheiro</div>
+
+              <sc-for list="{{aprovacao}}" as="ap" hint-placeholder-count="3">
+                <div style="margin-bottom: 17px">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px">
+                    <span style="font-size: 12.5px; font-weight: 500">{{ap.metodo}}</span>
+                    <div style="display: flex; align-items: baseline; gap: 7px">
+                      <span class="num" style="font-weight: 600; font-size: 14px; color: {{ap.cor}}">{{ap.taxa}}</span>
+                      <span class="num" style="font-size: 10.5px; color: #566871">{{ap.volume}}</span>
+                    </div>
+                  </div>
+                  <div style="height: 6px; border-radius: 3px; background: #16222A; overflow: hidden">
+                    <div style="height: 100%; width: {{ap.pct}}%; background: {{ap.cor}}; border-radius: 3px"></div>
+                  </div>
+                </div>
+              </sc-for>
+
+              <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #16222A">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px">
+                  <span style="font-size: 11.5px; color: #7B8F9A">Reembolsos</span>
+                  <span class="num" style="font-size: 12.5px; font-weight: 600; color: #D6A344">{{reembolso}}</span>
+                </div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between">
+                  <span style="font-size: 11.5px; color: #7B8F9A">Chargebacks</span>
+                  <span class="num" style="font-size: 12.5px; font-weight: 600; color: #E5786E">{{chargeback}}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- horário, dia da semana, origem -->
+          <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 12px">
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px">
+                <span style="font-weight: 600; font-size: 13.5px">Vendas por horário</span>
+                <span class="num" style="font-size: 11px; color: #566871">pico {{pico}}</span>
+              </div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 16px">Quando o dinheiro entra, por dia da semana</div>
+
+              <div style="display: flex; gap: 6px">
+                <div style="display: flex; flex-direction: column; gap: 3px; padding-top: 14px">
+                  <sc-for list="{{dias}}" as="d" hint-placeholder-count="7">
+                    <div class="num" style="height: 17px; display: flex; align-items: center; font-size: 9.5px; color: #566871; width: 22px">{{d}}</div>
+                  </sc-for>
+                </div>
+                <div style="flex-grow: 1; min-width: 0">
+                  <div style="display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; margin-bottom: 4px">
+                    <sc-for list="{{horasRotulo}}" as="h" hint-placeholder-count="24">
+                      <div class="num" style="font-size: 8.5px; color: #3E4E56; text-align: center">{{h}}</div>
+                    </sc-for>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px">
+                    <sc-for list="{{celulas}}" as="cl" hint-placeholder-count="168">
+                      <div style="height: 17px; border-radius: 2px; background: {{cl.cor}}"></div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: #566871; margin-top: 14px">
+                <span>menos</span>
+                <sc-for list="{{escala}}" as="e" hint-placeholder-count="5">
+                  <span style="width: 12px; height: 12px; border-radius: 2px; background: {{e}}"></span>
+                </sc-for>
+                <span>mais</span>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="font-weight: 600; font-size: 13.5px; margin-bottom: 4px">Vendas por dia</div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 18px">Últimas 4 semanas</div>
+              <div style="display: flex; align-items: flex-end; gap: 8px; height: 148px">
+                <sc-for list="{{barrasDia}}" as="b" hint-placeholder-count="7">
+                  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 7px">
+                    <span class="num" style="font-size: 10px; color: {{b.corValor}}">{{b.valor}}</span>
+                    <div style="width: 100%; height: {{b.altura}}px; border-radius: 3px 3px 0 0; background: {{b.cor}}"></div>
+                    <span class="num" style="font-size: 10px; color: #566871">{{b.dia}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="font-weight: 600; font-size: 13.5px; margin-bottom: 4px">Origem do tráfego</div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 18px">Faturamento por fonte</div>
+              <sc-for list="{{origens}}" as="o" hint-placeholder-count="5">
+                <div style="margin-bottom: 13px">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+                    <div style="display: flex; align-items: center; gap: 7px">
+                      <span style="width: 7px; height: 7px; border-radius: 2px; background: {{o.cor}}"></span>
+                      <span class="num" style="font-size: 11.5px; color: #B4C6CE">{{o.fonte}}</span>
+                    </div>
+                    <span class="num" style="font-size: 11.5px; font-weight: 600">{{o.valor}}</span>
+                  </div>
+                  <div style="height: 5px; border-radius: 3px; background: #16222A; overflow: hidden">
+                    <div style="height: 100%; width: {{o.pct}}%; background: {{o.cor}}; border-radius: 3px"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ------------------------------------------------ CAMPANHAS -->
+      <sc-if value="{{ehCampanhas}}" hint-placeholder-val="{{true}}">
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px">
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <span style="font-weight: 600; font-size: 14px">Campanhas</span>
+              <span class="num" style="font-size: 11.5px; color: #566871">{{qtdCampanhas}} ativas · clique para abrir conjuntos e anúncios</span>
+            </div>
+            <div style="display: flex; gap: 6px">
+              <sc-for list="{{plataformas}}" as="pl" hint-placeholder-count="3">
+                <div class="chip" style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid #223038; border-radius: 4px; font-size: 11.5px; color: #7B8F9A; cursor: pointer">
+                  <span style="width: 6px; height: 6px; border-radius: 2px; background: {{pl.cor}}"></span>
+                  <span>{{pl.nome}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="card" style="overflow: hidden">
+            <div style="display: grid; grid-template-columns: 3fr 1fr 0.8fr 1.1fr 0.9fr 1.1fr 0.9fr; padding: 9px 14px; background: #121C22; border-bottom: 1px solid #1B2830; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #566871; font-weight: 600">
+              <div>Campanha</div>
+              <div style="text-align: right">Gasto</div>
+              <div style="text-align: right">Vendas</div>
+              <div style="text-align: right">Faturamento</div>
+              <div style="text-align: right">ROAS</div>
+              <div style="text-align: right">Lucro</div>
+              <div style="text-align: right">CPA</div>
+            </div>
+
+            <sc-for list="{{campanhas}}" as="c" hint-placeholder-count="5">
+              <div>
+                <div class="row" onClick="{{c.alternar}}" style="display: grid; grid-template-columns: 3fr 1fr 0.8fr 1.1fr 0.9fr 1.1fr 0.9fr; padding: 10px 14px; border-bottom: 1px solid #16222A; cursor: pointer; align-items: center">
+                  <div style="display: flex; align-items: center; gap: 9px; min-width: 0">
+                    <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#566871" stroke-width="2" style="transform: rotate({{c.giro}}deg); flex-shrink: 0"><path d="M6 3l5 5-5 5"></path></svg>
+                    <span style="width: 6px; height: 6px; border-radius: 2px; background: {{c.corPlataforma}}; flex-shrink: 0"></span>
+                    <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{c.nome}}</span>
+                  </div>
+                  <div class="num" style="text-align: right; color: #B4C6CE">{{c.gasto}}</div>
+                  <div class="num" style="text-align: right; color: #B4C6CE">{{c.vendas}}</div>
+                  <div class="num" style="text-align: right; font-weight: 500">{{c.faturamento}}</div>
+                  <div style="text-align: right">
+                    <span class="num" style="font-weight: 600; padding: 2px 7px; border-radius: 4px; background: {{c.roasFundo}}; color: {{c.roasCor}}">{{c.roas}}</span>
+                  </div>
+                  <div class="num" style="text-align: right; color: {{c.lucroCor}}; font-weight: 500">{{c.lucro}}</div>
+                  <div class="num" style="text-align: right; color: #7B8F9A">{{c.cpa}}</div>
+                </div>
+
+                <sc-if value="{{c.aberta}}" hint-placeholder-val="{{true}}">
+                  <div style="background: #0A1015">
+                    <sc-for list="{{c.conjuntos}}" as="cj" hint-placeholder-count="2">
+                      <div>
+                        <div class="row" style="display: grid; grid-template-columns: 3fr 1fr 0.8fr 1.1fr 0.9fr 1.1fr 0.9fr; padding: 8px 14px 8px 36px; border-bottom: 1px solid #131E24; align-items: center">
+                          <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+                            <span style="width: 12px; height: 1px; background: #2C4049; flex-shrink: 0"></span>
+                            <span style="color: #B4C6CE; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{cj.nome}}</span>
+                          </div>
+                          <div class="num" style="text-align: right; color: #7B8F9A">{{cj.gasto}}</div>
+                          <div class="num" style="text-align: right; color: #7B8F9A">{{cj.vendas}}</div>
+                          <div class="num" style="text-align: right; color: #B4C6CE">{{cj.faturamento}}</div>
+                          <div class="num" style="text-align: right; color: {{cj.roasCor}}; font-weight: 500">{{cj.roas}}</div>
+                          <div class="num" style="text-align: right; color: #7B8F9A">{{cj.lucro}}</div>
+                          <div class="num" style="text-align: right; color: #566871">{{cj.cpa}}</div>
+                        </div>
+                        <sc-for list="{{cj.anuncios}}" as="an" hint-placeholder-count="2">
+                          <div class="row" style="display: grid; grid-template-columns: 3fr 1fr 0.8fr 1.1fr 0.9fr 1.1fr 0.9fr; padding: 7px 14px 7px 60px; border-bottom: 1px solid #131E24; align-items: center; font-size: 12px">
+                            <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+                              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#566871" stroke-width="1.4" style="flex-shrink: 0"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><path d="M6.5 6.5l3.5 2-3.5 2z" fill="#566871" stroke="none"></path></svg>
+                              <span style="color: #7B8F9A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{an.nome}}</span>
+                            </div>
+                            <div class="num" style="text-align: right; color: #566871">{{an.gasto}}</div>
+                            <div class="num" style="text-align: right; color: #566871">{{an.vendas}}</div>
+                            <div class="num" style="text-align: right; color: #7B8F9A">{{an.faturamento}}</div>
+                            <div class="num" style="text-align: right; color: {{an.roasCor}}">{{an.roas}}</div>
+                            <div class="num" style="text-align: right; color: #566871">{{an.lucro}}</div>
+                            <div class="num" style="text-align: right; color: #566871">{{an.cpa}}</div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <div style="display: grid; grid-template-columns: 3fr 1fr 0.8fr 1.1fr 0.9fr 1.1fr 0.9fr; padding: 11px 14px; background: #121C22; border-top: 1px solid #1B2830; align-items: center; font-weight: 600">
+              <div style="color: #7B8F9A; font-size: 12px">Total</div>
+              <div class="num" style="text-align: right">{{totalGasto}}</div>
+              <div class="num" style="text-align: right">{{totalVendas}}</div>
+              <div class="num" style="text-align: right">{{totalFaturamento}}</div>
+              <div class="num" style="text-align: right; color: #45C4D0">{{totalRoas}}</div>
+              <div class="num" style="text-align: right; color: #4FBF8B">{{totalLucro}}</div>
+              <div class="num" style="text-align: right; color: #7B8F9A">{{totalCpa}}</div>
+            </div>
+          </div>
+
+          <div style="margin-top: 10px; font-size: 11.5px; color: #566871; display: flex; align-items: flex-start; gap: 7px; max-width: 900px">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#566871" stroke-width="1.5" style="flex-shrink: 0; margin-top: 2px"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3.5M8 11h.01"></path></svg>
+            <span>Faturamento e lucro vêm das suas vendas; gasto vem da API de cada plataforma. Não vai bater com o Gerenciador da Meta — lá a janela é 7 dias de clique mais 1 de visualização, aqui é último clique por UTM.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ------------------------------------------------ RASTREAMENTO -->
+      <sc-if value="{{ehRastreio}}" hint-placeholder-val="{{true}}">
+        <div>
+          <div style="margin-bottom: 14px">
+            <div style="font-weight: 600; font-size: 14px">Saúde do rastreamento</div>
+            <div style="font-size: 11.5px; color: #566871; margin-top: 2px">De onde veio a certeza de cada atribuição, e quanta informação chegou em cada plataforma.</div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; margin-bottom: 12px">
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px">
+                <span style="font-weight: 600; font-size: 13px">Como cada venda foi atribuída</span>
+                <span class="num" style="font-size: 11px; color: #566871">{{totalVendas}} vendas</span>
+              </div>
+
+              <div style="display: flex; height: 9px; border-radius: 4px; overflow: hidden; margin-bottom: 16px">
+                <sc-for list="{{atribuicao}}" as="at" hint-placeholder-count="5">
+                  <div style="width: {{at.pct}}%; background: {{at.cor}}"></div>
+                </sc-for>
+              </div>
+
+              <sc-for list="{{atribuicao}}" as="at" hint-placeholder-count="5">
+                <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #131E24">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: {{at.cor}}; flex-shrink: 0"></span>
+                  <span class="num" style="font-size: 11.5px; color: #B4C6CE; width: 140px">{{at.metodo}}</span>
+                  <span style="font-size: 11.5px; color: #566871; flex-grow: 1">{{at.explicacao}}</span>
+                  <span class="num" style="font-weight: 600; font-size: 12.5px">{{at.rotuloPct}}</span>
+                </div>
+              </sc-for>
+
+              <div style="margin-top: 12px; padding: 10px 12px; border-radius: 5px; background: #121C22; font-size: 11.5px; color: #7B8F9A; line-height: 1.55">
+                <span style="color: #4FBF8B; font-weight: 600">82,6% por chave.</span> Só esse pedaço é certeza — o resto é inferência. Vigie o "sem atribuição": subir de repente quer dizer que o carimbo no checkout parou de funcionar.
+              </div>
+            </div>
+
+            <div class="card" style="padding: 16px 18px">
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px">Chaves enviadas à Meta</div>
+              <div style="font-size: 11.5px; color: #566871; margin-bottom: 16px">Média por disparo. Mais chaves, melhor a correspondência.</div>
+
+              <sc-for list="{{gateways}}" as="g" hint-placeholder-count="3">
+                <div style="margin-bottom: 15px">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <span style="font-weight: 500; font-size: 12.5px">{{g.nome}}</span>
+                      <sc-if value="{{g.assinado}}" hint-placeholder-val="{{true}}">
+                        <span style="display: flex; align-items: center; gap: 3px; font-size: 10px; color: #4FBF8B; padding: 1px 5px; border-radius: 3px; background: #12241C">
+                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#4FBF8B" stroke-width="2"><path d="M4 8.5l3 3 5-6"></path></svg>
+                          <span>assinado</span>
+                        </span>
+                      </sc-if>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 4px">
+                      <span class="num" style="font-weight: 600; font-size: 15px; color: {{g.cor}}">{{g.media}}</span>
+                      <span class="num" style="font-size: 10.5px; color: #566871">/13</span>
+                    </div>
+                  </div>
+                  <div style="height: 6px; border-radius: 3px; background: #16222A; overflow: hidden">
+                    <div style="height: 100%; width: {{g.pct}}%; background: {{g.cor}}; border-radius: 3px"></div>
+                  </div>
+                  <div style="font-size: 10.5px; color: #566871; margin-top: 5px">{{g.nota}}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="card" style="overflow: hidden">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid #1B2830">
+              <span style="font-weight: 600; font-size: 13px">Últimos disparos</span>
+              <div style="display: flex; gap: 18px">
+                <sc-for list="{{resumoDisparo}}" as="r" hint-placeholder-count="3">
+                  <div style="display: flex; align-items: baseline; gap: 6px">
+                    <span class="num" style="font-weight: 600; font-size: 13px; color: {{r.cor}}">{{r.valor}}</span>
+                    <span style="font-size: 11px; color: #566871">{{r.rotulo}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1.1fr 1fr 0.9fr 1fr 2.4fr 0.8fr; padding: 8px 18px; background: #121C22; border-bottom: 1px solid #1B2830; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #566871; font-weight: 600">
+              <div>Pedido</div>
+              <div>Gateway</div>
+              <div>Valor</div>
+              <div>Atribuição</div>
+              <div>Chaves enviadas</div>
+              <div style="text-align: right">Estado</div>
+            </div>
+
+            <sc-for list="{{disparos}}" as="d" hint-placeholder-count="6">
+              <div class="row" style="display: grid; grid-template-columns: 1.1fr 1fr 0.9fr 1fr 2.4fr 0.8fr; padding: 9px 18px; border-bottom: 1px solid #16222A; align-items: center">
+                <div class="num" style="font-size: 11.5px; color: #B4C6CE">{{d.pedido}}</div>
+                <div style="font-size: 12px; color: #B4C6CE">{{d.gateway}}</div>
+                <div class="num" style="font-size: 12px">{{d.valor}}</div>
+                <div>
+                  <span class="num" style="font-size: 10.5px; padding: 2px 6px; border-radius: 3px; background: {{d.atrFundo}}; color: {{d.atrCor}}">{{d.atribuicao}}</span>
+                </div>
+                <div style="display: flex; gap: 3px; flex-wrap: wrap">
+                  <sc-for list="{{d.chaves}}" as="ch" hint-placeholder-count="12">
+                    <span class="num" style="font-size: 9.5px; padding: 1px 4px; border-radius: 2px; background: {{ch.fundo}}; color: {{ch.cor}}">{{ch.nome}}</span>
+                  </sc-for>
+                </div>
+                <div style="text-align: right">
+                  <span style="font-size: 11px; color: {{d.estadoCor}}">{{d.estado}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"acento":{"editor":"color","default":"#45C4D0","section":"Cor"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { aba: "resumo", abertas: {} };
+  }
+
+  corRoas(v) {
+    if (v >= 4) return { cor: "#4FBF8B", fundo: "#12241C" };
+    if (v >= 2) return { cor: "#45C4D0", fundo: "#0F2429" };
+    if (v >= 1.4) return { cor: "#D6A344", fundo: "#2A2113" };
+    return { cor: "#E5786E", fundo: "#2B1614" };
+  }
+
+  brlCurto(n) {
+    if (n >= 1000) return "R$ " + (n / 1000).toFixed(1).replace(".", ",") + "k";
+    return "R$ " + n.toFixed(0);
+  }
+
+  renderVals() {
+    const acento = this.props.acento ?? "#45C4D0";
+    const aba = this.state.aba;
+
+    const ico = (d) => '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17">' + d + '</svg>';
+
+    const trilho = [
+      { id: "resumo", d: '<rect x="3" y="3" width="6.5" height="6.5" rx="1.5"/><rect x="10.5" y="3" width="6.5" height="6.5" rx="1.5"/><rect x="3" y="10.5" width="6.5" height="6.5" rx="1.5"/><rect x="10.5" y="10.5" width="6.5" height="6.5" rx="1.5"/>' },
+      { id: "campanhas", d: '<path d="M3 16V9M8 16V4M13 16v-5M17 16v-9"/>' },
+      { id: "vendas", d: '<path d="M3 6h14l-1.2 9H4.2L3 6zM7 6V4.5a3 3 0 0 1 6 0V6"/>' },
+      { id: "produtos", d: '<path d="M10 2.5l7 3.7v7.6l-7 3.7-7-3.7V6.2l7-3.7zM3 6.2l7 3.7 7-3.7M10 9.9V17"/>' },
+      { id: "rastreio", d: '<circle cx="10" cy="10" r="2"/><path d="M5.8 5.8a6 6 0 0 0 0 8.4M14.2 5.8a6 6 0 0 1 0 8.4"/>' },
+      { id: "integra", d: '<path d="M7 3v5M13 3v5M4.5 8h11v3a5.5 5.5 0 0 1-11 0V8zM10 16.5V18"/>' },
+      { id: "config", d: '<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7"/>' },
+    ].map((t) => ({
+      icone: ico(t.d),
+      fundo: t.id === "resumo" ? "#16303A" : "transparent",
+      cor: t.id === "resumo" ? "#45C4D0" : "#566871",
+    }));
+
+    /* ---------------------------------------------------------- filtros */
+    const filtros = [
+      { rotulo: "Período", valor: "Últimos 30 dias", forte: true },
+      { rotulo: "Loja", valor: "Todas as lojas", forte: true },
+      { rotulo: "Conta de anúncio", valor: "Qualquer" },
+      { rotulo: "Plataforma", valor: "Qualquer" },
+      { rotulo: "Produto", valor: "Qualquer" },
+    ].map((f) => ({ ...f, cor: f.forte ? "#E4EDF1" : "#7B8F9A" }));
+
+    /* ------------------------------------------------------------ abas */
+    const defAbas = [
+      { id: "resumo", rotulo: "Resumo" },
+      { id: "campanhas", rotulo: "Campanhas" },
+      { id: "rastreio", rotulo: "Rastreamento", aviso: "13" },
+    ];
+    const abas = defAbas.map((a) => ({
+      rotulo: a.rotulo,
+      abrir: () => this.setState({ aba: a.id }),
+      cor: aba === a.id ? "#E4EDF1" : "#7B8F9A",
+      peso: aba === a.id ? 600 : 500,
+      sublinhado: aba === a.id ? "inset 0 -2px 0 " + acento : "none",
+      temAviso: !!a.aviso,
+      aviso: a.aviso,
+    }));
+
+    /* ------------------------------------------------------ indicadores */
+    const linhaDe = (vals, w, h) => {
+      const min = Math.min(...vals), max = Math.max(...vals);
+      const faixa = max - min || 1;
+      return vals.map((v, i) =>
+        (i * (w / (vals.length - 1))).toFixed(1) + "," + (h - ((v - min) / faixa) * (h - 2)).toFixed(1)
+      ).join(" ");
+    };
+
+    const ind = (o) => ({
+      rotulo: o.rotulo,
+      valor: o.valor,
+      delta: o.delta ?? "",
+      temDelta: !!o.delta,
+      corDelta: o.neutro ? "#7B8F9A" : (o.cai ? "#E5786E" : "#4FBF8B"),
+      cor: o.destaque ? "#4FBF8B" : (o.alerta ? "#D6A344" : "#E4EDF1"),
+      fundo: o.destaque ? "#0C1A17" : "#0F171C",
+      temLinha: !!o.serie,
+      linha: o.serie ? linhaDe(o.serie, 72, 20) : "",
+      corLinha: o.destaque ? "#4FBF8B" : (o.neutro ? "#3E5058" : acento),
+      temNota: !!o.nota,
+      nota: o.nota ?? "",
+    });
+
+    const indicadores = [
+      ind({ rotulo: "Faturamento líquido", valor: "R$ 171.2k", delta: "+26,4%", serie: [5100, 5400, 4900, 6200, 5800, 7100, 6640] }),
+      ind({ rotulo: "Gasto com anúncios", valor: "R$ 48.3k", delta: "+12,4%", neutro: true, serie: [1420, 1610, 1380, 1740, 1520, 1830, 1690] }),
+      ind({ rotulo: "ROAS", valor: "3,88", delta: "+0,41", serie: [3.4, 3.5, 3.2, 3.7, 3.6, 4.0, 3.9] }),
+      ind({ rotulo: "Lucro", valor: "R$ 71.2k", delta: "+31,7%", destaque: true, serie: [1900, 2100, 1700, 2500, 2300, 2900, 2680] }),
+
+      ind({ rotulo: "Faturamento bruto", valor: "R$ 187.4k", nota: "antes de taxas e reembolsos" }),
+      ind({ rotulo: "Vendas aprovadas", valor: "1.284", delta: "+19,2%" }),
+      ind({ rotulo: "Vendas pendentes", valor: "218", alerta: true, nota: "R$ 31,4k aguardando pagamento" }),
+      ind({ rotulo: "CPA", valor: "R$ 37,63", delta: "−5,8%", nota: "custo por venda aprovada" }),
+
+      ind({ rotulo: "Ticket médio", valor: "R$ 146,00", delta: "+7,4%" }),
+      ind({ rotulo: "Margem", valor: "41,6%", delta: "+2,1 p.p." }),
+      ind({ rotulo: "Taxas de gateway", valor: "R$ 9.1k", neutro: true, nota: "4,9% do faturamento bruto" }),
+      ind({ rotulo: "Reembolsos", valor: "R$ 6.9k", cai: true, delta: "+1,3%", alerta: true, nota: "3,7% das vendas" }),
+    ];
+
+    /* ------------------------------------------------------------ funil */
+    const etapas = [
+      { rotulo: "Cliques no anúncio", valor: 52940 },
+      { rotulo: "Visitou o site", valor: 42180 },
+      { rotulo: "Adicionou ao carrinho", valor: 6210 },
+      { rotulo: "Iniciou o checkout", valor: 3480 },
+      { rotulo: "Venda aprovada", valor: 1284 },
+    ];
+    const topo = etapas[0].valor;
+    const funil = etapas.map((e, i) => {
+      const ant = i === 0 ? null : etapas[i - 1].valor;
+      const taxa = ant ? (e.valor / ant) * 100 : 100;
+      const perda = ant ? ant - e.valor : 0;
+      return {
+        rotulo: e.rotulo,
+        valor: e.valor.toLocaleString("pt-BR"),
+        taxa: ant ? taxa.toFixed(1).replace(".", ",") + "%" : "100%",
+        corTaxa: !ant ? "#566871" : (taxa >= 50 ? "#4FBF8B" : taxa >= 30 ? "#D6A344" : "#E5786E"),
+        largura: ((e.valor / topo) * 100).toFixed(1),
+        cor: i === etapas.length - 1 ? "#4FBF8B" : acento,
+        borda: i === 0 ? "transparent" : "#1B2830",
+        temPerda: perda > 0,
+        perda: perda.toLocaleString("pt-BR"),
+      };
+    });
+
+    /* -------------------------------------------- curvas acumuladas */
+    const H = 24;
+    const perfil = [0.2,0.1,0.1,0.1,0.1,0.2,0.5,1.0,1.8,2.4,2.9,3.4,4.2,3.8,3.4,3.6,4.0,4.6,5.4,6.8,7.4,6.2,4.4,2.6];
+    const somaPerfil = perfil.reduce((a, b) => a + b, 0);
+
+    let accF = 0, accG = 0;
+    const serieF = [], serieG = [], serieL = [];
+    for (let h = 0; h < H; h++) {
+      accF += (perfil[h] / somaPerfil) * 187450;
+      /* Gasto entra mais uniforme que a venda — o algoritmo distribui ao longo do dia. */
+      accG += (0.6 / H + (perfil[h] / somaPerfil) * 0.4) * 48320;
+      serieF.push(accF); serieG.push(accG); serieL.push(accF - accG);
+    }
+
+    const maxY = Math.max(...serieF);
+    const px = (i) => (i * (700 / (H - 1))).toFixed(1);
+    const py = (v) => (185 - (v / maxY) * 178).toFixed(1);
+    const pts = (s) => s.map((v, i) => px(i) + "," + py(v)).join(" ");
+
+    /* --------------------------------------------------------- horário */
+    const dias = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+    const horasRotulo = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, "0") : ""));
+    const escala = ["#141F26", "#123038", "#0F4A55", "#1E7F8C", "#45C4D0"];
+
+    const celulas = [];
+    for (let d = 0; d < 7; d++) {
+      for (let h = 0; h < 24; h++) {
+        let p = 0;
+        if (h >= 8 && h < 12) p = 2;
+        else if (h >= 12 && h < 15) p = 3;
+        else if (h >= 15 && h < 19) p = 2;
+        else if (h >= 19 && h < 23) p = 4;
+        else if (h >= 23 || h < 2) p = 1;
+        if (d >= 5 && h >= 13 && h < 19) p = Math.min(4, p + 1);
+        if (d === 0 && h >= 19) p = 4;
+        celulas.push({ cor: escala[p] });
+      }
+    }
+
+    const volDia = [172, 158, 181, 194, 226, 241, 112];
+    const maxDia = Math.max(...volDia);
+    const barrasDia = volDia.map((v, i) => ({
+      dia: dias[i],
+      valor: v,
+      altura: Math.round((v / maxDia) * 106),
+      cor: v === maxDia ? "#4FBF8B" : acento,
+      corValor: v === maxDia ? "#4FBF8B" : "#7B8F9A",
+    }));
+
+    /* --------------------------------------------------------- origens */
+    const fontes = [
+      { fonte: "facebook / cpc", v: 96400, cor: "#4A7BC8" },
+      { fonte: "tiktok / cpc", v: 28300, cor: "#45C4D0" },
+      { fonte: "google / cpc", v: 22900, cor: "#D6A344" },
+      { fonte: "google / organic", v: 11600, cor: "#4FBF8B" },
+      { fonte: "(direto)", v: 8250, cor: "#3E4E56" },
+    ];
+    const maxFonte = Math.max(...fontes.map((f) => f.v));
+    const origens = fontes.map((f) => ({
+      fonte: f.fonte,
+      valor: this.brlCurto(f.v),
+      pct: ((f.v / maxFonte) * 100).toFixed(0),
+      cor: f.cor,
+    }));
+
+    /* ------------------------------------------------------- aprovação */
+    const aprovacao = [
+      { metodo: "Pix", taxa: "94,2%", pct: 94, volume: "742 vendas", cor: "#4FBF8B" },
+      { metodo: "Cartão de crédito", taxa: "71,8%", pct: 72, volume: "486 vendas", cor: "#45C4D0" },
+      { metodo: "Boleto", taxa: "38,4%", pct: 38, volume: "56 vendas", cor: "#D6A344" },
+    ];
+
+    /* ----------------------------------------------------- campanhas */
+    const CORES = { meta: "#4A7BC8", google: "#D6A344", tiktok: "#45C4D0" };
+    const brutas = [
+      { id: "c1", nome: "[ADV+] Carimbo — Público Frio", pl: "meta", gasto: 18940, vendas: 512, fat: 74200, lucro: 28100,
+        conjuntos: [
+          { nome: "Lookalike 1% — compradores", gasto: 11200, vendas: 318, fat: 46800, lucro: 18200,
+            anuncios: [
+              { nome: "Vídeo 03 — antes e depois", gasto: 7400, vendas: 224, fat: 33100, lucro: 13400 },
+              { nome: "Estático — kit completo", gasto: 3800, vendas: 94, fat: 13700, lucro: 4800 },
+            ] },
+          { nome: "Interesses — maquiagem", gasto: 7740, vendas: 194, fat: 27400, lucro: 9900,
+            anuncios: [
+              { nome: "Carrossel — cores", gasto: 4100, vendas: 108, fat: 15200, lucro: 5600 },
+              { nome: "Vídeo 07 — depoimento", gasto: 3640, vendas: 86, fat: 12200, lucro: 4300 },
+            ] },
+        ] },
+      { id: "c2", nome: "[ADV+] Retargeting 7 dias", pl: "meta", gasto: 6210, vendas: 289, fat: 41800, lucro: 19400,
+        conjuntos: [
+          { nome: "Visitou e não comprou", gasto: 4020, vendas: 198, fat: 28600, lucro: 13500,
+            anuncios: [{ nome: "Vídeo 03 — corte 15s", gasto: 4020, vendas: 198, fat: 28600, lucro: 13500 }] },
+          { nome: "Carrinho abandonado", gasto: 2190, vendas: 91, fat: 13200, lucro: 5900,
+            anuncios: [{ nome: "Estático — frete grátis", gasto: 2190, vendas: 91, fat: 13200, lucro: 5900 }] },
+        ] },
+      { id: "c3", nome: "Google — Marca", pl: "google", gasto: 3180, vendas: 141, fat: 22900, lucro: 11800,
+        conjuntos: [{ nome: "Termos de marca", gasto: 3180, vendas: 141, fat: 22900, lucro: 11800,
+          anuncios: [{ nome: "Anúncio de texto — principal", gasto: 3180, vendas: 141, fat: 22900, lucro: 11800 }] }] },
+      { id: "c4", nome: "TikTok — Criativos UGC", pl: "tiktok", gasto: 12400, vendas: 208, fat: 28300, lucro: 4100,
+        conjuntos: [
+          { nome: "Amplo — 18 a 34", gasto: 8900, vendas: 142, fat: 19100, lucro: 2400,
+            anuncios: [
+              { nome: "UGC 12 — unboxing", gasto: 5100, vendas: 88, fat: 11900, lucro: 1700 },
+              { nome: "UGC 09 — rotina", gasto: 3800, vendas: 54, fat: 7200, lucro: 700 },
+            ] },
+          { nome: "Interesses — beleza", gasto: 3500, vendas: 66, fat: 9200, lucro: 1700,
+            anuncios: [{ nome: "UGC 15 — resultado", gasto: 3500, vendas: 66, fat: 9200, lucro: 1700 }] },
+        ] },
+      { id: "c5", nome: "[ADV+] Prospecção — Kit", pl: "meta", gasto: 7590, vendas: 134, fat: 20250, lucro: 5830,
+        conjuntos: [{ nome: "Advantage+ automático", gasto: 7590, vendas: 134, fat: 20250, lucro: 5830,
+          anuncios: [{ nome: "Catálogo — kit 3 peças", gasto: 7590, vendas: 134, fat: 20250, lucro: 5830 }] }] },
+    ];
+
+    const enfeita = (x) => {
+      const roas = x.fat / x.gasto;
+      const c = this.corRoas(roas);
+      return {
+        nome: x.nome,
+        gasto: this.brlCurto(x.gasto),
+        vendas: x.vendas.toLocaleString("pt-BR"),
+        faturamento: this.brlCurto(x.fat),
+        roas: roas.toFixed(2).replace(".", ","),
+        roasCor: c.cor, roasFundo: c.fundo,
+        lucro: this.brlCurto(x.lucro),
+        lucroCor: x.lucro > 0 ? "#4FBF8B" : "#E5786E",
+        cpa: this.brlCurto(x.gasto / x.vendas),
+      };
+    };
+
+    const campanhas = brutas.map((c) => ({
+      ...enfeita(c),
+      corPlataforma: CORES[c.pl],
+      aberta: !!this.state.abertas[c.id],
+      giro: this.state.abertas[c.id] ? 90 : 0,
+      alternar: () => this.setState({ abertas: { ...this.state.abertas, [c.id]: !this.state.abertas[c.id] } }),
+      conjuntos: c.conjuntos.map((cj) => ({ ...enfeita(cj), anuncios: cj.anuncios.map(enfeita) })),
+    }));
+
+    const soma = (f) => brutas.reduce((s, c) => s + f(c), 0);
+    const tGasto = soma((c) => c.gasto), tFat = soma((c) => c.fat);
+    const tVendas = soma((c) => c.vendas), tLucro = soma((c) => c.lucro);
+
+    /* ---------------------------------------------------- rastreamento */
+    const atribuicao = [
+      { metodo: "click_id", pct: 68.4, cor: "#4FBF8B", explicacao: "o carimbo voltou no webhook" },
+      { metodo: "order_claim", pct: 14.2, cor: "#45C4D0", explicacao: "a loja registrou o pedido" },
+      { metodo: "fbp_match", pct: 9.1, cor: "#D6A344", explicacao: "casado pelo cookie do navegador" },
+      { metodo: "gateway_attribution", pct: 4.8, cor: "#8A7A4A", explicacao: "só a UTM que o gateway guardou" },
+      { metodo: "sem atribuição", pct: 3.5, cor: "#3E4E56", explicacao: "venda órfã, sem origem" },
+    ].map((a) => ({ ...a, rotuloPct: a.pct.toFixed(1).replace(".", ",") + "%" }));
+
+    const gateways = [
+      { nome: "MillionsPay", media: "10,0", pct: 77, cor: "#4FBF8B", assinado: true, nota: "CPF, telefone e assinatura HMAC — o melhor sinal dos três" },
+      { nome: "Pagou.ai", media: "9,0", pct: 69, cor: "#45C4D0", assinado: false, nota: "sem endereço e sem assinatura no webhook" },
+      { nome: "Appmax", media: "5,2", pct: 40, cor: "#D6A344", assinado: false, nota: "webhook não traz comprador; depende da consulta pela API" },
+    ];
+
+    const TODAS = ["em", "ph", "fn", "ln", "ct", "st", "zp", "external_id", "fbp", "fbc", "ip", "ua"];
+    const semEndereco = TODAS.filter((k) => !["ct", "st", "zp"].includes(k));
+    const soNavegador = ["external_id", "fbp", "fbc", "ip", "ua"];
+    const atrEstilo = {
+      click_id: { fundo: "#12241C", cor: "#4FBF8B" },
+      order_claim: { fundo: "#0F2429", cor: "#45C4D0" },
+      fbp_match: { fundo: "#2A2113", cor: "#D6A344" },
+    };
+
+    const disparos = [
+      { pedido: "#a1f9c2", gateway: "MillionsPay", valor: "R$ 149,00", atr: "click_id", chaves: semEndereco, estado: "entregue" },
+      { pedido: "#7d31be", gateway: "Appmax", valor: "R$ 259,90", atr: "order_claim", chaves: soNavegador, estado: "entregue" },
+      { pedido: "#c40a8f", gateway: "Pagou.ai", valor: "R$ 89,70", atr: "click_id", chaves: semEndereco, estado: "entregue" },
+      { pedido: "#2e6b14", gateway: "MillionsPay", valor: "R$ 197,00", atr: "click_id", chaves: semEndereco, estado: "entregue" },
+      { pedido: "#f08d55", gateway: "Pagou.ai", valor: "R$ 129,90", atr: "fbp_match", chaves: soNavegador, estado: "falhou" },
+      { pedido: "#9b2c47", gateway: "Appmax", valor: "R$ 349,00", atr: "order_claim", chaves: soNavegador, estado: "entregue" },
+    ].map((d) => {
+      const e = atrEstilo[d.atr] ?? { fundo: "#1A2228", cor: "#7B8F9A" };
+      const faltam = TODAS.filter((k) => !d.chaves.includes(k));
+      return {
+        pedido: d.pedido, gateway: d.gateway, valor: d.valor,
+        atribuicao: d.atr, atrFundo: e.fundo, atrCor: e.cor,
+        chaves: [
+          ...d.chaves.map((n) => ({ nome: n, fundo: "#12241C", cor: "#4FBF8B" })),
+          ...faltam.map((n) => ({ nome: n, fundo: "#1A2228", cor: "#3E4E56" })),
+        ],
+        estado: d.estado,
+        estadoCor: d.estado === "entregue" ? "#4FBF8B" : "#E5786E",
+      };
+    });
+
+    return {
+      lojaAtual: "Todas as lojas · últimos 30 dias",
+      trilho, filtros, abas,
+      ehResumo: aba === "resumo",
+      ehCampanhas: aba === "campanhas",
+      ehRastreio: aba === "rastreio",
+
+      indicadores, funil,
+      conversaoGeral: "2,43%",
+
+      legenda: [
+        { rotulo: "Faturamento", cor: "#45C4D0" },
+        { rotulo: "Gasto", cor: "#D6A344" },
+        { rotulo: "Lucro", cor: "#4FBF8B" },
+      ],
+      grade: [10, 54, 98, 142],
+      linhaFat: pts(serieF),
+      linhaGasto: pts(serieG),
+      linhaLucro: pts(serieL),
+      areaLucro: pts(serieL) + " " + px(H - 1) + ",185 0,185",
+      horasEixo: ["00h", "03h", "06h", "09h", "12h", "15h", "18h", "21h"],
+
+      aprovacao,
+      reembolso: "3,7%",
+      chargeback: "0,4%",
+
+      dias, horasRotulo, celulas, escala, barrasDia, origens,
+      pico: "sáb 21h",
+
+      campanhas,
+      qtdCampanhas: brutas.length,
+      plataformas: [
+        { nome: "Meta", cor: CORES.meta },
+        { nome: "Google", cor: CORES.google },
+        { nome: "TikTok", cor: CORES.tiktok },
+      ],
+      totalGasto: this.brlCurto(tGasto),
+      totalVendas: tVendas.toLocaleString("pt-BR"),
+      totalFaturamento: this.brlCurto(tFat),
+      totalRoas: (tFat / tGasto).toFixed(2).replace(".", ","),
+      totalLucro: this.brlCurto(tLucro),
+      totalCpa: this.brlCurto(tGasto / tVendas),
+
+      atribuicao, gateways,
+      resumoDisparo: [
+        { valor: "1.271", rotulo: "entregues", cor: "#4FBF8B" },
+        { valor: "13", rotulo: "falharam", cor: "#E5786E" },
+        { valor: "0", rotulo: "duplicados", cor: "#7B8F9A" },
+      ],
+      disparos,
+    };
+  }
+}
+</script>
+</body>
+</html>
