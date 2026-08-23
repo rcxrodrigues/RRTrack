@@ -24,3 +24,6 @@ desktop.ini
 # Logs
 *.log
 npm-debug.log*
+
+# Compilacao temporaria para os testes
+_tmp/

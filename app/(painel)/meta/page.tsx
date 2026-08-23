@@ -1,11 +1,11 @@
-import { EmConstrucao } from "@/ui/em-construcao";
+import { CarregarPlataforma } from "@/ui/carregar-plataforma";
 
-export default function Pagina() {
-  return (
-    <EmConstrucao
-      titulo="Meta"
-      descricao="Campanhas, conjuntos e anúncios do Meta, com gasto, faturamento, lucro e ROAS."
-      precisa="Depende de duas coisas: conectar a conta de anúncio em Integrações, para o gasto entrar, e da sincronização periódica que ainda não roda."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function Pagina({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  return <CarregarPlataforma plataforma="meta" titulo="Meta" busca={await searchParams} />;
 }
