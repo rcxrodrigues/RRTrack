@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import { clickSessions, events, sites } from "@/db/schema";
 import { dispatchBrowserEvent, normalizarEvento } from "@/core/dispatch";
+import { extrairEstrutura } from "@/core/utm";
 
 export const runtime = "nodejs";
 
@@ -104,6 +105,31 @@ export async function POST(req: Request): Promise<Response> {
     fbp: str(body.fbp),
     fbc: str(body.fbc),
     externalId: str(body.external_id),
+
+    /*
+     * Estrutura do anúncio, lida das UTMs conforme a convenção da plataforma.
+     * É o que liga esta sessão ao gasto que a API da plataforma reporta — sem
+     * isso o painel tem faturamento por campanha e gasto por campanha sem
+     * conseguir dividir um pelo outro.
+     */
+    ...(() => {
+      const e = extrairEstrutura({
+        utmSource: str(attr.utm_source) ?? undefined,
+        utmMedium: str(attr.utm_medium) ?? undefined,
+        utmCampaign: str(attr.utm_campaign) ?? undefined,
+        utmContent: str(attr.utm_content) ?? undefined,
+        utmTerm: str(attr.utm_term) ?? undefined,
+      });
+      return {
+        campaignId: e.campaignId ?? null,
+        campaignName: e.campaignName ?? null,
+        adsetId: e.adsetId ?? null,
+        adsetName: e.adsetName ?? null,
+        adId: e.adId ?? null,
+        adName: e.adName ?? null,
+        placement: e.placement ?? null,
+      };
+    })(),
     ip: clientIp(req) ?? null,
     userAgent: req.headers.get("user-agent"),
     landingUrl: str(attr.landing_url) ?? str(body.page_url),
@@ -132,6 +158,13 @@ export async function POST(req: Request): Promise<Response> {
       fbp: sql`COALESCE(EXCLUDED.fbp, ${clickSessions.fbp})`,
       fbc: sql`COALESCE(EXCLUDED.fbc, ${clickSessions.fbc})`,
       externalId: sql`COALESCE(EXCLUDED.external_id, ${clickSessions.externalId})`,
+      campaignId: sql`COALESCE(EXCLUDED.campaign_id, ${clickSessions.campaignId})`,
+      campaignName: sql`COALESCE(EXCLUDED.campaign_name, ${clickSessions.campaignName})`,
+      adsetId: sql`COALESCE(EXCLUDED.adset_id, ${clickSessions.adsetId})`,
+      adsetName: sql`COALESCE(EXCLUDED.adset_name, ${clickSessions.adsetName})`,
+      adId: sql`COALESCE(EXCLUDED.ad_id, ${clickSessions.adId})`,
+      adName: sql`COALESCE(EXCLUDED.ad_name, ${clickSessions.adName})`,
+      placement: sql`COALESCE(EXCLUDED.placement, ${clickSessions.placement})`,
       ip: sql`COALESCE(EXCLUDED.ip, ${clickSessions.ip})`,
       userAgent: sql`COALESCE(EXCLUDED.user_agent, ${clickSessions.userAgent})`,
     },

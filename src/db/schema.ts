@@ -149,6 +149,27 @@ export const clickSessions = pgTable("click_sessions", {
   fbp: text("fbp"),
   fbc: text("fbc"),
 
+  /*
+   * Identificadores da estrutura do anúncio, extraídos das UTMs.
+   *
+   * Esta é a ponte entre as duas metades do painel. O gasto vem da API da
+   * plataforma, chaveado por id de campanha, conjunto e anúncio; a venda vem
+   * do webhook, chaveada pelo clickId. Sem o id do anúncio na sessão de
+   * clique, não existe ROAS por anúncio — só um total que não se abre.
+   *
+   * Vêm de variáveis dinâmicas que a plataforma substitui na hora do clique
+   * (`{{ad.id}}` na Meta). O id é o que importa: ele não muda quando o
+   * anunciante renomeia a campanha, e o nome muda.
+   */
+  campaignId: text("campaign_id"),
+  campaignName: text("campaign_name"),
+  adsetId: text("adset_id"),
+  adsetName: text("adset_name"),
+  adId: text("ad_id"),
+  adName: text("ad_name"),
+  /* Onde o anúncio apareceu: feed, stories, reels. */
+  placement: text("placement"),
+
   /* Identificador primário nosso, estável no navegador. Vai hasheado no CAPI. */
   externalId: text("external_id"),
 
@@ -162,6 +183,9 @@ export const clickSessions = pgTable("click_sessions", {
 }, (t) => [
   index("click_sessions_tenant_seen").on(t.tenantId, t.lastSeenAt),
   index("click_sessions_tenant_fbp").on(t.tenantId, t.fbp),
+  /* O caminho quente do painel: somar vendas por anúncio para casar com o gasto. */
+  index("click_sessions_tenant_ad").on(t.tenantId, t.adId),
+  index("click_sessions_tenant_campaign").on(t.tenantId, t.campaignId),
 ]);
 
 /* Eventos de navegador: view_item, add_to_cart, begin_checkout... */
