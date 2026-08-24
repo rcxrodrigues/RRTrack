@@ -41,6 +41,44 @@ const PLATAFORMAS = [
   { id: "taboola", nome: "Taboola", cor: "#4A7BC8" },
 ];
 
+/*
+ * Cada plataforma pede credencial diferente, e a diferença não é cosmética.
+ *
+ * Meta e TikTok aceitam um token longo e pronto. O Google exige OAuth2 —
+ * refresh token trocado por acesso a cada hora — mais um developer token que
+ * ELE precisa aprovar, o que leva dias. Mostrar os mesmos dois campos para os
+ * três faria o cadastro do Google parecer completo e não funcionar.
+ */
+const CREDENCIAIS: Record<string, Array<{
+  chave: string; rotulo: string; dica?: string; segredo?: boolean; opcional?: boolean;
+}>> = {
+  meta: [
+    { chave: "accessToken", rotulo: "Token de usuário de sistema", segredo: true,
+      dica: "Business Manager → Usuários do sistema → Gerar token, com escopo ads_read e expiração Nunca." },
+  ],
+  tiktok: [
+    { chave: "accessToken", rotulo: "Access token", segredo: true,
+      dica: "TikTok Ads Manager → Ferramentas → Events API, ou no portal de desenvolvedor." },
+  ],
+  kwai: [
+    { chave: "accessToken", rotulo: "Access token", segredo: true },
+  ],
+  taboola: [
+    { chave: "accessToken", rotulo: "Access token", segredo: true },
+  ],
+  google: [
+    { chave: "developerToken", rotulo: "Developer token", segredo: true,
+      dica: "Do API Center do Google Ads. Precisa de aprovação deles — sai em dias, não na hora." },
+    { chave: "clientId", rotulo: "Client ID",
+      dica: "Do projeto OAuth no Google Cloud Console." },
+    { chave: "clientSecret", rotulo: "Client secret", segredo: true },
+    { chave: "refreshToken", rotulo: "Refresh token", segredo: true,
+      dica: "Do consentimento único que o dono da conta dá." },
+    { chave: "loginCustomerId", rotulo: "ID da gerenciadora (MCC)", opcional: true,
+      dica: "Só quando a conta é acessada por uma gerenciadora. Em branco se não for." },
+  ],
+};
+
 const EVENTOS = [
   { id: "view_content", rotulo: "Ver produto", padrao: true },
   { id: "add_to_cart", rotulo: "Adicionar ao carrinho", padrao: true },
@@ -336,19 +374,23 @@ export function Integracoes({
 
                   {aberto && (
                     <div style={{ padding: "0 18px 18px", borderTop: "1px solid var(--linha)", paddingTop: 16 }}>
-                      <Campo rotulo="ID da conta de anúncio" placeholder={p.id === "meta" ? "act_1234567890" : "1234567890"}
+                      <Campo rotulo="ID da conta de anúncio"
+                        placeholder={p.id === "meta" ? "act_1234567890" : p.id === "google" ? "123-456-7890" : "1234567890"}
                         dica="É o identificador da conta no gerenciador, não o do pixel." {...campo("externalId")} />
-                      <Campo rotulo="Token de acesso" type="password" placeholder="cole aqui"
-                        dica={p.id === "google"
-                          ? "O Google Ads também exige um developer token aprovado."
-                          : "Token de usuário de sistema, com permissão de leitura de anúncios."}
-                        {...campo("accessToken")} />
+
+                      {(CREDENCIAIS[p.id] ?? []).map((c) => (
+                        <Campo key={c.chave} rotulo={c.rotulo + (c.opcional ? " (opcional)" : "")}
+                          type={c.segredo ? "password" : "text"}
+                          placeholder="cole aqui" dica={c.dica} {...campo(c.chave)} />
+                      ))}
+
                       <Campo rotulo="Apelido (opcional)" placeholder="Conta principal" {...campo("label")} />
 
                       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                         <Botao disabled={salvando} onClick={() => salvar({
                           tipo: "conta_anuncio", plataforma: p.id,
-                          externalId: form.externalId, accessToken: form.accessToken, label: form.label,
+                          externalId: form.externalId, label: form.label,
+                          ...Object.fromEntries((CREDENCIAIS[p.id] ?? []).map((c) => [c.chave, form[c.chave]])),
                         })}>{salvando ? "salvando…" : "Salvar"}</Botao>
                         <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                         {conta && (
@@ -540,10 +582,29 @@ export function Integracoes({
                   </select>
                 </label>
 
-                <Campo rotulo="ID do pixel" placeholder="1342429849238924"
-                  dica="Na Meta é o ID do conjunto de dados, no Events Manager." {...campo("externalId")} />
-                <Campo rotulo="Token da API de conversões" type="password" placeholder="cole aqui"
-                  {...campo("token")} />
+                <Campo
+                  rotulo={form.plataforma === "google" ? "ID da conta de anúncio" : "ID do pixel"}
+                  placeholder={form.plataforma === "google" ? "123-456-7890" : "1342429849238924"}
+                  dica={form.plataforma === "google"
+                    ? "O Google recebe conversão na conta, não num pixel."
+                    : "Na Meta é o ID do conjunto de dados, no Events Manager."}
+                  {...campo("externalId")} />
+
+                {form.plataforma === "google" ? (
+                  <>
+                    <Campo rotulo="Ação de conversão" placeholder="customers/123/conversionActions/456"
+                      dica="Crie no Google Ads uma ação do tipo Importar → Cliques, e cole o nome do recurso dela."
+                      {...campo("conversionAction")} />
+                    {(CREDENCIAIS.google ?? []).map((c) => (
+                      <Campo key={c.chave} rotulo={c.rotulo + (c.opcional ? " (opcional)" : "")}
+                        type={c.segredo ? "password" : "text"}
+                        placeholder="cole aqui" dica={c.dica} {...campo(c.chave)} />
+                    ))}
+                  </>
+                ) : (
+                  <Campo rotulo="Token da API de conversões" type="password" placeholder="cole aqui"
+                    {...campo("token")} />
+                )}
                 <Campo rotulo="Apelido (opcional)" placeholder="Pixel principal" {...campo("label")} />
                 <Campo rotulo="Código de teste (opcional)" placeholder="TEST12345"
                   dica="Com ele os eventos aparecem na aba de teste sem sujar os dados de produção."
@@ -580,6 +641,8 @@ export function Integracoes({
                     plataforma: form.plataforma ?? "meta",
                     externalId: form.externalId, token: form.token, label: form.label,
                     testEventCode: form.testEventCode,
+                    conversionAction: form.conversionAction,
+                    ...Object.fromEntries((CREDENCIAIS.google ?? []).map((c) => [c.chave, form[c.chave]])),
                     eventos: eventosSel,
                   })}>{salvando ? "salvando…" : "Salvar pixel"}</Botao>
                   <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>

@@ -58,7 +58,7 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         const cred: Record<string, string> = {};
-        for (const chave of ["accessToken", "refreshToken", "developerToken", "clientId", "clientSecret"]) {
+        for (const chave of ["accessToken", "refreshToken", "developerToken", "clientId", "clientSecret", "loginCustomerId"]) {
           const v = texto(corpo[chave]);
           if (v) cred[chave] = await encryptValue(v);
         }
@@ -151,10 +151,23 @@ export async function POST(req: Request): Promise<Response> {
             eq(destinations.externalId, externalId),
           )).limit(1);
 
+        /*
+         * O Google não usa um token só: precisa de OAuth2 completo, do
+         * developer token que ele mesmo aprova, e do nome do recurso da ação
+         * de conversão. Cada plataforma guarda o que a dela exige.
+         */
+        const credenciais: Record<string, string> = {};
+        if (token) credenciais.accessToken = await encryptValue(token);
+        for (const chave of ["developerToken", "clientId", "clientSecret", "refreshToken", "loginCustomerId", "conversionAction"]) {
+          const v = texto(corpo[chave]);
+          if (v) credenciais[chave] = await encryptValue(v);
+        }
+        const temCredencial = Object.keys(credenciais).length > 0;
+
         if (existente) {
           await db.update(destinations).set({
             label: texto(corpo.label) ?? `Pixel ${plataforma}`,
-            ...(token ? { credentials: { accessToken: await encryptValue(token) } } : {}),
+            ...(temCredencial ? { credentials: credenciais } : {}),
             config,
             active: corpo.active !== false,
           }).where(eq(destinations.id, existente.id));
@@ -170,12 +183,14 @@ export async function POST(req: Request): Promise<Response> {
           return Response.json({ ok: true, id: existente.id, novo: false });
         }
 
-        if (!token) return Response.json({ erro: "token é obrigatório para criar" }, { status: 400 });
+        if (!temCredencial) {
+          return Response.json({ erro: "credencial é obrigatória para criar" }, { status: 400 });
+        }
 
         const [nova] = await db.insert(destinations).values({
           tenantId, platform: plataforma, externalId,
           label: texto(corpo.label) ?? `Pixel ${plataforma}`,
-          credentials: { accessToken: await encryptValue(token) },
+          credentials: credenciais,
           config,
           testEventCode: texto(corpo.testEventCode) ?? null,
           active: true,
