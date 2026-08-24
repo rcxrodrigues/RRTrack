@@ -72,6 +72,8 @@ export interface ResultadoGasto {
 
 export interface CredenciaisAnuncio {
   accessToken?: string;
+  /* Alguns relatórios não informam a moeda; o cadastro pode dizer. */
+  moeda?: string;
   developerToken?: string;
   refreshToken?: string;
   clientId?: string;

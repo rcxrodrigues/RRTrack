@@ -1,7 +1,8 @@
 import type { DestinationAdapter } from "./types";
 import { metaAdapter } from "./meta";
+import { tiktokAdapter } from "./tiktok";
 
-const adapters: DestinationAdapter[] = [metaAdapter];
+const adapters: DestinationAdapter[] = [metaAdapter, tiktokAdapter];
 
 const byPlatform = new Map(adapters.map((a) => [a.platform, a]));
 
