@@ -19,7 +19,7 @@ const COMPILAR = [
   "src/core/resumo.ts", "src/core/rastreio.ts", "src/core/custos.ts",
   "src/core/metricas.ts", "src/core/reconciliacao.ts", "src/core/dispatch.ts",
   "src/core/sincronizar-gasto.ts",
-  "src/gateways/appmax.ts", "src/gateways/pagou.ts",
+  "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];
@@ -27,7 +27,7 @@ const COMPILAR = [
 /* Unitários: falam com o banco e com APIs simuladas, nunca com a rede real. */
 const UNITARIOS = [
   "metricas", "resumo", "limites", "custos",
-  "confirmacao", "tiktok", "google", "reenvio", "reconciliacao",
+  "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
 ];
 
 /* De ponta a ponta: batem no servidor de verdade, e precisam de uma semente. */
