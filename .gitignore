@@ -27,3 +27,6 @@ npm-debug.log*
 
 # Compilacao temporaria para os testes
 _tmp/
+
+# Saída da compilação dos testes
+_tmp/
