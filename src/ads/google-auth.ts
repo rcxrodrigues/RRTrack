@@ -14,6 +14,15 @@
  *
  * A aprovação do developer token é o passo que trava: sai em dias, não em
  * minutos, e sem ele nenhuma chamada funciona.
+ *
+ * E há uma fragilidade que a Meta não tem: o refresh token PERTENCE À CONTA
+ * que deu o consentimento. Se aquele perfil perder acesso, trocar senha ou
+ * revogar a autorização, o token morre e a sincronização para em silêncio.
+ * O usuário de sistema da Meta sobrevive a tudo isso; aqui não há equivalente.
+ *
+ * Consequência prática, e vale para quem for autorizar: use uma conta que vá
+ * continuar existindo — de preferência uma que acesse a conta de anúncio pela
+ * gerenciadora, e não um perfil pessoal que amanhã pode ficar inacessível.
  */
 
 import type { CredenciaisAnuncio } from "./types";

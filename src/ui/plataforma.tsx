@@ -81,6 +81,17 @@ export function Plataforma({
   const params = useSearchParams();
   const [busca, setBusca] = useState(nome);
   const [sincronizando, setSincronizando] = useState(false);
+  /*
+   * O resultado da sincronização fica visível.
+   *
+   * Sem isto o botão engole a resposta: token errado, conta sem permissão e
+   * período sem veiculação produzem exatamente o mesmo nada na tela. E o
+   * primeiro que acontece com quem acabou de conectar é justamente um desses
+   * três — quase sempre a conta de anúncio não atribuída ao usuário de sistema.
+   */
+  const [resultado, setResultado] = useState<Array<{
+    conta: string; linhas: number; erro?: string; pulou?: string; avisos: string[];
+  }> | null>(null);
 
   function ir(mudancas: Record<string, string>) {
     const p = new URLSearchParams(params.toString());
@@ -92,11 +103,20 @@ export function Plataforma({
 
   async function sincronizar() {
     setSincronizando(true);
-    await fetch("/api/sync/gasto", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenantId, plataforma }),
-    }).catch(() => {});
+    setResultado(null);
+    try {
+      const r = await fetch("/api/sync/gasto", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        /* Forçar: o clique é pedido explícito, e esperar o intervalo mínimo
+           enquanto se depura uma conexão nova é só confusão. */
+        body: JSON.stringify({ tenantId, plataforma, forcar: true }),
+      });
+      const j = await r.json();
+      setResultado(j.resumos ?? [{ conta: plataforma, linhas: 0, avisos: [], erro: j.erro ?? "falha" }]);
+    } catch {
+      setResultado([{ conta: plataforma, linhas: 0, avisos: [], erro: "sem conexão com o servidor" }]);
+    }
     setSincronizando(false);
     router.refresh();
   }
@@ -201,6 +221,52 @@ export function Plataforma({
           </select>
         </div>
       </div>
+
+      {/* o que a sincronização respondeu */}
+      {resultado && (
+        <div style={{ padding: "12px 20px 0" }}>
+          {resultado.map((r, i) => {
+            const ruim = !!r.erro;
+            const parcial = !!r.pulou || r.avisos.length > 0;
+            return (
+              <div key={i} style={{
+                maxWidth: 900, padding: "11px 15px", borderRadius: 7, marginBottom: 8,
+                background: ruim ? "var(--negativo-fundo)" : parcial ? "var(--alerta-fundo)" : "var(--positivo-fundo)",
+                border: `1px solid ${ruim ? "var(--negativo)" : parcial ? "var(--alerta)" : "#1C3A31"}`,
+                fontSize: 12.5, color: "var(--ink-medio)", lineHeight: 1.5,
+              }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: r.erro || parcial ? 5 : 0 }}>
+                  <strong style={{
+                    color: ruim ? "var(--negativo)" : parcial ? "var(--alerta)" : "var(--positivo)",
+                  }}>{r.conta}</strong>
+                  {!ruim && !r.pulou && (
+                    <span className="num" style={{ color: "var(--ink-fraco)" }}>
+                      {r.linhas} linha(s) de gasto
+                    </span>
+                  )}
+                </div>
+                {r.erro && <div>{r.erro}</div>}
+                {r.pulou && <div>{r.pulou}</div>}
+                {r.avisos.map((a, k) => <div key={k} style={{ color: "var(--ink-fraco)" }}>{a}</div>)}
+
+                {/*
+                  A causa mais comum de "conectou e não veio nada": o token foi
+                  gerado, mas a conta de anúncio não foi atribuída ao usuário de
+                  sistema. A API responde lista vazia, sem erro — então é aqui
+                  que a dica precisa aparecer.
+                */}
+                {!ruim && r.linhas === 0 && !r.pulou && (
+                  <div style={{ marginTop: 6, color: "var(--ink-fraco)" }}>
+                    Se houve veiculação no período, o motivo quase sempre é a conta de
+                    anúncio não estar atribuída ao usuário de sistema que gerou o token —
+                    a API devolve vazio, sem erro. Confira em Adicionar ativos.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* tabela */}
       <div style={{ flexGrow: 1, padding: "16px 20px 28px", overflowX: "auto" }}>
