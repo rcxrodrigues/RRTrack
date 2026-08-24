@@ -306,4 +306,51 @@ export const appmaxAdapter: GatewayAdapter = {
       return order;
     }
   },
+
+  /*
+   * Confirma que o pedido existe e com que valor.
+   *
+   * A Appmax não assina o webhook e a documentação dela recomenda confirmar
+   * pela API. É a mesma consulta do `enrich`, com outra finalidade: ali era
+   * para completar o comprador, aqui é para provar que a venda aconteceu.
+   */
+  async fetchOrder(orderId: string, cred: GatewayCredentials): Promise<CanonicalOrder | null> {
+    const token = await obterToken(cred);
+    if (!token) return null;
+
+    const res = await fetch(`${API}/v1/orders/${orderId}`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    });
+
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Appmax respondeu ${res.status} ao confirmar`);
+
+    const j = await res.json() as Record<string, unknown>;
+    const d = (pick(j, "data") ?? j) as Record<string, unknown>;
+
+    const statusBruto = (str(d.status) ?? "").toLowerCase();
+    const status = STATUS_MAP[statusBruto];
+    if (!status) return null;
+
+    const c = pick(d, "customer");
+
+    return {
+      gatewayOrderId: str(d.id) ?? orderId,
+      gatewayEventId: `api:${orderId}:${status}`,
+      status,
+      currency: "BRL",
+      grossCents: cents(d.total_paid ?? d.total ?? 0),
+      paymentMethod: "other",
+      items: parseItems(d),
+      customer: c ? {
+        name: str(pick(c, "name")),
+        email: str(pick(c, "email")),
+        document: str(pick(c, "document_number")),
+        country: "br",
+      } : undefined,
+      passthrough: {},
+      occurredAt: new Date(),
+      raw: j,
+    };
+  },
 };

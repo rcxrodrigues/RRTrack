@@ -76,12 +76,67 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   /* Evento que não representa estado de venda — teste de conexão, payout. */
   if (!pedido) return Response.json({ ok: true, ignorado: true });
 
+  const temCredencial = Object.keys(conexao.credentials).length > 0;
+  let confirmado = verificacao.ok;
+
+  /*
+   * Confirmação pela API, para gateway que não assina o webhook.
+   *
+   * Sem assinatura, a mensagem sozinha não prova nada: quem descobrir a URL
+   * injeta uma venda que nunca houve. E o estrago não é o painel mentir — é a
+   * conversão falsa chegar na Meta e ela passar a otimizar para um comprador
+   * que não existe.
+   *
+   * A distinção que rege o que fazer: CONTRADIÇÃO é fraude, ERRO é
+   * desconhecido. Se a API diz que o pedido não existe, ou diz outro valor,
+   * recusamos. Se a API está fora do ar, seguimos sem confirmar — derrubar
+   * venda de verdade por causa de instabilidade alheia seria pior que o risco
+   * que se está evitando.
+   */
+  if (semAssinatura && temCredencial && adapter.fetchOrder) {
+    let cred: Record<string, string> | null = null;
+    try {
+      cred = await decryptRecord(conexao.credentials);
+    } catch { /* credencial ilegível: segue sem confirmar */ }
+
+    if (cred) {
+      try {
+        const daApi = await adapter.fetchOrder(pedido.gatewayOrderId, cred);
+
+        if (!daApi) {
+          return Response.json(
+            { erro: "pedido não existe no gateway" },
+            { status: 403 },
+          );
+        }
+
+        if (daApi.grossCents !== pedido.grossCents) {
+          return Response.json({
+            erro: "valor do webhook não confere com o gateway",
+            recebido: pedido.grossCents,
+            real: daApi.grossCents,
+          }, { status: 403 });
+        }
+
+        /*
+         * O estado da API é mais atual que o do webhook, que pode ter ficado
+         * na fila. Uma venda já estornada não deve entrar como paga só porque
+         * a notificação de pagamento chegou atrasada.
+         */
+        pedido = { ...pedido, status: daApi.status, customer: pedido.customer ?? daApi.customer };
+        confirmado = true;
+      } catch {
+        /* API instável: segue como não confirmado, sem recusar. */
+      }
+    }
+  }
+
   /*
    * Completa o que o webhook não trouxe. A Appmax não manda comprador nenhum
    * no webhook de pedido, então sem isto a venda dela chegaria só com as
    * chaves de navegador. Melhor-esforço: falhar aqui não derruba a venda.
    */
-  if (adapter.enrich && Object.keys(conexao.credentials).length > 0) {
+  if (adapter.enrich && temCredencial && !pedido.customer) {
     try {
       const cred = await decryptRecord(conexao.credentials);
       pedido = await adapter.enrich(pedido, cred);
@@ -97,7 +152,7 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
     tenantId: conexao.tenantId,
     gatewayConnectionId: conexao.id,
     gatewayEventId: pedido.gatewayEventId,
-    verified: verificacao.ok,
+    verified: confirmado,
     rawBody,
     headers: cabecalhos,
   }).onConflictDoNothing().returning({ id: webhookDeliveries.id });
@@ -190,7 +245,7 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
       pedido: pedido.gatewayOrderId,
       status: pedido.status,
       atribuicao: atribuicao.method,
-      verificado: verificacao.ok,
+      verificado: confirmado,
       disparos,
     });
   } catch (e) {

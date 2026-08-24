@@ -10,10 +10,10 @@
  *    entra marcada como não verificada — a barreira é só o segredo no caminho
  *    da URL.
  *
- *    PENDENTE: a documentação do pagou.ai recomenda confirmar por
- *    `GET /v2/transactions/{id}` quando o resultado for incerto, e é o que
- *    `fetchOrder` deveria fazer. Ainda não está implementado, então uma venda
- *    forjada por quem descobrisse a URL passaria.
+ *    A confirmação vem de `fetchOrder`, que consulta
+ *    `GET /v2/transactions/{id}` — o caminho que a própria documentação deles
+ *    recomenda quando o resultado é incerto. O roteador compara o que o
+ *    webhook disse com o que a API respondeu antes de contabilizar.
  *
  * 2. O CPF do comprador nunca vem no webhook. Isso custa as chaves `ct`, `st`
  *    e `zp` no CAPI — não há como contornar pelo webhook; só consultando a
@@ -24,7 +24,9 @@
  * agora, e serve de fonte secundária quando o clickId não resolve.
  */
 
-import type { GatewayAdapter, WebhookRequest, VerifyResult } from "./types";
+import type {
+  GatewayAdapter, WebhookRequest, VerifyResult, GatewayCredentials,
+} from "./types";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
 } from "../core/types";
@@ -214,6 +216,56 @@ export const pagouAdapter: GatewayAdapter = {
       passthrough: parsePassthrough(data),
       occurredAt,
       raw: body,
+    };
+  },
+
+  /*
+   * Consulta a transação na origem.
+   *
+   * É o que transforma "chegou uma mensagem dizendo que houve uma venda" em
+   * "houve uma venda". Sem assinatura, a mensagem sozinha não prova nada — e
+   * uma venda forjada não custa nada a quem descobrir a URL, enquanto custa
+   * caro a você: o painel mente e a Meta otimiza para uma conversão que não
+   * existiu.
+   */
+  async fetchOrder(orderId: string, cred: GatewayCredentials): Promise<CanonicalOrder | null> {
+    const chave = cred.apiKey ?? cred.secretKey;
+    if (!chave) return null;
+
+    const res = await fetch(`https://api.pagou.ai/v2/transactions/${orderId}`, {
+      headers: { authorization: `Bearer ${chave}`, accept: "application/json" },
+    });
+
+    /* 404 é resposta, não falha: a transação não existe, então a venda é falsa. */
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`pagou.ai respondeu ${res.status} ao confirmar`);
+
+    const j = await res.json() as Record<string, unknown>;
+    const data = (j.data ?? j) as Record<string, unknown>;
+
+    const statusRaw = (str(data.status) ?? "").toLowerCase();
+    const status = STATUS_MAP[statusRaw];
+    if (!status) return null;
+
+    const items = parseItems(data);
+    const customerRaw = pick(data, "customer");
+
+    return {
+      gatewayOrderId: str(data.id) ?? orderId,
+      gatewayEventId: `api:${orderId}:${status}`,
+      status,
+      currency: (str(data.currency) ?? "BRL").toUpperCase(),
+      grossCents: cents(data.amount ?? data.total ?? 0),
+      paymentMethod: METHOD_MAP[(str(data.payment_method) ?? "").toLowerCase()] ?? "other",
+      items,
+      customer: customerRaw ? {
+        name: str(pick(customerRaw, "name")),
+        email: str(pick(customerRaw, "email")),
+        phone: str(pick(customerRaw, "phone")),
+      } : undefined,
+      passthrough: parsePassthrough(data),
+      occurredAt: new Date(),
+      raw: j,
     };
   },
 };
