@@ -37,8 +37,13 @@ export const config = {
    * Fora do porteiro: as rotas de ingestão, que são autenticadas por chave
    * própria e precisam responder a quem não tem sessão nenhuma — o navegador
    * do visitante e o servidor do gateway.
+   *
+   * Esquecer uma rota de ingestão aqui NÃO dá erro: o middleware devolve um
+   * 307 para /entrar, e quem chamou vê 405 ou uma página de login em vez da
+   * resposta. Do lado do gateway isso é venda perdida em silêncio. Rota nova
+   * de ingestão entra nesta lista no mesmo commit em que nasce.
    */
   matcher: [
-    "/((?!api/collect|api/webhook|api/claim|api/auth|rr/|rr\.js|_next|favicon).*)",
+    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|rr/|rr\.js|_next|favicon).*)",
   ],
 };
