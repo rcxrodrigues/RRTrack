@@ -194,6 +194,78 @@ function Copiavel({ valor, rotulo }: { valor: string; rotulo?: string }) {
 
 /* ============================================================= tela == */
 
+/*
+ * O formato da venda empurrada por API.
+ *
+ * Fica na tela porque o campo mais fácil de errar é o de dinheiro, e errar não
+ * dá erro: `valor` é na moeda e `valor_centavos` é em centavos, sempre. 19990
+ * no campo errado vira R$ 19.990,00 em vez de R$ 199,90 — cem vezes mais, e é
+ * esse número que a Meta usa para otimizar.
+ */
+const CORPO_EXEMPLO = `{
+  "pedido_id": "12345",
+  "status": "pago",
+  "valor": 197.00,
+  "metodo": "pix",
+  "click_id": "<o que o rr.js pôs no checkout>",
+  "cliente": {
+    "nome": "Maria Souza",
+    "email": "maria@exemplo.com",
+    "telefone": "(11) 98888-7777",
+    "documento": "000.000.000-00",
+    "cep": "01310-100",
+    "cidade": "São Paulo",
+    "estado": "SP",
+    "nascimento": "1990-05-12",
+    "genero": "f"
+  },
+  "itens": [
+    { "sku": "KIT-3", "nome": "Kit 3 unidades", "quantidade": 1, "preco": 197.00 }
+  ]
+}`;
+
+function ExemploApi() {
+  const [aberto, setAberto] = useState(false);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button
+        onClick={() => setAberto((a) => !a)}
+        style={{
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: "var(--acento)", fontSize: 11, fontWeight: 600,
+        }}
+      >
+        {aberto ? "esconder o formato" : "ver o formato do envio"}
+      </button>
+
+      {aberto && (
+        <>
+          <pre style={{
+            marginTop: 9, marginBottom: 0, padding: 12, borderRadius: 6,
+            background: "var(--fundo)", border: "1px solid var(--linha)",
+            fontSize: 10.5, lineHeight: 1.5, overflowX: "auto",
+            color: "var(--ink-medio)",
+          }}>{CORPO_EXEMPLO}</pre>
+
+          <div style={{ fontSize: 10.5, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.6 }}>
+            <strong style={{ color: "var(--ink-medio)" }}>valor</strong> é na moeda
+            (197.00 = R$ 197,00). Se preferir mandar em centavos, use{" "}
+            <strong style={{ color: "var(--ink-medio)" }}>valor_centavos</strong> (19700).
+            Nunca os dois.<br />
+            Os nomes também funcionam em inglês (<span className="num">order_id</span>,{" "}
+            <span className="num">amount</span>, <span className="num">customer</span>).<br />
+            Mandar o mesmo pedido duas vezes não duplica a venda; mudança de
+            estado passa.<br />
+            O endereço tem o segredo no caminho — mantenha no servidor, nunca em
+            código de navegador.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Integracoes({
   loja, base, site, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm,
 }: {
@@ -428,11 +500,25 @@ export function Integracoes({
                         background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
                       }}>remover</button>
                     </div>
-                    <Copiavel rotulo="URL do webhook" valor={`${base}/api/webhook/${c.gateway}/${c.segredo}`} />
-                    <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8 }}>
-                      O identificador do clique volta em <span className="num">{g?.repasse}</span>
-                      {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
-                    </div>
+                    {c.gateway === "api" ? (
+                      <>
+                        <Copiavel rotulo="Endereço para enviar a venda" valor={`${base}/api/pedidos/${c.segredo}`} />
+                        <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.55 }}>
+                          Para gateway sem integração pronta, ERP ou checkout próprio.
+                          Seu servidor manda um POST com a venda; o resto do caminho é o
+                          mesmo dos outros.
+                        </div>
+                        <ExemploApi />
+                      </>
+                    ) : (
+                      <>
+                        <Copiavel rotulo="URL do webhook" valor={`${base}/api/webhook/${c.gateway}/${c.segredo}`} />
+                        <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8 }}>
+                          O identificador do clique volta em <span className="num">{g?.repasse}</span>
+                          {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
