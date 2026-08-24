@@ -146,6 +146,27 @@ export const adAccounts = pgTable("ad_accounts", {
   credentials: jsonb("credentials").$type<Record<string, string>>().notNull().default({}),
   active: boolean("active").notNull().default(true),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+
+  /*
+   * Proteção contra levar bloqueio da plataforma.
+   *
+   * As três colunas resolvem três formas diferentes de estourar limite:
+   *
+   * `syncingSince` — trava contra busca simultânea. Duas abas abertas, ou dois
+   *   cliques seguidos, disparariam duas buscas paralelas, e nenhuma das duas
+   *   veria a outra porque `lastSyncedAt` só é escrito no fim.
+   *
+   * `blockedUntil` — quando a plataforma diz que bloqueou e por quanto tempo,
+   *   guardamos e paramos. A Meta avisa que insistir durante o bloqueio AUMENTA
+   *   a espera; tentar de novo seria piorar de propósito.
+   *
+   * `usagePct` — quanto da cota já foi consumido, lido do cabeçalho de resposta.
+   *   Passando do limite prudente, paramos antes de a plataforma precisar
+   *   bloquear. Chegar perto e recuar é diferente de bater e esperar.
+   */
+  syncingSince: timestamp("syncing_since", { withTimezone: true }),
+  blockedUntil: timestamp("blocked_until", { withTimezone: true }),
+  usagePct: real("usage_pct"),
 }, (t) => [uniqueIndex("ad_accounts_tenant_platform_ext").on(t.tenantId, t.platform, t.externalId)]);
 
 /* ----------------------------------------------------------- atribuição -- */

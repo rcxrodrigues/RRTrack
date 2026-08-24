@@ -25,7 +25,27 @@ export interface ResumoSync {
   moeda: string;
   avisos: string[];
   erro?: string;
+  /** Pulou sem chamar ninguém, e por quê. */
+  pulou?: string;
 }
+
+/*
+ * Quanto tempo uma busca em andamento continua valendo como "em andamento".
+ *
+ * Se a função morrer no meio — tempo esgotado, deploy no meio do caminho — a
+ * marca ficaria presa para sempre e a conta nunca mais sincronizaria. Cinco
+ * minutos é folgado para a busca mais lenta e curto para destravar sozinho.
+ */
+const TRAVA_MIN = 5;
+
+/*
+ * Intervalo mínimo entre duas buscas da mesma conta, mesmo pedidas à mão.
+ *
+ * Existe porque o botão "Atualizar" convida a clicar de novo quando o número
+ * não muda — e o número não muda porque a plataforma ainda não recalculou, não
+ * porque a busca falhou. Clicar dez vezes só aproxima o bloqueio.
+ */
+const INTERVALO_MIN_SEG = 60;
 
 /** AAAA-MM-DD de N dias atrás, em UTC. */
 function diaUtc(deslocamento = 0): string {
@@ -35,7 +55,7 @@ function diaUtc(deslocamento = 0): string {
 
 export async function sincronizarGasto(
   tenantId: string,
-  opcoes: { dias?: number; plataforma?: string } = {},
+  opcoes: { dias?: number; plataforma?: string; forcar?: boolean } = {},
 ): Promise<ResumoSync[]> {
   const dias = Math.min(Math.max(opcoes.dias ?? 7, 1), 90);
   const janela = { de: diaUtc(-dias), ate: diaUtc(0) };
@@ -48,7 +68,45 @@ export async function sincronizarGasto(
 
   const resumos: ResumoSync[] = [];
 
+  const agora = Date.now();
+
   for (const conta of contas) {
+    /*
+     * Três portas antes de tocar na API, na ordem em que importam.
+     */
+
+    /* 1. A plataforma bloqueou e disse até quando. Insistir aumenta a espera. */
+    if (conta.blockedUntil && conta.blockedUntil.getTime() > agora) {
+      const faltam = Math.ceil((conta.blockedUntil.getTime() - agora) / 60_000);
+      resumos.push({
+        conta: conta.label, plataforma: conta.platform, linhas: 0,
+        gastoTotalCents: 0, moeda: "?", avisos: [],
+        pulou: `bloqueada pela plataforma; libera em ${faltam} min`,
+      });
+      continue;
+    }
+
+    /* 2. Já há uma busca correndo. Duas abas abertas não podem virar duas buscas. */
+    if (conta.syncingSince && agora - conta.syncingSince.getTime() < TRAVA_MIN * 60_000) {
+      resumos.push({
+        conta: conta.label, plataforma: conta.platform, linhas: 0,
+        gastoTotalCents: 0, moeda: "?", avisos: [],
+        pulou: "já há uma sincronização em andamento",
+      });
+      continue;
+    }
+
+    /* 3. Buscou agora há pouco. O número da plataforma nem mudou ainda. */
+    if (!opcoes.forcar && conta.lastSyncedAt
+        && agora - conta.lastSyncedAt.getTime() < INTERVALO_MIN_SEG * 1000) {
+      resumos.push({
+        conta: conta.label, plataforma: conta.platform, linhas: 0,
+        gastoTotalCents: 0, moeda: "?", avisos: [],
+        pulou: "sincronizada há menos de um minuto",
+      });
+      continue;
+    }
+
     const adapter = getAdSpend(conta.platform);
     if (!adapter) {
       resumos.push({
@@ -58,6 +116,11 @@ export async function sincronizarGasto(
       });
       continue;
     }
+
+    /* Marca a trava ANTES de sair chamando, para outra aba enxergar. */
+    await db.update(adAccounts)
+      .set({ syncingSince: new Date() })
+      .where(eq(adAccounts.id, conta.id));
 
     try {
       const cred = await decryptRecord(conta.credentials);
@@ -108,7 +171,12 @@ export async function sincronizarGasto(
       }
 
       await db.update(adAccounts)
-        .set({ lastSyncedAt: new Date() })
+        .set({
+          lastSyncedAt: new Date(),
+          syncingSince: null,
+          usagePct: r.usoPct ?? null,
+          blockedUntil: r.bloqueadoAte ?? null,
+        })
         .where(eq(adAccounts.id, conta.id));
 
       resumos.push({
@@ -120,6 +188,14 @@ export async function sincronizarGasto(
         avisos: r.avisos,
       });
     } catch (e) {
+      /*
+       * Solta a trava mesmo em erro. Trava presa por causa de uma falha
+       * transitória deixaria a conta sem sincronizar até alguém notar.
+       */
+      await db.update(adAccounts)
+        .set({ syncingSince: null })
+        .where(eq(adAccounts.id, conta.id));
+
       resumos.push({
         conta: conta.label, plataforma: conta.platform, linhas: 0,
         gastoTotalCents: 0, moeda: "?", avisos: [],

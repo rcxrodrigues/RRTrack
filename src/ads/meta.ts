@@ -55,6 +55,45 @@ function paraCentavos(v: string | undefined): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+/*
+ * Lê o cabeçalho de uso da Meta.
+ *
+ * Ele vem como JSON com uma entrada por conta, cada uma trazendo três medidas
+ * em porcentagem — chamadas, tempo total e tempo de CPU — e, quando já houve
+ * bloqueio, os minutos que faltam para voltar. A pior das três é a que manda:
+ * estourar qualquer uma bloqueia.
+ */
+function lerUso(cabecalho: string | null): { pct: number; esperaMin: number } | null {
+  if (!cabecalho) return null;
+  try {
+    const j = JSON.parse(cabecalho) as Record<string, Array<{
+      call_count?: number; total_time?: number; total_cputime?: number;
+      estimated_time_to_regain_access?: number;
+    }>>;
+
+    let pct = 0;
+    let esperaMin = 0;
+    for (const entradas of Object.values(j)) {
+      for (const e of entradas ?? []) {
+        pct = Math.max(pct, e.call_count ?? 0, e.total_time ?? 0, e.total_cputime ?? 0);
+        esperaMin = Math.max(esperaMin, e.estimated_time_to_regain_access ?? 0);
+      }
+    }
+    return { pct, esperaMin };
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * Onde paramos por conta própria.
+ *
+ * A 80% ainda há folga para outra coisa precisar da cota — uma reconciliação,
+ * um teste, uma segunda conta. Parar com o painel um pouco desatualizado é
+ * muito melhor que ser bloqueado e ficar sem nada por meia hora.
+ */
+const LIMITE_PRUDENTE = 80;
+
 function inteiro(v: string | undefined): number | undefined {
   if (!v) return undefined;
   const n = parseInt(v, 10);
@@ -131,6 +170,8 @@ export const metaAdsAdapter: AdSpendAdapter = {
     let url: string | null =
       `https://graph.facebook.com/${VERSAO}/${conta}/insights?${params}`;
     let paginas = 0;
+    let usoPct: number | undefined;
+    let bloqueadoAte: Date | undefined;
 
     while (url) {
       /*
@@ -145,6 +186,20 @@ export const metaAdsAdapter: AdSpendAdapter = {
 
       const r: Response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
 
+      const uso = lerUso(r.headers.get("x-business-use-case-usage"));
+      if (uso) {
+        usoPct = uso.pct;
+        if (uso.esperaMin > 0) {
+          bloqueadoAte = new Date(Date.now() + uso.esperaMin * 60_000);
+          avisos.push(`a Meta bloqueou por ${uso.esperaMin} min; parando aqui`);
+          break;
+        }
+        if (uso.pct >= LIMITE_PRUDENTE) {
+          avisos.push(`${uso.pct}% da cota da Meta consumida; parei antes de estourar`);
+          break;
+        }
+      }
+
       if (!r.ok) {
         const corpo = await r.text().catch(() => "");
         /* 190 é token inválido ou expirado — o erro mais comum aqui, e o único
@@ -152,8 +207,15 @@ export const metaAdsAdapter: AdSpendAdapter = {
         if (corpo.includes('"code":190')) {
           throw new Error("token da Meta expirado ou revogado — gere outro no Business Manager");
         }
-        if (r.status === 429 || corpo.includes("throttl")) {
-          avisos.push("limite de chamadas da Meta atingido; parte do período não veio");
+        /*
+         * 80000 e 80004 são os códigos de limite de uso da Marketing API.
+         * Guardamos o bloqueio para não tentar de novo: insistir durante ele
+         * aumenta a espera, segundo a própria documentação da Meta.
+         */
+        if (r.status === 429 || corpo.includes("80000") || corpo.includes("80004") || corpo.includes("throttl")) {
+          const espera = uso?.esperaMin && uso.esperaMin > 0 ? uso.esperaMin : 30;
+          bloqueadoAte = new Date(Date.now() + espera * 60_000);
+          avisos.push(`limite da Meta atingido; nova tentativa só em ${espera} min`);
           break;
         }
         throw new Error(`Meta respondeu ${r.status}: ${corpo.slice(0, 200)}`);
@@ -189,6 +251,6 @@ export const metaAdsAdapter: AdSpendAdapter = {
       avisos.push("nenhum gasto no período — confira se a conta é a certa e se houve veiculação");
     }
 
-    return { linhas, moeda, fuso, avisos };
+    return { linhas, moeda, fuso, avisos, usoPct, bloqueadoAte };
   },
 };

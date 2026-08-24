@@ -55,6 +55,19 @@ export interface ResultadoGasto {
   /** Fuso da conta de anúncio, quando a plataforma informa. */
   fuso?: string;
   avisos: string[];
+
+  /*
+   * Quanto da cota horária já foi gasto, de 0 a 100, lido do cabeçalho de
+   * resposta. Serve para parar ANTES de a plataforma precisar bloquear.
+   */
+  usoPct?: number;
+
+  /*
+   * Quando a plataforma bloqueou e disse por quanto tempo. Enquanto esta data
+   * não passar, nenhuma nova chamada deve sair: a Meta avisa que insistir
+   * durante o bloqueio aumenta a espera.
+   */
+  bloqueadoAte?: Date;
 }
 
 export interface CredenciaisAnuncio {
