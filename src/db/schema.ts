@@ -380,9 +380,24 @@ export const orderClaims = pgTable("order_claims", {
    */
   customer: jsonb("customer").$type<Record<string, string>>(),
 
+  /*
+   * Reconciliação: quantas vezes já perguntamos ao gateway por este pedido, e
+   * quando foi a última.
+   *
+   * Existe por causa do carrinho abandonado. Reivindicação sem venda quase
+   * sempre é alguém que desistiu, não venda perdida — e sem um teto, cada
+   * desistência viraria uma consulta por hora para sempre. Uma loja com mil
+   * abandonos por dia bateria na API do gateway o tempo todo sem achar nada, e
+   * levaria bloqueio sem estar fazendo nada de errado de propósito.
+   */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  checks: integer("checks").notNull().default(0),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("claims_tenant_gateway_order").on(t.tenantId, t.gateway, t.gatewayOrderId),
+  /* A varredura busca por órfã ainda dentro do teto de consultas. */
+  index("claims_reconciliacao").on(t.tenantId, t.checks, t.checkedAt),
 ]);
 
 /* ------------------------------------------------------------- disparos -- */

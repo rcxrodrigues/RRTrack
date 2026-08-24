@@ -12,14 +12,11 @@
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/index";
-import {
-  gatewayConnections, orderItems, orders, webhookDeliveries,
-} from "@/db/schema";
+import { gatewayConnections, webhookDeliveries } from "@/db/schema";
 import { getGateway } from "@/gateways/registry";
-import { resolveAttribution } from "@/core/attribution";
-import { dispatchOrder, reenviarPendentes } from "@/core/dispatch";
-import { ORDER_STATUS_RANK } from "@/core/types";
-import { aplicarCustos } from "@/core/custos";
+import { reenviarPendentes } from "@/core/dispatch";
+import { reconciliar } from "@/core/reconciliacao";
+import { registrarPedido } from "@/core/pedido";
 import { decryptRecord } from "@/core/crypto";
 
 export const runtime = "nodejs";
@@ -162,143 +159,41 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   if (!entrega[0]) return Response.json({ ok: true, duplicado: true });
 
   try {
-    const atribuicao = await resolveAttribution(conexao.tenantId, pedido, gateway);
-
-    /*
-     * Completa o comprador com o que a LOJA informou ao reivindicar o pedido.
-     *
-     * É o único caminho para endereço e nascimento: nenhum dos gateways
-     * integrados devolve isso. O dado do gateway prevalece onde os dois têm,
-     * porque foi ele que processou o pagamento — o da loja preenche o resto.
-     */
-    if (atribuicao.compradorDaLoja) {
-      try {
-        const daLoja = await decryptRecord(atribuicao.compradorDaLoja);
-        const g = pedido.customer ?? {};
-        pedido = {
-          ...pedido,
-          customer: {
-            name: g.name ?? daLoja.name,
-            email: g.email ?? daLoja.email,
-            phone: g.phone ?? daLoja.phone,
-            document: g.document ?? daLoja.document,
-            zip: g.zip ?? daLoja.zip,
-            city: g.city ?? daLoja.city,
-            state: g.state ?? daLoja.state,
-            country: g.country ?? daLoja.country ?? "br",
-            birthdate: daLoja.birthdate,
-            gender: daLoja.gender,
-          },
-        };
-      } catch { /* comprador ilegível: segue com o que o gateway deu */ }
-    }
-
-    const [existente] = await db
-      .select()
-      .from(orders)
-      .where(and(
-        eq(orders.gatewayConnectionId, conexao.id),
-        eq(orders.gatewayOrderId, pedido.gatewayOrderId),
-      ))
-      .limit(1);
-
-    /*
-     * Estado só avança. Gateways não garantem ordem de entrega, e um `pending`
-     * atrasado chegando depois do `paid` reabriria uma venda já concluída —
-     * o faturamento do dia despencaria sozinho.
-     */
-    if (existente && ORDER_STATUS_RANK[pedido.status] <= ORDER_STATUS_RANK[existente.status]) {
-      await db.update(webhookDeliveries)
-        .set({ processedAt: new Date() })
-        .where(eq(webhookDeliveries.id, entrega[0].id));
-      return Response.json({ ok: true, estado_ignorado: pedido.status });
-    }
-
-    const comum = {
-      status: pedido.status,
-      currency: pedido.currency,
-      grossCents: pedido.grossCents,
-      feeCents: pedido.feeCents ?? null,
-      shippingCents: pedido.shippingCents ?? null,
-      discountCents: pedido.discountCents ?? null,
-      paymentMethod: pedido.paymentMethod,
-      installments: pedido.installments ?? null,
-      customer: pedido.customer as Record<string, string> | undefined,
-      clickId: atribuicao.clickId ?? null,
-      attributionMethod: atribuicao.method,
-      occurredAt: pedido.occurredAt,
-      paidAt: pedido.status === "paid" ? pedido.occurredAt : null,
-      updatedAt: new Date(),
-    };
-
-    let orderRowId: string;
-
-    if (existente) {
-      await db.update(orders).set(comum).where(eq(orders.id, existente.id));
-      orderRowId = existente.id;
-    } else {
-      const [nova] = await db.insert(orders).values({
-        tenantId: conexao.tenantId,
-        gatewayConnectionId: conexao.id,
-        gatewayOrderId: pedido.gatewayOrderId,
-        ...comum,
-      }).returning({ id: orders.id });
-
-      orderRowId = nova!.id;
-
-      if (pedido.items.length) {
-        await db.insert(orderItems).values(pedido.items.map((i) => ({
-          orderId: orderRowId,
-          tenantId: conexao.tenantId,
-          sku: i.sku ?? null,
-          name: i.name,
-          quantity: i.quantity,
-          unitPriceCents: i.unitPriceCents,
-          unitCostCents: i.unitCostCents ?? null,
-          variant: i.variant ?? null,
-          category: i.category ?? null,
-        })));
-      }
-    }
-
-    /*
-     * Aplica o custo dos produtos, com o preço que valia na data do pedido.
-     * Sem isto o "lucro" seria margem sobre o anúncio — o que some quando
-     * chega a nota do fornecedor.
-     */
-    await aplicarCustos(conexao.tenantId, orderRowId, pedido.occurredAt);
-
-    /* Só venda paga vira conversão. Pendente ainda pode não acontecer. */
-    let disparos: unknown[] = [];
-    if (pedido.status === "paid") {
-      disparos = await dispatchOrder(conexao.tenantId, orderRowId, pedido, atribuicao);
-    }
+    const res = await registrarPedido(
+      { tenantId: conexao.tenantId, conexaoId: conexao.id, gateway },
+      pedido,
+    );
 
     await db.update(webhookDeliveries)
       .set({ processedAt: new Date() })
       .where(eq(webhookDeliveries.id, entrega[0].id));
 
+    if (res.ignorado) {
+      return Response.json({ ok: true, estado_ignorado: res.status });
+    }
+
     /*
-     * A fila de reenvio pega carona aqui, depois da resposta.
+     * Reenvio e reconciliacao pegam carona aqui, depois da resposta.
      *
-     * Não há cron: o plano Hobby da Vercel limita a uma execução por dia, o
-     * que é inútil para reenviar conversão. Mas chegou webhook quer dizer que
-     * há venda acontecendo, e é exatamente quando vale gastar alguns segundos
-     * recuperando o que ficou para trás. Loja parada não paga nada por isso.
+     * Nao ha cron: o plano Hobby da Vercel limita a uma execucao por dia, o que
+     * e inutil para recuperar conversao. Mas chegou webhook quer dizer que ha
+     * venda acontecendo, e e exatamente quando vale gastar alguns segundos
+     * atras do que ficou para tras. Loja parada nao paga nada por isso.
      */
     after(async () => {
       try {
         await reenviarPendentes(conexao.tenantId, 10);
-      } catch { /* reenvio é melhor-esforço; a venda desta requisição já entrou */ }
+        await reconciliar(conexao.tenantId, 10);
+      } catch { /* melhor-esforco; a venda desta requisicao ja entrou */ }
     });
 
     return Response.json({
       ok: true,
       pedido: pedido.gatewayOrderId,
-      status: pedido.status,
-      atribuicao: atribuicao.method,
+      status: res.status,
+      atribuicao: res.atribuicao.method,
       verificado: confirmado,
-      disparos,
+      disparos: res.disparos,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
