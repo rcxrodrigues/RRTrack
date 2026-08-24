@@ -9,6 +9,7 @@
  * otimizar. Por isso ele é longo, aleatório e por conexão, nunca global.
  */
 
+import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import {
@@ -16,7 +17,7 @@ import {
 } from "@/db/schema";
 import { getGateway } from "@/gateways/registry";
 import { resolveAttribution } from "@/core/attribution";
-import { dispatchOrder } from "@/core/dispatch";
+import { dispatchOrder, reenviarPendentes } from "@/core/dispatch";
 import { ORDER_STATUS_RANK } from "@/core/types";
 import { aplicarCustos } from "@/core/custos";
 import { decryptRecord } from "@/core/crypto";
@@ -276,6 +277,20 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
     await db.update(webhookDeliveries)
       .set({ processedAt: new Date() })
       .where(eq(webhookDeliveries.id, entrega[0].id));
+
+    /*
+     * A fila de reenvio pega carona aqui, depois da resposta.
+     *
+     * Não há cron: o plano Hobby da Vercel limita a uma execução por dia, o
+     * que é inútil para reenviar conversão. Mas chegou webhook quer dizer que
+     * há venda acontecendo, e é exatamente quando vale gastar alguns segundos
+     * recuperando o que ficou para trás. Loja parada não paga nada por isso.
+     */
+    after(async () => {
+      try {
+        await reenviarPendentes(conexao.tenantId, 10);
+      } catch { /* reenvio é melhor-esforço; a venda desta requisição já entrou */ }
+    });
 
     return Response.json({
       ok: true,

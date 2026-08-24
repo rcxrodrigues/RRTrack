@@ -248,4 +248,47 @@ export const metaAdapter: DestinationAdapter = {
       };
     }
   },
+
+  async reenviar(corpo: unknown, cfg: DestinationConfig): Promise<DispatchResult> {
+    const token = cfg.credentials.accessToken;
+    if (!token) return { ok: false, matchKeys: [], error: "sem access token", retryable: false };
+
+    /*
+     * A janela de sete dias vale no reenvio também, e é a razão de as
+     * tentativas pararem em poucas horas: passado o prazo a Meta descarta o
+     * evento em silêncio, e insistir só gasta cota.
+     */
+    const evento = (corpo as { data?: Array<{ event_time?: number }> })?.data?.[0];
+    if (evento?.event_time) {
+      const dias = (Date.now() / 1000 - evento.event_time) / 86400;
+      if (dias > 7) {
+        return { ok: false, matchKeys: [], error: "fora da janela de 7 dias", retryable: false };
+      }
+    }
+
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.externalId}/events`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify(corpo),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          ok: false, matchKeys: [], responseBody: json,
+          error: `HTTP ${res.status}`,
+          retryable: res.status >= 500 || res.status === 429,
+        };
+      }
+      return { ok: true, matchKeys: [], responseBody: json };
+    } catch (e) {
+      return {
+        ok: false, matchKeys: [],
+        error: e instanceof Error ? e.message : String(e), retryable: true,
+      };
+    }
+  },
 };

@@ -12,7 +12,7 @@
  * tentativa colide no banco e para ali.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "../db/index";
 import { destinations, dispatches, orderItems, orders } from "../db/schema";
 import { getDestination } from "../destinations/registry";
@@ -128,6 +128,12 @@ export async function dispatchOrder(
         responseBody: r.responseBody ?? null,
         error: r.error ?? null,
         sentAt: new Date(),
+        /*
+         * Só falha transitória entra na fila. Payload recusado não melhora
+         * repetindo, e insistir nele gastaria a cota que faria falta ao que
+         * tem conserto.
+         */
+        nextAttemptAt: !r.ok && r.retryable ? new Date(Date.now() + 60_000) : null,
       })
       .where(eq(dispatches.id, linha.id));
 
@@ -316,6 +322,8 @@ export async function dispatchBrowserEvent(e: EntradaNavegacao): Promise<Dispatc
         responseBody: r.responseBody ?? null,
         error: r.error ?? null,
         sentAt: new Date(),
+        /* Falha transitória entra na fila de reenvio; recusa de payload, não. */
+        nextAttemptAt: !r.ok && r.retryable ? new Date(Date.now() + 60_000) : null,
       })
       .where(eq(dispatches.id, linha.id));
 
@@ -328,4 +336,159 @@ export async function dispatchBrowserEvent(e: EntradaNavegacao): Promise<Dispatc
   }
 
   return resultados;
+}
+
+/* ==================================================== reenvio ========== */
+
+/*
+ * Espera entre tentativas, em minutos.
+ *
+ * Cresce rápido de propósito. Falha transitória costuma passar em minutos —
+ * um 500 num pico, uma instabilidade de rede. Falha que dura horas quase
+ * sempre é token vencido, e aí insistir de minuto em minuto só gasta cota da
+ * plataforma sem chance de sucesso.
+ *
+ * Cinco tentativas cobrem quase três horas. Além disso não vale: a Meta recusa
+ * evento com mais de sete dias, e uma conversão que não saiu em três horas
+ * quase sempre precisa de alguém mexendo na configuração, não de mais uma
+ * tentativa automática.
+ */
+const ESPERA_MIN = [1, 5, 15, 60, 180];
+
+/** Agenda a próxima tentativa, ou desiste. `null` quando não há mais. */
+function proximaTentativa(tentativas: number): Date | null {
+  const minutos = ESPERA_MIN[tentativas - 1];
+  return minutos === undefined ? null : new Date(Date.now() + minutos * 60_000);
+}
+
+export interface ResultadoReenvio {
+  tentados: number;
+  entregues: number;
+  aindaFalhando: number;
+  desistidos: number;
+}
+
+/**
+ * Tenta de novo os disparos que falharam por motivo transitório.
+ *
+ * Não roda em relógio: é chamado de carona no que já acontece — a chegada de
+ * um webhook, a abertura de uma tela. Assim não depende de cron, que o plano
+ * Hobby da Vercel limita a uma vez por dia, e não fica girando à toa quando
+ * não há nada para reenviar.
+ */
+export async function reenviarPendentes(
+  tenantId: string,
+  limite = 10,
+): Promise<ResultadoReenvio> {
+  const agora = new Date();
+
+  const pendentes = await db
+    .select()
+    .from(dispatches)
+    .where(and(
+      eq(dispatches.tenantId, tenantId),
+      eq(dispatches.status, "failed"),
+      isNotNull(dispatches.nextAttemptAt),
+      lte(dispatches.nextAttemptAt, agora),
+    ))
+    .orderBy(dispatches.nextAttemptAt)
+    .limit(limite);
+
+  const r: ResultadoReenvio = { tentados: 0, entregues: 0, aindaFalhando: 0, desistidos: 0 };
+  if (pendentes.length === 0) return r;
+
+  for (const d of pendentes) {
+    r.tentados++;
+
+    /*
+     * Reserva a tentativa ANTES de executar, empurrando a próxima data. Se
+     * duas execuções pegarem o mesmo disparo — a de um webhook e a de uma
+     * tela, no mesmo segundo — a segunda já não o encontra na janela.
+     */
+    const tentativas = d.attempts + 1;
+    await db.update(dispatches)
+      .set({ attempts: tentativas, nextAttemptAt: proximaTentativa(tentativas) })
+      .where(eq(dispatches.id, d.id));
+
+    const [destino] = await db.select().from(destinations)
+      .where(eq(destinations.id, d.destinationId)).limit(1);
+
+    const adapter = destino ? getDestination(destino.platform) : undefined;
+    if (!destino || !adapter || !destino.active) {
+      /* Destino sumiu ou foi desativado: não há para onde reenviar. */
+      await db.update(dispatches)
+        .set({ nextAttemptAt: null, error: "destino removido ou inativo" })
+        .where(eq(dispatches.id, d.id));
+      r.desistidos++;
+      continue;
+    }
+
+    /*
+     * Reconstrói o pedido a partir do payload que ficou guardado.
+     *
+     * É o motivo de gravar `requestBody` em cada disparo: sem ele o reenvio
+     * teria que remontar tudo do banco, e o que fosse recalculado poderia sair
+     * diferente — outro valor de custo, outro nome de campanha. O reenvio tem
+     * de mandar o MESMO evento, senão a plataforma o trata como novo.
+     */
+    const corpo = d.requestBody as Record<string, unknown> | null;
+    if (!corpo) {
+      await db.update(dispatches)
+        .set({ nextAttemptAt: null, error: "sem payload guardado para reenviar" })
+        .where(eq(dispatches.id, d.id));
+      r.desistidos++;
+      continue;
+    }
+
+    let credenciais: Record<string, string>;
+    try {
+      credenciais = await decryptRecord(destino.credentials);
+    } catch {
+      await db.update(dispatches)
+        .set({ nextAttemptAt: null, error: "credencial ilegível" })
+        .where(eq(dispatches.id, d.id));
+      r.desistidos++;
+      continue;
+    }
+
+    if (!adapter.reenviar) {
+      await db.update(dispatches)
+        .set({ nextAttemptAt: null, error: "este destino não sabe reenviar" })
+        .where(eq(dispatches.id, d.id));
+      r.desistidos++;
+      continue;
+    }
+
+    const resultado = await adapter.reenviar(corpo, {
+      externalId: destino.externalId,
+      credentials: credenciais,
+      testEventCode: destino.testEventCode,
+      config: destino.config,
+    });
+
+    if (resultado.ok) {
+      await db.update(dispatches)
+        .set({
+          status: "sent", error: null, nextAttemptAt: null,
+          responseBody: resultado.responseBody ?? null, sentAt: new Date(),
+        })
+        .where(eq(dispatches.id, d.id));
+      r.entregues++;
+      continue;
+    }
+
+    const desistir = !resultado.retryable || proximaTentativa(tentativas) === null;
+    await db.update(dispatches)
+      .set({
+        error: resultado.error ?? "falhou de novo",
+        responseBody: resultado.responseBody ?? null,
+        nextAttemptAt: desistir ? null : proximaTentativa(tentativas),
+      })
+      .where(eq(dispatches.id, d.id));
+
+    if (desistir) r.desistidos++;
+    else r.aindaFalhando++;
+  }
+
+  return r;
 }

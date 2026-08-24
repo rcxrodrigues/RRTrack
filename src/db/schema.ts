@@ -409,9 +409,24 @@ export const dispatches = pgTable("dispatches", {
   responseBody: jsonb("response_body"),
   error: text("error"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
+
+  /*
+   * Quando tentar de novo.
+   *
+   * Sem isto, um disparo que falhasse ficava falhado para sempre: o token cai
+   * por uma hora, a plataforma dá 500 num pico, e aquelas conversões somem —
+   * sem fila, sem nova tentativa, sem ninguém notar. É perda direta de
+   * conversão, que é justamente o que o sistema existe para evitar.
+   *
+   * Só erro TRANSITÓRIO ganha data. Payload recusado não melhora repetindo, e
+   * insistir nele só gasta cota que faria falta ao que tem conserto.
+   */
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("dispatches_dest_event").on(t.destinationId, t.eventId, t.eventName),
+  /* O caminho quente do reenvio: achar o que está na hora de tentar. */
+  index("dispatches_proxima_tentativa").on(t.nextAttemptAt),
   index("dispatches_tenant_status").on(t.tenantId, t.status),
   index("dispatches_order").on(t.orderId),
 ]);

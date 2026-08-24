@@ -225,4 +225,41 @@ export const tiktokAdapter: DestinationAdapter = {
       };
     }
   },
+
+  async reenviar(corpo: unknown, cfg: DestinationConfig): Promise<DispatchResult> {
+    const token = cfg.credentials.accessToken;
+    if (!token) return { ok: false, matchKeys: [], error: "sem access token", retryable: false };
+
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json", "Access-Token": token },
+        body: JSON.stringify(corpo),
+      });
+      const json = await res.json().catch(() => ({})) as { code?: number; message?: string };
+
+      if (!res.ok) {
+        return {
+          ok: false, matchKeys: [], responseBody: json,
+          error: `HTTP ${res.status}`,
+          retryable: res.status >= 500 || res.status === 429,
+        };
+      }
+
+      /* A recusa continua vindo dentro do 200, também no reenvio. */
+      if (typeof json.code === "number" && json.code !== 0) {
+        return {
+          ok: false, matchKeys: [], responseBody: json,
+          error: `TikTok code ${json.code}: ${json.message ?? "sem mensagem"}`,
+          retryable: json.code === 40100,
+        };
+      }
+      return { ok: true, matchKeys: [], responseBody: json };
+    } catch (e) {
+      return {
+        ok: false, matchKeys: [],
+        error: e instanceof Error ? e.message : String(e), retryable: true,
+      };
+    }
+  },
 };

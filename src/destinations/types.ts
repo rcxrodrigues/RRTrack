@@ -87,4 +87,14 @@ export interface DestinationAdapter {
   /** Eventos que este destino aceita. */
   supports: readonly ConversionEvent[];
   send(input: DispatchInput, cfg: DestinationConfig): Promise<DispatchResult>;
+
+  /*
+   * Reenvia um payload que já foi montado e falhou.
+   *
+   * Recebe o corpo EXATO da tentativa anterior, e não os dados para remontar.
+   * A diferença importa: remontar poderia produzir um evento diferente — outro
+   * carimbo de tempo, outro custo recalculado — e a plataforma o trataria como
+   * evento novo, em vez da mesma conversão que não passou.
+   */
+  reenviar?(corpo: unknown, cfg: DestinationConfig): Promise<DispatchResult>;
 }

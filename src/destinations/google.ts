@@ -224,4 +224,45 @@ export const googleAdapter: DestinationAdapter = {
       };
     }
   },
+
+  async reenviar(corpo: unknown, cfg: DestinationConfig): Promise<DispatchResult> {
+    let token: string;
+    try {
+      token = await accessToken(cfg.credentials);
+    } catch (e) {
+      return {
+        ok: false, matchKeys: [], retryable: false,
+        error: e instanceof Error ? e.message : "falha na autenticação do Google",
+      };
+    }
+
+    try {
+      const res = await fetch(
+        `https://googleads.googleapis.com/${VERSAO}/customers/${soDigitos(cfg.externalId)}:uploadClickConversions`,
+        { method: "POST", headers: cabecalhos(token, cfg.credentials), body: JSON.stringify(corpo) },
+      );
+      const json = await res.json().catch(() => ({})) as { partialFailureError?: { message?: string } };
+
+      if (!res.ok) {
+        return {
+          ok: false, matchKeys: [], responseBody: json,
+          error: `HTTP ${res.status}`,
+          retryable: res.status >= 500 || res.status === 429,
+        };
+      }
+      if (json.partialFailureError?.message) {
+        return {
+          ok: false, matchKeys: [], responseBody: json,
+          error: `Google recusou: ${json.partialFailureError.message}`,
+          retryable: false,
+        };
+      }
+      return { ok: true, matchKeys: [], responseBody: json };
+    } catch (e) {
+      return {
+        ok: false, matchKeys: [],
+        error: e instanceof Error ? e.message : String(e), retryable: true,
+      };
+    }
+  },
 };
