@@ -31,6 +31,8 @@ const D = {
   utms: '<path d="M8.5 11.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.54 3.54 0 0 0-5-5l-1.4 1.4"/><path d="M11.5 8.5a3.5 3.5 0 0 0-5 0L4 11a3.54 3.54 0 0 0 5 5l1.4-1.4"/>',
   rastreio: '<circle cx="10" cy="10" r="2"/><path d="M5.8 5.8a6 6 0 0 0 0 8.4M14.2 5.8a6 6 0 0 1 0 8.4"/>',
   integra: '<path d="M7 3v5M13 3v5M4.5 8h11v3a5.5 5.5 0 0 1-11 0V8zM10 16.5V18"/>',
+  produtos: '<path d="M10 2.5l7 3.7v7.6l-7 3.7-7-3.7V6.2l7-3.7zM3 6.2l7 3.7 7-3.7M10 9.9V17"/>',
+  testes: '<path d="M8 2.5v5.2L4 15a1.6 1.6 0 0 0 1.4 2.5h9.2A1.6 1.6 0 0 0 16 15l-4-7.3V2.5M7 2.5h6M6.2 12h7.6"/>',
 };
 
 const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: string; icone: string }> }> = [
@@ -50,6 +52,13 @@ const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: strin
     itens: [
       { href: "/utms", rotulo: "UTMs", icone: D.utms },
       { href: "/rastreamento", rotulo: "Saúde", icone: D.rastreio },
+      { href: "/testes", rotulo: "Testes", icone: D.testes },
+    ],
+  },
+  {
+    grupo: "Configuração",
+    itens: [
+      { href: "/produtos", rotulo: "Produtos", icone: D.produtos },
       { href: "/integracoes", rotulo: "Integrações", icone: D.integra },
     ],
   },

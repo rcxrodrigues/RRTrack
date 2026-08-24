@@ -30,7 +30,7 @@ import {
 } from "../core/hash";
 import { isValidFbc, isValidFbp } from "../core/identity";
 
-const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v21.0";
+const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v23.0";
 
 /** Nossos nomes canônicos -> nomes padrão da Meta. */
 const EVENT_NAMES: Record<ConversionEvent, string> = {

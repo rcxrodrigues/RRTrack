@@ -25,7 +25,7 @@ import type {
   AdSpendAdapter, CredenciaisAnuncio, JanelaData, LinhaGasto, ResultadoGasto,
 } from "./types";
 
-const VERSAO = process.env.META_GRAPH_VERSION ?? "v21.0";
+const VERSAO = process.env.META_GRAPH_VERSION ?? "v23.0";
 
 const CAMPOS = [
   "spend", "impressions", "clicks",

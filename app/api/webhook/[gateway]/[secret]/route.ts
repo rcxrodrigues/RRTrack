@@ -18,6 +18,7 @@ import { getGateway } from "@/gateways/registry";
 import { resolveAttribution } from "@/core/attribution";
 import { dispatchOrder } from "@/core/dispatch";
 import { ORDER_STATUS_RANK } from "@/core/types";
+import { aplicarCustos } from "@/core/custos";
 import { decryptRecord } from "@/core/crypto";
 
 export const runtime = "nodejs";
@@ -258,6 +259,13 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
         })));
       }
     }
+
+    /*
+     * Aplica o custo dos produtos, com o preço que valia na data do pedido.
+     * Sem isto o "lucro" seria margem sobre o anúncio — o que some quando
+     * chega a nota do fornecedor.
+     */
+    await aplicarCustos(conexao.tenantId, orderRowId, pedido.occurredAt);
 
     /* Só venda paga vira conversão. Pendente ainda pode não acontecer. */
     let disparos: unknown[] = [];
