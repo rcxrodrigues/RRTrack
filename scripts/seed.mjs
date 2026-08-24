@@ -43,6 +43,8 @@ for (const [id, label] of [
   ["pagou", "Pagou.ai"],
   ["appmax", "Appmax"],
   ["millions", "MillionsPay"],
+  /* Coringa: a venda empurrada por quem não tem adaptador. */
+  ["api", "Entrada por API"],
 ]) {
   const segredo = "whsec_" + Buffer.from(wc.getRandomValues(new Uint8Array(24))).toString("hex");
   const [c] = await sql`

@@ -31,7 +31,7 @@ const UNITARIOS = [
 ];
 
 /* De ponta a ponta: batem no servidor de verdade, e precisam de uma semente. */
-const PONTA = ["e2e", "gateways", "eventos", "enriquecimento"];
+const PONTA = ["e2e", "gateways", "eventos", "enriquecimento", "api-entrada"];
 
 console.log(`compilando ${COMPILAR.length} módulos...`);
 rmSync("_tmp", { recursive: true, force: true });
