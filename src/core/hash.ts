@@ -113,3 +113,33 @@ export async function hashOrUndefined(
   if (!value) return undefined;
   return sha256(value);
 }
+
+/*
+ * Data de nascimento no formato AAAAMMDD, sem separador — é o que a Meta
+ * espera. Aceita entrada em ISO e em formato brasileiro, porque as duas
+ * aparecem: a loja manda o que o formulário dela produziu.
+ */
+export function normalizeBirthdate(raw: string): string | null {
+  const t = raw.trim();
+
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1]! + iso[2]! + iso[3]!;
+
+  const br = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return br[3]! + br[2]! + br[1]!;
+
+  const cru = t.replace(/\D/g, "");
+  return cru.length === 8 ? cru : null;
+}
+
+/*
+ * Gênero como uma letra. A Meta só aceita "m" ou "f"; qualquer outra coisa é
+ * descartada por ela em silêncio, então descartamos aqui — mandar lixo não
+ * ajuda e ainda ocupa um campo que poderia sinalizar ausência.
+ */
+export function normalizeGender(raw: string): string | null {
+  const v = semAcento(raw.trim().toLowerCase());
+  if (v.startsWith("m") || v === "masculino" || v === "male") return "m";
+  if (v.startsWith("f") || v === "feminino" || v === "female") return "f";
+  return null;
+}

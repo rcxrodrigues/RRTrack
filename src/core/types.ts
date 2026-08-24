@@ -116,6 +116,10 @@ export interface Customer {
   state?: string;
   zip?: string;
   country?: string;
+  /* AAAA-MM-DD. Vira a chave `db` da Meta. */
+  birthdate?: string;
+  /* "m" ou "f". Vira a chave `ge`. */
+  gender?: string;
 }
 
 /**

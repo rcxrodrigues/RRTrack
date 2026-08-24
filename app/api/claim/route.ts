@@ -17,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import { clickSessions, orderClaims, sites } from "@/db/schema";
 import { getGateway } from "@/gateways/registry";
+import { encryptValue } from "@/core/crypto";
 
 export const runtime = "nodejs";
 
@@ -77,16 +78,53 @@ export async function POST(req: Request): Promise<Response> {
   if (!sessao) return Response.json({ erro: "sessão desconhecida" }, { status: 404, headers });
 
   /*
+   * Dados do comprador que a loja conhece e o gateway não devolve.
+   *
+   * Nenhum dos gateways integrados devolve endereço, e o CEP é o que destrava
+   * `ct`, `st` e `zp` no CAPI — três chaves de correspondência. Mas o checkout
+   * da loja já pediu o CEP para calcular frete, antes de o gateway entrar na
+   * história. Aqui ela repassa o que já tem.
+   *
+   * Cifrado antes de encostar no banco: é dado pessoal, e um dump não deve
+   * sair com o endereço dos seus compradores dentro.
+   */
+  const comprador: Record<string, string> = {};
+  const bruto = (body.customer ?? {}) as Record<string, unknown>;
+  for (const campo of ["name", "email", "phone", "document", "zip", "city", "state", "country", "birthdate", "gender"]) {
+    const v = bruto[campo];
+    if (typeof v === "string" && v.trim()) comprador[campo] = await encryptValue(v.trim());
+  }
+  const temComprador = Object.keys(comprador).length > 0;
+
+  /*
    * A primeira reivindicação vence. Se chegasse uma segunda para o mesmo
    * pedido, seria ou repetição inofensiva ou tentativa de roubar a atribuição
    * de uma venda alheia — em nenhum dos dois casos vale sobrescrever.
+   *
+   * O comprador é a exceção: ele pode chegar depois, quando a loja só descobre
+   * o CEP no passo seguinte do checkout. Completar não é roubar.
    */
   const [gravado] = await db.insert(orderClaims).values({
     tenantId: site.tenantId,
     gateway,
     gatewayOrderId: orderId,
     clickId,
+    customer: temComprador ? comprador : null,
   }).onConflictDoNothing().returning({ id: orderClaims.id });
 
-  return Response.json({ ok: true, novo: !!gravado }, { headers });
+  if (!gravado && temComprador) {
+    await db.update(orderClaims)
+      .set({ customer: comprador })
+      .where(and(
+        eq(orderClaims.tenantId, site.tenantId),
+        eq(orderClaims.gateway, gateway),
+        eq(orderClaims.gatewayOrderId, orderId),
+      ));
+  }
+
+  return Response.json({
+    ok: true,
+    novo: !!gravado,
+    comprador: temComprador ? Object.keys(bruto).length : 0,
+  }, { headers });
 }

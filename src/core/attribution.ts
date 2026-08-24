@@ -28,6 +28,11 @@ export interface ResolvedAttribution {
   method: AttributionMethod;
   clickId?: string;
   session?: ClickSession;
+  /*
+   * Comprador que a loja informou ao reivindicar o pedido, ainda cifrado.
+   * É o caminho do endereço, que nenhum gateway devolve.
+   */
+  compradorDaLoja?: Record<string, string> | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -85,7 +90,7 @@ export async function resolveAttribution(
    */
   if (gateway) {
     const [reivindicado] = await db
-      .select({ clickId: orderClaims.clickId })
+      .select({ clickId: orderClaims.clickId, customer: orderClaims.customer })
       .from(orderClaims)
       .where(and(
         eq(orderClaims.tenantId, tenantId),
@@ -101,7 +106,14 @@ export async function resolveAttribution(
         .where(eq(clickSessions.clickId, reivindicado.clickId))
         .limit(1);
 
-      if (sessao) return { method: "order_claim", clickId: sessao.clickId, session: sessao };
+      if (sessao) {
+        return {
+          method: "order_claim",
+          clickId: sessao.clickId,
+          session: sessao,
+          compradorDaLoja: reivindicado.customer,
+        };
+      }
     }
   }
 

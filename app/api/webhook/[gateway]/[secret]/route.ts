@@ -162,6 +162,35 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   try {
     const atribuicao = await resolveAttribution(conexao.tenantId, pedido, gateway);
 
+    /*
+     * Completa o comprador com o que a LOJA informou ao reivindicar o pedido.
+     *
+     * É o único caminho para endereço e nascimento: nenhum dos gateways
+     * integrados devolve isso. O dado do gateway prevalece onde os dois têm,
+     * porque foi ele que processou o pagamento — o da loja preenche o resto.
+     */
+    if (atribuicao.compradorDaLoja) {
+      try {
+        const daLoja = await decryptRecord(atribuicao.compradorDaLoja);
+        const g = pedido.customer ?? {};
+        pedido = {
+          ...pedido,
+          customer: {
+            name: g.name ?? daLoja.name,
+            email: g.email ?? daLoja.email,
+            phone: g.phone ?? daLoja.phone,
+            document: g.document ?? daLoja.document,
+            zip: g.zip ?? daLoja.zip,
+            city: g.city ?? daLoja.city,
+            state: g.state ?? daLoja.state,
+            country: g.country ?? daLoja.country ?? "br",
+            birthdate: daLoja.birthdate,
+            gender: daLoja.gender,
+          },
+        };
+      } catch { /* comprador ilegível: segue com o que o gateway deu */ }
+    }
+
     const [existente] = await db
       .select()
       .from(orders)

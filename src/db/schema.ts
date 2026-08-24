@@ -342,6 +342,23 @@ export const orderClaims = pgTable("order_claims", {
   gateway: text("gateway").notNull(),
   gatewayOrderId: text("gateway_order_id").notNull(),
   clickId: uuid("click_id").notNull().references(() => clickSessions.clickId, { onDelete: "cascade" }),
+
+  /*
+   * Dados do comprador que a LOJA conhece e o gateway não devolve.
+   *
+   * Existe por causa de um resultado negativo: nenhum dos três gateways
+   * devolve endereço. O pagou.ai chega a aceitar CEP e CPF ao cadastrar o
+   * cliente, mas não os devolve em consulta nenhuma — entra e não sai.
+   *
+   * Só que quem tem esse dado primeiro é a loja: o checkout dela pediu o CEP
+   * para calcular frete antes de o gateway existir na história. Aqui ela
+   * repassa, e o disparo ganha `ct`, `st`, `zp` e `db` — quatro chaves de
+   * correspondência que de outro jeito estariam perdidas.
+   *
+   * Cifrado em repouso, como qualquer dado pessoal guardado.
+   */
+  customer: jsonb("customer").$type<Record<string, string>>(),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("claims_tenant_gateway_order").on(t.tenantId, t.gateway, t.gatewayOrderId),

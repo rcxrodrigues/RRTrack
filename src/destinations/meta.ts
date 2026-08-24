@@ -25,7 +25,8 @@ import type {
 } from "./types";
 import {
   normalizeEmail, normalizePhone, normalizeZip, normalizeCity,
-  normalizeState, normalizeCountry, splitName, hashOrUndefined, sha256,
+  normalizeState, normalizeCountry, normalizeBirthdate, normalizeGender,
+  splitName, hashOrUndefined, sha256,
 } from "../core/hash";
 import { isValidFbc, isValidFbp } from "../core/identity";
 
@@ -46,6 +47,7 @@ const EVENT_NAMES: Record<ConversionEvent, string> = {
 interface MetaUserData {
   em?: string[]; ph?: string[]; fn?: string[]; ln?: string[];
   ct?: string[]; st?: string[]; zp?: string[]; country?: string[];
+  db?: string[]; ge?: string[];
   external_id?: string[];
   fbp?: string; fbc?: string;
   client_ip_address?: string; client_user_agent?: string;
@@ -80,6 +82,14 @@ async function buildUserData(
   if (c?.state) put("st", await hashOrUndefined(normalizeState(c.state)), "st");
   if (c?.zip) put("zp", await hashOrUndefined(normalizeZip(c.zip)), "zp");
   if (c?.country) put("country", await hashOrUndefined(normalizeCountry(c.country)), "country");
+
+  /*
+   * Nascimento e gênero raramente chegam do gateway — quase sempre vêm da
+   * loja, pela reivindicação. São duas chaves a mais quando existem, e nada
+   * quando não existem.
+   */
+  if (c?.birthdate) put("db", await hashOrUndefined(normalizeBirthdate(c.birthdate)), "db");
+  if (c?.gender) put("ge", await hashOrUndefined(normalizeGender(c.gender)), "ge");
 
   /*
    * external_id é o identificador de primeira parte mais subestimado que
