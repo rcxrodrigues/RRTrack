@@ -522,11 +522,6 @@ export function Integracoes({
                       }}>{ev}</span>
                     ))}
                   </div>
-                  {p.textoBotao && (
-                    <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 9 }}>
-                      Checkout detectado por botão contendo <span className="num">{p.textoBotao}</span>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -579,17 +574,12 @@ export function Integracoes({
                   </div>
                 </div>
 
-                <Campo rotulo="Texto do botão de compra (opcional)" placeholder="COMPRAR AGORA"
-                  dica="Se preenchido, o snippet marca sozinho qualquer botão com esse texto como início de checkout — sem você tocar no HTML."
-                  {...campo("textoBotaoCheckout")} />
-
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                   <Botao disabled={salvando} onClick={() => salvar({
                     tipo: "pixel",
                     plataforma: form.plataforma ?? "meta",
                     externalId: form.externalId, token: form.token, label: form.label,
                     testEventCode: form.testEventCode,
-                    textoBotaoCheckout: form.textoBotaoCheckout,
                     eventos: eventosSel,
                   })}>{salvando ? "salvando…" : "Salvar pixel"}</Botao>
                   <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { AutoAtualiza } from "./auto-atualiza";
 
 /*
  * Peças compartilhadas pelas telas do painel.
@@ -69,7 +70,8 @@ export function Cabecalho({
         <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>{titulo}</h1>
         <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "3px 0 0", maxWidth: 620 }}>{descricao}</p>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <AutoAtualiza />
         {extra}
         <div style={{
           display: "flex", gap: 2, padding: 3, borderRadius: 6,
