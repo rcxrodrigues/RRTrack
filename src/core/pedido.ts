@@ -21,7 +21,7 @@ import { resolveAttribution, type ResolvedAttribution } from "./attribution";
 import { dispatchOrder } from "./dispatch";
 import { ORDER_STATUS_RANK, type CanonicalOrder } from "./types";
 import { aplicarCustos } from "./custos";
-import { decryptRecord } from "./crypto";
+import { decryptRecord, encryptRecord } from "./crypto";
 
 export interface ContextoPedido {
   tenantId: string;
@@ -102,6 +102,28 @@ export async function registrarPedido(
     };
   }
 
+  /*
+   * Cifra o comprador antes de gravar.
+   *
+   * O schema sempre disse "cifrado em repouso" e não estava: nome, e-mail,
+   * telefone, CPF, endereço e nascimento iam em claro para o jsonb. Um dump do
+   * banco, ou uma DATABASE_URL vazada, entregaria o cadastro inteiro de todos
+   * os compradores — e CPF em claro é o pior item dessa lista.
+   *
+   * Não custa nada em qualidade de evento: o disparo usa o comprador que está
+   * em memória, vindo do webhook, e não relê esta coluna. O que se grava aqui
+   * serve para conferência e reprocessamento, não para o CAPI.
+   */
+  const comprador = pedido.customer
+    ? await encryptRecord(
+        Object.fromEntries(
+          Object.entries(pedido.customer).filter(
+            (e): e is [string, string] => typeof e[1] === "string" && e[1] !== "",
+          ),
+        ),
+      )
+    : undefined;
+
   const comum = {
     status: pedido.status,
     currency: pedido.currency,
@@ -111,7 +133,7 @@ export async function registrarPedido(
     discountCents: pedido.discountCents ?? null,
     paymentMethod: pedido.paymentMethod,
     installments: pedido.installments ?? null,
-    customer: pedido.customer as Record<string, string> | undefined,
+    customer: comprador,
     clickId: atribuicao.clickId ?? null,
     attributionMethod: atribuicao.method,
     occurredAt: pedido.occurredAt,

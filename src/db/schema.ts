@@ -284,7 +284,13 @@ export const orders = pgTable("orders", {
   paymentMethod: paymentMethodEnum("payment_method").notNull().default("other"),
   installments: integer("installments"),
 
-  /* Comprador, cifrado em repouso. O painel mostra só o necessário. */
+  /*
+   * Comprador, cifrado em repouso — campo a campo, por core/crypto.
+   *
+   * O disparo NÃO lê daqui: ele usa o comprador que veio do webhook, ainda em
+   * memória. Esta coluna serve para conferência e reprocessamento, então cifrar
+   * não custa nenhuma chave de correspondência.
+   */
   customer: jsonb("customer").$type<Record<string, string>>(),
 
   /* Sessão que originou a venda, quando o clickId voltou pelo repasse. */
