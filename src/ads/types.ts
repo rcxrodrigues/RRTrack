@@ -71,13 +71,22 @@ export interface ResultadoGasto {
 }
 
 export interface CredenciaisAnuncio {
+  /* Meta e TikTok: um token longo e pronto. */
   accessToken?: string;
+
   /* Alguns relatórios não informam a moeda; o cadastro pode dizer. */
   moeda?: string;
+
+  /*
+   * Google: OAuth2 completo, porque não existe token longo por lá.
+   * `loginCustomerId` só quando a conta é acessada por uma gerenciadora.
+   */
   developerToken?: string;
   refreshToken?: string;
   clientId?: string;
   clientSecret?: string;
+  loginCustomerId?: string;
+
   [k: string]: string | undefined;
 }
 

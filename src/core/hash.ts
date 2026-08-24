@@ -143,3 +143,36 @@ export function normalizeGender(raw: string): string | null {
   if (v.startsWith("f") || v === "feminino" || v === "female") return "f";
   return null;
 }
+
+/*
+ * E-mail no padrão do GOOGLE, que é diferente do de todo mundo.
+ *
+ * Além de minúsculas e sem espaços, o Google manda remover pontos e o sufixo
+ * com "+" do nome de usuário quando o domínio é gmail.com ou googlemail.com —
+ * porque para ele `jo.se+loja@gmail.com` e `jose@gmail.com` são a MESMA caixa.
+ *
+ * Nem a Meta nem o TikTok fazem isso. Usar a normalização deles aqui geraria
+ * um hash que nunca casa, para justamente os endereços mais comuns do Brasil.
+ */
+export function normalizeEmailGoogle(raw: string): string | null {
+  const base = normalizeEmail(raw);
+  if (!base) return null;
+
+  const arroba = base.lastIndexOf("@");
+  const usuario = base.slice(0, arroba);
+  const dominio = base.slice(arroba + 1);
+
+  if (dominio !== "gmail.com" && dominio !== "googlemail.com") return base;
+
+  const limpo = usuario.split("+")[0]!.replace(/\./g, "");
+  return limpo ? `${limpo}@${dominio}` : null;
+}
+
+/*
+ * Telefone em E.164 COM o sinal de mais — o formato que Google e TikTok
+ * querem, e que a Meta não quer. Três plataformas, dois formatos.
+ */
+export function normalizePhoneE164(raw: string): string | null {
+  const d = normalizePhone(raw);
+  return d ? "+" + d : null;
+}

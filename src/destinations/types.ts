@@ -39,7 +39,21 @@ export interface DispatchInput {
 }
 
 export interface DestinationCredentials {
+  /* Meta e TikTok: token longo e pronto. */
   accessToken?: string;
+
+  /*
+   * Google: OAuth2 completo, mais o developer token que precisa de aprovação
+   * dele, mais o nome do recurso da ação de conversão. É a integração com mais
+   * peças das três — e a única que não funciona no dia em que se cadastra.
+   */
+  developerToken?: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+  loginCustomerId?: string;
+  conversionAction?: string;
+
   [k: string]: string | undefined;
 }
 
