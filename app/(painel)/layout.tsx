@@ -26,7 +26,7 @@ export default async function PainelLayout({ children }: { children: React.React
   const placar = loja ? await placarDaLoja(loja.id) : null;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div className="rr-quadro" style={{ display: "flex", minHeight: "100vh" }}>
       <Navegacao lojaAtual={loja} lojas={ctx.lojas} usuario={ctx.usuario} />
       <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {placar && <BarraFaturamento placar={placar} moeda={loja!.currency} />}

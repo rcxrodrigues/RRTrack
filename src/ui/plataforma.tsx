@@ -208,7 +208,7 @@ export function Plataforma({
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
 
       {/* abas de nível */}
-      <div style={{ padding: "16px 20px 0", background: "var(--painel)", borderBottom: "1px solid var(--linha)" }}>
+      <div className="rr-conteudo" style={{ padding: "16px 20px 0", background: "var(--painel)", borderBottom: "1px solid var(--linha)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>{titulo}</h1>
           <div style={{ display: "flex", gap: 8 }}>
@@ -314,7 +314,7 @@ export function Plataforma({
       )}
 
       {/* tabela */}
-      <div style={{ flexGrow: 1, padding: "16px 20px 28px", overflowX: "auto" }}>
+      <div className="rr-conteudo" style={{ flexGrow: 1, padding: "16px 20px 28px", overflowX: "auto" }}>
         {!temConta ? (
           <Vazio
             titulo="Nenhuma conta conectada"

@@ -80,3 +80,73 @@ input::placeholder { color: var(--ink-tenue); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ------------------------------------------------------------ celular -- */
+
+/*
+ * O painel nasceu para monitor: barra lateral fixa de 178px, tabela de mil e
+ * quinhentos pixels, três blocos lado a lado no topo. Nada disso cabe num
+ * telefone, e o resultado era conteúdo espremido com a página inteira rolando
+ * de lado.
+ *
+ * A regra abaixo não tenta reproduzir a tela de monitor menor — reorganiza. A
+ * lateral vira barra horizontal que rola, o topo empilha, e a tabela rola
+ * dentro do próprio quadro em vez de arrastar a página junto.
+ *
+ * 860px porque é onde a tabela de campanhas deixa de caber mesmo com as
+ * colunas essenciais; abaixo disso não há arranjo que salve, só reorganização.
+ */
+@media (max-width: 860px) {
+  .rr-quadro { flex-direction: column; }
+
+  /* De coluna fixa a faixa horizontal rolável. */
+  .rr-lateral {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--linha);
+  }
+
+  .rr-lateral-topo { padding: 12px 14px 8px !important; }
+
+  /*
+   * Os links viram uma fila que rola de lado. Empilhá-los daria uma coluna de
+   * onze itens que empurraria o conteúdo para baixo da dobra a cada abertura.
+   */
+  .rr-lateral nav {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 0 10px 10px !important;
+    scrollbar-width: none;
+  }
+  .rr-lateral nav::-webkit-scrollbar { display: none; }
+
+  .rr-lateral nav > div { margin-bottom: 0 !important; display: contents; }
+  /* Os rótulos de grupo não fazem sentido numa fila horizontal. */
+  .rr-grupo { display: none !important; }
+  .rr-lateral nav a { white-space: nowrap; }
+
+  .rr-rodape { display: none !important; }
+
+  /* O placar empilha: três blocos lado a lado viram ilegíveis. */
+  .rr-barra {
+    flex-wrap: wrap;
+    gap: 8px 12px !important;
+    padding: 10px 14px !important;
+  }
+  .rr-barra-progresso { order: 3; flex-basis: 100%; }
+
+  /* Respiro menor: 20px de cada lado num telefone é a metade da tela. */
+  .rr-conteudo { padding-left: 14px !important; padding-right: 14px !important; }
+}
+
+/*
+ * Nenhuma tela do painel pode arrastar a página de lado. Tabela larga rola
+ * dentro do quadro dela; a janela fica parada.
+ */
+@media (max-width: 860px) {
+  html, body { overflow-x: hidden; }
+}

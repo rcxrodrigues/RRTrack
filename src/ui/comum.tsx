@@ -69,7 +69,7 @@ export function Cabecalho({
   }
 
   return (
-    <div style={{
+    <div className="rr-conteudo" style={{
       padding: "16px 20px", borderBottom: "1px solid var(--linha)",
       background: "var(--painel)", display: "flex",
       alignItems: "flex-start", justifyContent: "space-between", gap: 20,

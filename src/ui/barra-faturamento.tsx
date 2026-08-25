@@ -37,7 +37,7 @@ export function BarraFaturamento({ placar, moeda }: { placar: Placar; moeda: str
   const cheia = ateCents === null;
 
   return (
-    <div style={{
+    <div className="rr-barra" style={{
       display: "flex", alignItems: "center", gap: 16,
       padding: "9px 20px", borderBottom: "1px solid var(--linha)",
       background: "var(--painel)",
@@ -57,7 +57,7 @@ export function BarraFaturamento({ placar, moeda }: { placar: Placar; moeda: str
       </div>
 
       {/* a barra */}
-      <div style={{ flexGrow: 1, minWidth: 90, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className="rr-barra-progresso" style={{ flexGrow: 1, minWidth: 90, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{
           height: 5, borderRadius: 3, background: "var(--linha)", overflow: "hidden",
         }}>

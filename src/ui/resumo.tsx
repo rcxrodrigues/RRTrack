@@ -78,7 +78,7 @@ export function Resumo({
         periodo={periodo}
       />
 
-      <div style={{ padding: "16px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="rr-conteudo" style={{ padding: "16px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {vazio && (
           <div style={{

@@ -83,5 +83,39 @@ for (const t of PONTA) {
 }
 
 rmSync("_tmp", { recursive: true, force: true });
+
+/*
+ * A suíte apaga as lojas que ela mesma criou.
+ *
+ * Cada teste limpa a sua no começo, para nascer do zero, mas nenhum limpava no
+ * fim — então toda execução deixava uma loja de teste para trás, e elas iam se
+ * acumulando no seletor de dashboard junto com as de verdade.
+ *
+ * A lista é fixa de propósito. Apagar por padrão de nome — tudo que contém
+ * "teste" — um dia apagaria a loja de alguém que chamou a oferta de "Teste A/B".
+ */
+const DESCARTAVEIS = [
+  "loja-de-teste", "metricas-teste", "faturamento-teste", "faturamento-outro",
+];
+
+try {
+  /*
+   * O runner nunca precisou do banco — quem falava com ele eram os testes
+   * filhos, cada um carregando o .env por conta. A limpeza é a primeira coisa
+   * que ele faz sozinho, e por isso precisa carregar também.
+   */
+  process.loadEnvFile(".env");
+  const { neon } = await import("@neondatabase/serverless");
+  const sql = neon(process.env.DATABASE_URL);
+  const apagadas = await sql`
+    DELETE FROM tenants WHERE slug = ANY(${DESCARTAVEIS}) RETURNING slug`;
+  if (apagadas.length) {
+    console.log(`\nlimpeza: ${apagadas.map((t) => t.slug).join(", ")}`);
+  }
+} catch (e) {
+  /* Limpeza que falha não pode reprovar a suíte — só avisa. */
+  console.log(`\naviso: não deu para limpar as lojas de teste (${e.message})`);
+}
+
 console.log(`\n${falhas === 0 ? "SUÍTE INTEIRA PASSOU" : falhas + " SUÍTE(S) COM FALHA"}\n`);
 process.exit(falhas === 0 ? 0 : 1);

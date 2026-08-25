@@ -25,6 +25,7 @@ export function SeletorLoja({
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [criando, setCriando] = useState(false);
+  const [editando, setEditando] = useState<LojaDoUsuario | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
 
   /* Clique fora e Esc fecham o menu, como todo menu. */
@@ -91,20 +92,46 @@ export function SeletorLoja({
           {lojas.map((l) => {
             const ativo = l.slug === atual?.slug;
             return (
-              <button key={l.slug} role="option" aria-selected={ativo}
-                onClick={() => trocar(l.slug)}
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 6,
-                  padding: "6px 8px", borderRadius: 4, textAlign: "left", border: "none",
-                  background: ativo ? "var(--linha)" : "transparent",
-                  color: ativo ? "var(--acento)" : "var(--ink-fraco)",
-                  fontSize: 11.5, fontWeight: ativo ? 600 : 500, cursor: "pointer",
-                }}>
-                <span style={{ width: 10, flexShrink: 0 }}>{ativo ? "✓" : ""}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {l.nome}
-                </span>
-              </button>
+              /*
+                Duas ações na mesma linha, e por isso duas etiquetas irmãs em
+                vez de uma dentro da outra: botão aninhado em botão é HTML
+                inválido, e o navegador desmonta a árvore de um jeito que faz
+                o clique cair no elemento errado.
+              */
+              <div key={l.slug} style={{
+                display: "flex", alignItems: "center", gap: 2,
+                borderRadius: 4, background: ativo ? "var(--linha)" : "transparent",
+              }}>
+                <button role="option" aria-selected={ativo}
+                  onClick={() => trocar(l.slug)}
+                  style={{
+                    flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+                    padding: "6px 8px", borderRadius: 4, textAlign: "left",
+                    border: "none", background: "transparent",
+                    color: ativo ? "var(--acento)" : "var(--ink-fraco)",
+                    fontSize: 11.5, fontWeight: ativo ? 600 : 500, cursor: "pointer",
+                  }}>
+                  <span style={{ width: 10, flexShrink: 0 }}>{ativo ? "✓" : ""}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.nome}
+                  </span>
+                </button>
+                <button
+                  onClick={() => { setAberto(false); setEditando(l); }}
+                  aria-label={`Configurar ${l.nome}`}
+                  title="Renomear, ajustar ou excluir"
+                  style={{
+                    flexShrink: 0, width: 24, height: 24, display: "grid", placeItems: "center",
+                    border: "none", background: "transparent", borderRadius: 4,
+                    color: "var(--ink-tenue)", cursor: "pointer",
+                  }}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
+                       stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="8" cy="8" r="2" />
+                    <path d="M8 1.5v1.7M8 12.8v1.7M14.5 8h-1.7M3.2 8H1.5M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2M12.6 12.6l-1.2-1.2M4.6 4.6L3.4 3.4" />
+                  </svg>
+                </button>
+              </div>
             );
           })}
 
@@ -123,9 +150,220 @@ export function SeletorLoja({
       )}
 
       {criando && <DialogoNovoDashboard aoFechar={() => setCriando(false)} />}
+      {editando && (
+        <DialogoEditarDashboard
+          loja={editando}
+          ehUnico={lojas.length <= 1}
+          aoFechar={() => setEditando(null)}
+        />
+      )}
     </div>
   );
 }
+
+/* ------------------------------------------------------------- editar -- */
+
+function DialogoEditarDashboard({
+  loja, ehUnico, aoFechar,
+}: {
+  loja: LojaDoUsuario;
+  ehUnico: boolean;
+  aoFechar: () => void;
+}) {
+  const router = useRouter();
+  const [nome, setNome] = useState(loja.nome);
+  const [descricao, setDescricao] = useState(loja.descricao ?? "");
+  const [timezone, setTimezone] = useState(loja.timezone);
+  const [moeda, setMoeda] = useState(loja.currency);
+  const [contarFrete, setContarFrete] = useState(loja.countShipping);
+  const [contarJuros, setContarJuros] = useState(loja.countInterest);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  /* A exclusão fica atrás de um segundo passo, e não de um botão solto. */
+  const [excluindo, setExcluindo] = useState(false);
+  const [confirmacao, setConfirmacao] = useState("");
+
+  useEffect(() => {
+    const f = (e: KeyboardEvent) => { if (e.key === "Escape" && !salvando) aoFechar(); };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [aoFechar, salvando]);
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    const r = await fetch("/api/lojas", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        slug: loja.slug, nome, descricao, timezone, moeda, contarFrete, contarJuros,
+      }),
+    }).catch(() => null);
+
+    if (!r || !r.ok) {
+      setErro((await r?.json().catch(() => null))?.erro ?? "não deu para salvar");
+      setSalvando(false);
+      return;
+    }
+    aoFechar();
+    router.refresh();
+  }
+
+  async function excluir() {
+    setSalvando(true);
+    setErro(null);
+    const r = await fetch("/api/lojas", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: loja.slug, confirmacao }),
+    }).catch(() => null);
+
+    if (!r || !r.ok) {
+      setErro((await r?.json().catch(() => null))?.erro ?? "não deu para excluir");
+      setSalvando(false);
+      return;
+    }
+    aoFechar();
+    router.refresh();
+  }
+
+  return (
+    <div onClick={aoFechar} style={{
+      position: "fixed", inset: 0, zIndex: 60, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 20,
+      background: "rgba(4, 10, 14, .66)",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Configurar dashboard"
+        style={{
+          width: "min(460px, 100%)", background: "var(--painel)",
+          border: "1px solid var(--linha-forte)", borderRadius: 10, overflow: "hidden",
+        }}>
+
+        <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--linha)" }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 3 }}>
+            {excluindo ? "Excluir dashboard" : "Configurar dashboard"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-tenue)", lineHeight: 1.5 }}>
+            {excluindo
+              ? "Some tudo: vendas, sessões de clique, eventos, disparos e conexões. Não há como desfazer."
+              : loja.slug}
+          </div>
+        </div>
+
+        {excluindo ? (
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{
+              fontSize: 12.5, color: "var(--ink-medio)", lineHeight: 1.55,
+              padding: "11px 13px", borderRadius: 6,
+              background: "var(--negativo-fundo)", border: "1px solid var(--negativo)",
+            }}>
+              Para confirmar, digite <strong style={{ color: "var(--ink)" }}>{loja.nome}</strong> abaixo.
+            </div>
+            <input value={confirmacao} autoFocus onChange={(e) => setConfirmacao(e.target.value)}
+              placeholder={loja.nome} style={{ width: "100%" }} />
+            {erro && <Erro texto={erro} />}
+          </div>
+        ) : (
+          <div style={{
+            padding: "16px 20px", display: "flex", flexDirection: "column", gap: 13,
+            maxHeight: "58vh", overflowY: "auto",
+          }}>
+            <Campo rotulo="Nome">
+              <input value={nome} autoFocus onChange={(e) => setNome(e.target.value)} style={{ width: "100%" }} />
+            </Campo>
+            <Campo rotulo="Descrição" opcional>
+              <input value={descricao} onChange={(e) => setDescricao(e.target.value)} style={{ width: "100%" }} />
+            </Campo>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Campo rotulo="Fuso horário">
+                <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={{ width: "100%" }}>
+                  <option value="America/Sao_Paulo">GMT-3 · Brasília</option>
+                  <option value="America/Manaus">GMT-4 · Manaus</option>
+                  <option value="America/Rio_Branco">GMT-5 · Rio Branco</option>
+                  <option value="America/Noronha">GMT-2 · Noronha</option>
+                  <option value="UTC">UTC</option>
+                </select>
+              </Campo>
+              <Campo rotulo="Moeda">
+                <select value={moeda} onChange={(e) => setMoeda(e.target.value)} style={{ width: "100%" }}>
+                  <option value="BRL">Real (R$)</option>
+                  <option value="USD">Dólar (US$)</option>
+                  <option value="EUR">Euro (€)</option>
+                </select>
+              </Campo>
+            </div>
+            <Campo rotulo="Contabilizar frete"
+              ajuda="Mudar isto recalcula ROAS, lucro e margem de todo o histórico deste dashboard.">
+              <select value={contarFrete ? "1" : "0"} onChange={(e) => setContarFrete(e.target.value === "1")} style={{ width: "100%" }}>
+                <option value="1">Habilitado — entra no faturamento</option>
+                <option value="0">Não habilitado — fica de fora</option>
+              </select>
+            </Campo>
+            <Campo rotulo="Contabilizar juros">
+              <select value={contarJuros ? "1" : "0"} onChange={(e) => setContarJuros(e.target.value === "1")} style={{ width: "100%" }}>
+                <option value="1">Habilitado — entra no faturamento</option>
+                <option value="0">Não habilitado — fica de fora</option>
+              </select>
+            </Campo>
+            {erro && <Erro texto={erro} />}
+          </div>
+        )}
+
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+          padding: "12px 20px", borderTop: "1px solid var(--linha)",
+        }}>
+          {excluindo ? (
+            <>
+              <button onClick={() => { setExcluindo(false); setErro(null); }} style={botaoNeutro}>Voltar</button>
+              <button onClick={excluir} disabled={salvando || confirmacao !== loja.nome} style={{
+                ...botaoPrimario, background: "var(--negativo)", color: "#2B1614",
+                opacity: salvando || confirmacao !== loja.nome ? .5 : 1,
+              }}>{salvando ? "excluindo…" : "Excluir para sempre"}</button>
+            </>
+          ) : (
+            <>
+              {/*
+                Sem outro dashboard, excluir deixaria o painel sem nenhum e sem
+                caminho de volta pela interface. O botão some em vez de falhar
+                depois do clique.
+              */}
+              {ehUnico ? <span style={{ fontSize: 11, color: "var(--ink-tenue)" }}>
+                único dashboard
+              </span> : (
+                <button onClick={() => setExcluindo(true)} style={{
+                  ...botaoNeutro, borderColor: "transparent", color: "var(--negativo)",
+                }}>Excluir</button>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={aoFechar} disabled={salvando} style={botaoNeutro}>Cancelar</button>
+                <button onClick={salvar} disabled={salvando || nome.trim().length < 2} style={{
+                  ...botaoPrimario, opacity: salvando || nome.trim().length < 2 ? .5 : 1,
+                }}>{salvando ? "salvando…" : "Salvar"}</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Erro({ texto }: { texto: string }) {
+  return (
+    <div style={{
+      fontSize: 12, color: "var(--negativo)", padding: "9px 11px", borderRadius: 5,
+      background: "var(--negativo-fundo)", border: "1px solid var(--negativo)",
+    }}>{texto}</div>
+  );
+}
+
+const botaoNeutro: React.CSSProperties = {
+  padding: "7px 14px", borderRadius: 5, fontSize: 12, fontWeight: 500,
+  border: "1px solid var(--linha-forte)", background: "transparent",
+  color: "var(--ink-medio)",
+};
 
 /* ------------------------------------------------------------ criação -- */
 

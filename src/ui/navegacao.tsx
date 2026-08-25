@@ -85,13 +85,13 @@ export function Navegacao({
   }
 
   return (
-    <aside style={{
+    <aside className="rr-lateral" style={{
       width: 178, flexShrink: 0, borderRight: "1px solid var(--linha)",
       background: "var(--painel)", display: "flex", flexDirection: "column",
       height: "100vh", position: "sticky", top: 0,
     }}>
 
-      <div style={{ padding: "16px 14px 12px", display: "flex", alignItems: "center", gap: 9 }}>
+      <div className="rr-lateral-topo" style={{ padding: "16px 14px 12px", display: "flex", alignItems: "center", gap: 9 }}>
         <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="var(--acento)" strokeWidth="1.6">
           <circle cx="9" cy="9" r="1.8" fill="var(--acento)" stroke="none" />
           <path d="M4.2 4.2a6.8 6.8 0 0 0 0 9.6M13.8 4.2a6.8 6.8 0 0 1 0 9.6" />
@@ -111,7 +111,7 @@ export function Navegacao({
         {SECOES.map((secao, i) => (
           <div key={i} style={{ marginBottom: 14 }}>
             {secao.grupo && (
-              <div style={{
+              <div className="rr-grupo" style={{
                 fontSize: 9.5, letterSpacing: ".1em", textTransform: "uppercase",
                 color: "var(--ink-tenue)", fontWeight: 600, padding: "6px 10px 6px",
               }}>{secao.grupo}</div>
@@ -136,7 +136,7 @@ export function Navegacao({
       </nav>
 
       {/* usuário */}
-      <div style={{
+      <div className="rr-rodape" style={{
         borderTop: "1px solid var(--linha)", padding: "10px",
         display: "flex", alignItems: "center", gap: 9,
       }}>

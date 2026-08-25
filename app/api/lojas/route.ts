@@ -9,7 +9,7 @@
  * primeira classe e não configuração escondida.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/db/index";
 import { memberships, sites, tenants } from "@/db/schema";
@@ -168,5 +168,115 @@ export async function GET(): Promise<Response> {
     lojas: ctx.lojas.map((l) => ({
       slug: l.slug, nome: l.nome, dominio: dominios.get(l.id) ?? null,
     })),
+  });
+}
+
+/* ------------------------------------------------------------- editar -- */
+
+export async function PATCH(req: Request): Promise<Response> {
+  const ctx = await contexto();
+  if (!ctx) return Response.json({ erro: "não autenticado" }, { status: 401 });
+
+  const corpo = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const alvo = ctx.lojas.find((l) => l.slug === corpo.slug);
+  if (!alvo) return Response.json({ erro: "sem acesso a esse dashboard" }, { status: 403 });
+
+  const mudancas: Record<string, unknown> = {};
+
+  if (typeof corpo.nome === "string") {
+    const nome = corpo.nome.trim();
+    if (nome.length < 2) return Response.json({ erro: "o nome precisa de 2 letras" }, { status: 400 });
+    mudancas.name = nome;
+  }
+
+  if ("descricao" in corpo) {
+    const d = typeof corpo.descricao === "string" ? corpo.descricao.trim() : "";
+    mudancas.description = d || null;
+  }
+
+  if (typeof corpo.timezone === "string" && corpo.timezone) mudancas.timezone = corpo.timezone;
+  if (typeof corpo.moeda === "string" && corpo.moeda) mudancas.currency = corpo.moeda;
+  if (typeof corpo.contarFrete === "boolean") mudancas.countShipping = corpo.contarFrete;
+  if (typeof corpo.contarJuros === "boolean") mudancas.countInterest = corpo.contarJuros;
+
+  if (Object.keys(mudancas).length === 0) {
+    return Response.json({ erro: "nada para mudar" }, { status: 400 });
+  }
+
+  /*
+   * O apelido NÃO muda junto com o nome, de propósito. Ele é o que o cookie
+   * guarda e o que aparece na URL; trocá-lo derrubaria a sessão de quem
+   * estivesse com o dashboard aberto noutra aba, e por um motivo cosmético.
+   */
+  await db.update(tenants).set(mudancas).where(eq(tenants.id, alvo.id));
+
+  return Response.json({ ok: true, slug: alvo.slug });
+}
+
+/* ------------------------------------------------------------ excluir -- */
+
+export async function DELETE(req: Request): Promise<Response> {
+  const ctx = await contexto();
+  if (!ctx) return Response.json({ erro: "não autenticado" }, { status: 401 });
+
+  const { slug, confirmacao } = (await req.json().catch(() => ({}))) as {
+    slug?: string; confirmacao?: string;
+  };
+
+  const alvo = ctx.lojas.find((l) => l.slug === slug);
+  if (!alvo) return Response.json({ erro: "sem acesso a esse dashboard" }, { status: 403 });
+
+  /* Só dono apaga. Quem foi convidado para ver não leva a loja junto. */
+  if (alvo.papel !== "owner") {
+    return Response.json({ erro: "só o dono pode excluir" }, { status: 403 });
+  }
+
+  /*
+   * Não dá para ficar sem nenhum. Sem esta trava, apagar o último deixaria o
+   * painel numa tela de "nenhuma loja cadastrada" sem caminho de volta pela
+   * interface — só por script.
+   */
+  if (ctx.lojas.length <= 1) {
+    return Response.json({
+      erro: "este é o único dashboard; crie outro antes de excluir",
+    }, { status: 409 });
+  }
+
+  /*
+   * Exigir o nome digitado não é burocracia: a exclusão leva junto, em
+   * cascata, todas as vendas, sessões de clique, eventos, disparos e
+   * conexões de gateway. Não há desfazer, e a lixeira não existe.
+   */
+  if ((confirmacao ?? "").trim() !== alvo.nome) {
+    return Response.json({
+      erro: "digite o nome exato do dashboard para confirmar",
+    }, { status: 400 });
+  }
+
+  const [contagem] = await db
+    .select({
+      pedidos: sql<number>`(SELECT count(*)::int FROM orders WHERE tenant_id = ${alvo.id})`,
+      sessoes: sql<number>`(SELECT count(*)::int FROM click_sessions WHERE tenant_id = ${alvo.id})`,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, alvo.id));
+
+  await db.delete(tenants).where(eq(tenants.id, alvo.id));
+
+  /* Cai no primeiro que sobrou, para o painel não abrir órfão. */
+  const proxima = ctx.lojas.find((l) => l.slug !== alvo.slug);
+  const jar = await cookies();
+  if (proxima) {
+    jar.set(COOKIE_LOJA, proxima.slug, {
+      httpOnly: true, sameSite: "lax", path: "/",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+
+  return Response.json({
+    ok: true,
+    removidos: { pedidos: contagem?.pedidos ?? 0, sessoes: contagem?.sessoes ?? 0 },
+    agora: proxima?.slug ?? null,
   });
 }
