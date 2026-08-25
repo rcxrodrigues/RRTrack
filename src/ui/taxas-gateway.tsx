@@ -20,6 +20,14 @@ export interface Faixa { ateParcelas: number; percentual: number; fixoCents: num
 export interface Tabela {
   pix?: { percentual: number; fixoCents: number };
   credit_card?: Faixa[];
+  /*
+   * A tela não edita estes, mas eles existem na tabela e precisam sobreviver a
+   * um salvamento — ver `montar`. Boleto de gateway bloqueado hoje vira boleto
+   * liberado amanhã, e a taxa não pode sumir no meio do caminho.
+   */
+  boleto?: { percentual: number; fixoCents: number };
+  debit_card?: { percentual: number; fixoCents: number };
+  outros?: { percentual: number; fixoCents: number };
 }
 
 /* Faixas que os gateways brasileiros praticam com mais frequência. Chute
@@ -62,15 +70,29 @@ export function TaxasDoGateway({
   };
 
   function montar(): Tabela {
-    const t: Tabela = {};
+    /*
+     * Parte do que já estava gravado, e não de um objeto vazio.
+     *
+     * A tela edita Pix e cartão; a tabela também aceita boleto, débito e a
+     * regra de reserva `outros`. Montar do zero apagaria em silêncio o que
+     * esta tela não conhece — e apagar taxa de boleto não dá erro nenhum, só
+     * volta a inflar o lucro daquelas vendas.
+     */
+    const t: Tabela = { ...atual };
+
     if (pixPct.trim() || pixFixo.trim()) {
-      t.pix = { percentual: numero(pixPct), fixoCents: Math.round(numero(cartaoFixo || pixFixo) * 100) };
-      t.pix.fixoCents = Math.round(numero(pixFixo) * 100);
+      t.pix = { percentual: numero(pixPct), fixoCents: Math.round(numero(pixFixo) * 100) };
+    } else {
+      delete t.pix;
     }
+
     if (faixas.length) {
       const fixo = Math.round(numero(cartaoFixo) * 100);
       t.credit_card = faixas.map((f) => ({ ...f, fixoCents: fixo }));
+    } else {
+      delete t.credit_card;
     }
+
     return t;
   }
 
