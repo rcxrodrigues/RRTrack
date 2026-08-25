@@ -266,6 +266,77 @@ function ExemploApi() {
   );
 }
 
+/*
+ * A chave de API de um gateway já conectado.
+ *
+ * Existia um buraco: a tela só oferecia o campo de chave ao ADICIONAR o
+ * gateway, e escondia do menu quem já estava ativo. Quem conectou sem chave —
+ * que é o caminho natural, porque o webhook funciona sem ela — não tinha como
+ * acrescentar depois sem remover e refazer.
+ *
+ * E a chave não é detalhe em gateway que não assina o webhook. Sem ela a venda
+ * entra sem confirmação: qualquer um que descubra a URL insere uma venda que
+ * não houve, e dispara uma conversão falsa que a Meta usa para otimizar.
+ */
+function ChaveDeApi({
+  conexao, aberto, abrir, fechar, valor, mudou, salvando, gravar,
+}: {
+  conexao: Conexao;
+  aberto: boolean;
+  abrir: () => void;
+  fechar: () => void;
+  valor: string;
+  mudou: (v: string) => void;
+  salvando: boolean;
+  gravar: () => void;
+}) {
+  if (aberto) {
+    return (
+      <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--linha)" }}>
+        <Campo
+          rotulo={conexao.temCredencial ? "Trocar a chave de API" : "Chave de API"}
+          type="password"
+          placeholder="cole a chave do painel do gateway"
+          dica="Fica cifrada em repouso e nunca volta para a tela."
+          value={valor}
+          onChange={(e) => mudou(e.target.value)}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <Botao disabled={salvando || !valor} onClick={gravar}>
+            {salvando ? "salvando…" : "Salvar"}
+          </Botao>
+          <Botao tipo="secundario" onClick={fechar}>Cancelar</Botao>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      marginTop: 9, fontSize: 11,
+    }}>
+      {conexao.temCredencial ? (
+        <>
+          <Selo ok>chave de API</Selo>
+          <span style={{ color: "var(--ink-tenue)" }}>venda confirmada na origem</span>
+        </>
+      ) : (
+        <>
+          <Selo ok={false}>sem chave de API</Selo>
+          <span style={{ color: "var(--ink-tenue)" }}>a venda entra sem confirmação</span>
+        </>
+      )}
+      <button onClick={abrir} style={{
+        background: "none", border: "none", padding: 0, cursor: "pointer",
+        color: "var(--acento)", fontSize: 11, fontWeight: 600, marginLeft: "auto",
+      }}>
+        {conexao.temCredencial ? "trocar" : "adicionar"}
+      </button>
+    </div>
+  );
+}
+
 export function Integracoes({
   loja, base, site, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm,
 }: {
@@ -517,6 +588,19 @@ export function Integracoes({
                           O identificador do clique volta em <span className="num">{g?.repasse}</span>
                           {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
                         </div>
+                        <ChaveDeApi
+                          conexao={c}
+                          aberto={editando === `chave:${c.gateway}`}
+                          abrir={() => { setEditando(`chave:${c.gateway}`); setForm({}); }}
+                          fechar={() => setEditando(null)}
+                          valor={form.apiKey ?? ""}
+                          mudou={(v) => setForm((f) => ({ ...f, apiKey: v }))}
+                          salvando={salvando}
+                          gravar={() => salvar({
+                            tipo: "gateway", gateway: c.gateway,
+                            apiKey: form.apiKey, clientId: form.apiKey,
+                          })}
+                        />
                       </>
                     )}
                   </div>
