@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LojaDoUsuario } from "@/core/auth";
+import { TaxasDoGateway } from "./taxas-gateway";
 
 /*
  * Tela de Integrações.
@@ -26,6 +27,8 @@ interface Conta {
 interface Conexao {
   id: string; gateway: string; label: string; ativo: boolean;
   segredo: string; temCredencial: boolean;
+  /* Tabela de taxas por método de pagamento — ver core/taxas.ts. */
+  taxas: Record<string, unknown>;
 }
 interface Pixel {
   id: string; plataforma: string; externalId: string; label: string;
@@ -600,6 +603,14 @@ export function Integracoes({
                             tipo: "gateway", gateway: c.gateway,
                             apiKey: form.apiKey, clientId: form.apiKey,
                           })}
+                        />
+                        <TaxasDoGateway
+                          taxas={c.taxas}
+                          aberto={editando === `taxas:${c.gateway}`}
+                          abrir={() => setEditando(`taxas:${c.gateway}`)}
+                          fechar={() => setEditando(null)}
+                          salvando={salvando}
+                          gravar={(taxas) => salvar({ tipo: "taxas", gateway: c.gateway, taxas })}
                         />
                       </>
                     )}

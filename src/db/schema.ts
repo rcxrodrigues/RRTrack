@@ -130,6 +130,19 @@ export const gatewayConnections = pgTable("gateway_connections", {
    * em gateway que não assina o payload.
    */
   webhookSecret: text("webhook_secret").notNull(),
+
+  /*
+   * Quanto este gateway cobra, por método de pagamento — ver core/taxas.ts.
+   *
+   * Só é consultada quando o webhook NÃO informa a taxa. Gateway que manda o
+   * valor cobrado tem sempre razão: ele já embute promoção, antecipação e o
+   * que foi negociado, e a tabela aqui é estimativa do lojista.
+   *
+   * Vazia significa "não sei", não "não cobra" — e é o que faz a tela avisar
+   * em vez de declarar um lucro que não existe.
+   */
+  fees: jsonb("fees").$type<Record<string, unknown>>().notNull().default({}),
+
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("gateway_conn_tenant").on(t.tenantId)]);

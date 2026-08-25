@@ -17,7 +17,7 @@ const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
 /* Os que precisam de compilação, com o módulo que cada um exige. */
 const COMPILAR = [
   "src/core/resumo.ts", "src/core/rastreio.ts", "src/core/custos.ts",
-  "src/core/faixas.ts", "src/core/faturamento.ts",
+  "src/core/faixas.ts", "src/core/faturamento.ts", "src/core/taxas.ts",
   "src/core/metricas.ts", "src/core/reconciliacao.ts", "src/core/dispatch.ts",
   "src/core/sincronizar-gasto.ts",
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
@@ -27,7 +27,7 @@ const COMPILAR = [
 
 /* Unitários: falam com o banco e com APIs simuladas, nunca com a rede real. */
 const UNITARIOS = [
-  "metricas", "resumo", "faturamento", "limites", "custos",
+  "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
   "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
 ];
 

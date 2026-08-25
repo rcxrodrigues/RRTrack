@@ -16,12 +16,13 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { orderItems, orders } from "../db/schema";
+import { gatewayConnections, orderItems, orders } from "../db/schema";
 import { resolveAttribution, type ResolvedAttribution } from "./attribution";
 import { dispatchOrder } from "./dispatch";
 import { ORDER_STATUS_RANK, type CanonicalOrder } from "./types";
 import { aplicarCustos } from "./custos";
 import { decryptRecord, encryptRecord } from "./crypto";
+import { calcularTaxa, type TabelaTaxas } from "./taxas";
 
 export interface ContextoPedido {
   tenantId: string;
@@ -39,6 +40,27 @@ export interface ResultadoPedido {
   disparos: unknown[];
   /** Verdadeiro quando nada mudou porque o estado não avançou. */
   ignorado: boolean;
+}
+
+/*
+ * Estima a taxa pela tabela da conexão, quando o gateway não informou.
+ *
+ * Uma consulta a mais por venda, e só neste caminho. Guardar a tabela em
+ * memória economizaria isso, mas o cache ficaria velho no instante em que
+ * alguém corrigisse a taxa na tela — e taxa errada é lucro errado.
+ */
+async function estimarTaxa(
+  conexaoId: string,
+  pedido: CanonicalOrder,
+): Promise<number | null> {
+  const [conexao] = await db
+    .select({ fees: gatewayConnections.fees })
+    .from(gatewayConnections)
+    .where(eq(gatewayConnections.id, conexaoId))
+    .limit(1);
+
+  if (!conexao) return null;
+  return calcularTaxa(pedido, (conexao.fees ?? {}) as TabelaTaxas);
 }
 
 export async function registrarPedido(
@@ -124,11 +146,19 @@ export async function registrarPedido(
       )
     : undefined;
 
+  /*
+   * A taxa que o gateway informou vence sempre. Só quando ele não informa é
+   * que a tabela cadastrada entra — e mesmo assim ela pode não ter regra para
+   * o método, e aí fica nulo em vez de zero. Zero afirmaria que o gateway não
+   * cobrou nada; nulo admite que não sabemos, e é o que deixa a tela avisar.
+   */
+  const taxa = pedido.feeCents ?? await estimarTaxa(ctx.conexaoId, pedido);
+
   const comum = {
     status: pedido.status,
     currency: pedido.currency,
     grossCents: pedido.grossCents,
-    feeCents: pedido.feeCents ?? null,
+    feeCents: taxa,
     shippingCents: pedido.shippingCents ?? null,
     interestCents: pedido.interestCents ?? null,
     discountCents: pedido.discountCents ?? null,

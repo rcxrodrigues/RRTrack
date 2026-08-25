@@ -52,6 +52,7 @@ export default async function PaginaIntegracoes() {
         id: g.id, gateway: g.gateway, label: g.label, ativo: g.active,
         segredo: g.webhookSecret,
         temCredencial: Object.keys(g.credentials ?? {}).length > 0,
+        taxas: (g.fees ?? {}) as Record<string, unknown>,
       }))}
       pixels={pixels.map((p) => ({
         id: p.id, plataforma: p.platform, externalId: p.externalId,

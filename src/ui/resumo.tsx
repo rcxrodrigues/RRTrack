@@ -72,11 +72,9 @@ export function Resumo({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <Cabecalho
-        titulo="Resumo"
-        descricao="Onde o dinheiro entrou, por onde veio e a que horas."
-        periodo={periodo}
-      />
+      {/* Sem título: a navegação já diz onde se está, e os cartões abaixo
+          explicam melhor que uma frase o que a tela mostra. */}
+      <Cabecalho periodo={periodo} />
 
       <div className="rr-conteudo" style={{ padding: "16px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
 

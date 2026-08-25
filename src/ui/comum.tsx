@@ -49,12 +49,18 @@ export const PERIODOS = [
   { id: "30d", rotulo: "30 dias" },
 ];
 
-/** Barra de topo com título e escolha de período. */
+/*
+ * Barra de topo com escolha de período, e título opcional.
+ *
+ * Sem título a barra vira só os controles, alinhados à direita. É o caso da
+ * tela inicial: ali "Resumo" repete o que a navegação já diz, e a descrição
+ * explica algo que os próprios cartões logo abaixo mostram melhor.
+ */
 export function Cabecalho({
   titulo, descricao, periodo, extra,
 }: {
-  titulo: string;
-  descricao: string;
+  titulo?: string;
+  descricao?: string;
   periodo: string;
   extra?: React.ReactNode;
 }) {
@@ -74,10 +80,17 @@ export function Cabecalho({
       background: "var(--painel)", display: "flex",
       alignItems: "flex-start", justifyContent: "space-between", gap: 20,
     }}>
-      <div>
-        <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>{titulo}</h1>
-        <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "3px 0 0", maxWidth: 620 }}>{descricao}</p>
-      </div>
+      {titulo ? (
+        <div>
+          <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>{titulo}</h1>
+          {descricao && (
+            <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "3px 0 0", maxWidth: 620 }}>{descricao}</p>
+          )}
+        </div>
+      ) : (
+        /* Empurra os controles para a direita sem deixar buraco na esquerda. */
+        <div />
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <AutoAtualiza />
         {extra}

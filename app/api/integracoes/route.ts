@@ -130,6 +130,45 @@ export async function POST(req: Request): Promise<Response> {
         return Response.json({ ok: true, id: nova!.id, segredo, novo: true });
       }
 
+      /* --------------------------------------------------------- taxas */
+
+      /*
+       * Quanto o gateway cobra, por método. Só é consultada quando o webhook
+       * não informa a taxa — ver core/taxas.ts.
+       */
+      case "taxas": {
+        const gateway = texto(corpo.gateway);
+        if (!gateway) return Response.json({ erro: "gateway ausente" }, { status: 400 });
+
+        const [conexao] = await db.select({ id: gatewayConnections.id })
+          .from(gatewayConnections)
+          .where(and(eq(gatewayConnections.tenantId, tenantId), eq(gatewayConnections.gateway, gateway)))
+          .limit(1);
+
+        if (!conexao) return Response.json({ erro: "gateway não conectado" }, { status: 404 });
+
+        const t = corpo.taxas;
+        if (!t || typeof t !== "object") {
+          return Response.json({ erro: "tabela inválida" }, { status: 400 });
+        }
+
+        /*
+         * Percentual acima de 100 é sempre erro de digitação — alguém escreveu
+         * 399 querendo 3,99. Aceitar produziria taxa maior que a venda e
+         * faturamento líquido negativo espalhado pelo painel inteiro.
+         */
+        const sane = JSON.stringify(t);
+        if (/"percentual":\s*(1[0-9][0-9]|[2-9][0-9][0-9]|\d{4,})/.test(sane)) {
+          return Response.json({ erro: "percentual acima de 100 — confira a vírgula" }, { status: 400 });
+        }
+
+        await db.update(gatewayConnections)
+          .set({ fees: t as Record<string, unknown> })
+          .where(eq(gatewayConnections.id, conexao.id));
+
+        return Response.json({ ok: true });
+      }
+
       /* --------------------------------------------------------- pixel */
       case "pixel": {
         const plataforma = texto(corpo.plataforma);
