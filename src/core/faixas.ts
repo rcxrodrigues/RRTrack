@@ -15,6 +15,24 @@ import { db } from "../db/index";
 import { orders } from "../db/schema";
 import { REGRA_PADRAO, valorDaVenda, type RegraFaturamento } from "./faturamento";
 
+/*
+ * O placar SEMPRE tira frete e juros, qualquer que seja a regra da loja.
+ *
+ * As duas coisas são dinheiro de passagem: o frete vai para o transportador e
+ * o juro do parcelamento fica com o gateway. Nenhum dos dois é o que a
+ * operação produziu, e um troféu que sobe com dinheiro alheio não vale como
+ * troféu.
+ *
+ * A regra da loja continua valendo em tudo que serve para DECIDIR — ROAS,
+ * lucro, margem — porque lá o que importa é comparar receita com gasto, e
+ * quem embute o frete no preço precisa contá-lo para a conta fechar. Aqui não
+ * se decide nada; se olha distância. São perguntas diferentes.
+ *
+ * Quem embute o frete no preço não é prejudicado: nesse caso `shipping_cents`
+ * é nulo ou zero, e subtrair nada não muda nada.
+ */
+export const REGRA_PLACAR: RegraFaturamento = { countShipping: false, countInterest: false };
+
 /** Fronteiras em centavos: 10 mil, 50 mil, 100 mil, 500 mil, 1 mi, 2 mi... */
 export const FAIXAS = [
   1_000_000,
@@ -83,7 +101,7 @@ export function faixaDe(totalCents: number): Placar {
 /** Soma tudo que a loja já recebeu, desde sempre. */
 export async function faturamentoAcumulado(
   tenantId: string,
-  regra: RegraFaturamento = REGRA_PADRAO,
+  regra: RegraFaturamento = REGRA_PLACAR,
 ): Promise<number> {
   const [linha] = await db
     .select({ total: sql<string>`coalesce(sum(${valorDaVenda(regra)}), 0)::bigint` })
@@ -101,9 +119,11 @@ export async function faturamentoAcumulado(
   return Number(linha?.total ?? 0);
 }
 
-export async function placarDaLoja(
-  tenantId: string,
-  regra: RegraFaturamento = REGRA_PADRAO,
-): Promise<Placar> {
-  return faixaDe(await faturamentoAcumulado(tenantId, regra));
+/*
+ * Não recebe regra de propósito: o placar não é configurável por loja. Aceitar
+ * uma aqui convidaria um chamador distraído a passar a regra da loja e fazer o
+ * troféu de um dashboard medir coisa diferente do de outro.
+ */
+export async function placarDaLoja(tenantId: string): Promise<Placar> {
+  return faixaDe(await faturamentoAcumulado(tenantId, REGRA_PLACAR));
 }

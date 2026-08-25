@@ -1,5 +1,4 @@
 import type { Placar } from "@/core/faixas";
-import { descreverRegra, type RegraFaturamento } from "@/core/faturamento";
 
 /*
  * O placar de faturamento acumulado, no topo do painel.
@@ -33,13 +32,7 @@ function curto(cents: number): string {
 const exato = (cents: number) =>
   "R$ " + (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function BarraFaturamento({
-  placar, regra, moeda,
-}: {
-  placar: Placar;
-  regra: RegraFaturamento;
-  moeda: string;
-}) {
+export function BarraFaturamento({ placar, moeda }: { placar: Placar; moeda: string }) {
   const { totalCents, deCents, ateCents, faltamCents, progresso, degrau, totalDegraus } = placar;
   const cheia = ateCents === null;
 
@@ -54,12 +47,13 @@ export function BarraFaturamento({
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
         <span
           className="num"
-          title={exato(totalCents) + " · " + descreverRegra(regra)}
+          title={exato(totalCents) + " · sem frete nem juros"}
           style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.3px", color: "var(--ink)" }}
         >{curto(totalCents)}</span>
-        <span style={{ fontSize: 10.5, color: "var(--ink-tenue)", whiteSpace: "nowrap" }}>
-          acumulado{moeda !== "BRL" ? ` · ${moeda}` : ""}
-        </span>
+        <span
+          title="Frete e juros ficam de fora: são dinheiro de passagem, do transportador e do gateway."
+          style={{ fontSize: 10.5, color: "var(--ink-tenue)", whiteSpace: "nowrap" }}
+        >acumulado líquido{moeda !== "BRL" ? ` · ${moeda}` : ""}</span>
       </div>
 
       {/* a barra */}

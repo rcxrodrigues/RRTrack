@@ -13,7 +13,7 @@ const sql = neon(process.env.DATABASE_URL);
 
 const { metricas } = require("../_tmp/core/metricas.js");
 const { indicadores } = require("../_tmp/core/resumo.js");
-const { faturamentoAcumulado, faixaDe, FAIXAS } = require("../_tmp/core/faixas.js");
+const { faturamentoAcumulado, placarDaLoja, faixaDe, FAIXAS, REGRA_PLACAR } = require("../_tmp/core/faixas.js");
 const { valorEmMemoria, descreverRegra } = require("../_tmp/core/faturamento.js");
 
 let f = 0;
@@ -79,6 +79,15 @@ eq("bruto sem os dois", (await indicadores({ ...per, regra: NENHUM })).faturamen
 console.log("\n== placar acumulado ==");
 eq("acumulado com tudo", await faturamentoAcumulado(t.id, TUDO), 55000);
 eq("acumulado sem os dois", await faturamentoAcumulado(t.id, NENHUM), 50000);
+
+/*
+ * O placar NÃO segue a regra da loja: frete e juro são dinheiro de passagem,
+ * do transportador e do gateway, e um troféu que sobe com dinheiro alheio não
+ * vale como troféu. Aqui não se decide nada — se olha distância.
+ */
+eq("placar ignora a regra da loja", REGRA_PLACAR, { countShipping: false, countInterest: false });
+eq("acumulado padrão já vem líquido", await faturamentoAcumulado(t.id), 50000);
+eq("placar usa o líquido", (await placarDaLoja(t.id)).totalCents, 50000);
 
 console.log("\n== os tres concordam ==");
 const m = await metricas({ ...janela, regra: SEMF });

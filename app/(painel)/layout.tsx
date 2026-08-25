@@ -23,15 +23,13 @@ export default async function PainelLayout({ children }: { children: React.React
   const regra = loja
     ? { countShipping: loja.countShipping, countInterest: loja.countInterest }
     : null;
-  const placar = loja && regra ? await placarDaLoja(loja.id, regra) : null;
+  const placar = loja ? await placarDaLoja(loja.id) : null;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <Navegacao lojaAtual={loja} lojas={ctx.lojas} usuario={ctx.usuario} />
       <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {placar && regra && (
-          <BarraFaturamento placar={placar} regra={regra} moeda={loja!.currency} />
-        )}
+        {placar && <BarraFaturamento placar={placar} moeda={loja!.currency} />}
         {children}
       </main>
     </div>
