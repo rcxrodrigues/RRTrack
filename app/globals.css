@@ -77,6 +77,12 @@ input::placeholder { color: var(--ink-tenue); }
 ::-webkit-scrollbar-thumb { background: var(--linha-forte); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* O ponto do "ao vivo". Respira devagar: piscar rápido vira alarme. */
+@keyframes rr-pulsa {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
@@ -162,6 +168,9 @@ input::placeholder { color: var(--ink-tenue); }
     padding: 11px 0 !important;
   }
   .rr-funil > div:first-child { border-top: none; padding-top: 0 !important; }
+
+  /* O bloco ao vivo empilha: o número em cima, os locais embaixo. */
+  .rr-aovivo { grid-template-columns: 1fr !important; gap: 16px !important; }
 
   /* Painéis lado a lado viram um embaixo do outro. */
   .rr-paineis { grid-template-columns: 1fr !important; }

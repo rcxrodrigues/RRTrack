@@ -6,6 +6,7 @@ import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
 import { janelaDe, um, PERIODO_PADRAO } from "@/core/janela";
 import { indicadores, funil, porHorario, porOrigem, porPagamento } from "@/core/resumo";
+import { aoVivo } from "@/core/aovivo";
 import { Resumo } from "@/ui/resumo";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +26,10 @@ export default async function Pagina({ searchParams }: {
   const regra = { countShipping: loja.countShipping, countInterest: loja.countInterest };
   const p = { tenantId: loja.id, de, ate, timezone: loja.timezone, regra };
 
-  const [ind, fun, hor, ori, pag, contas] = await Promise.all([
+  const [ind, fun, hor, ori, pag, vivo, contas] = await Promise.all([
     indicadores(p), funil(p), porHorario(p), porOrigem(p), porPagamento(p),
+    /* Fora do período de propósito: "agora" não tem recorte. */
+    aoVivo(loja.id),
     db.select({ id: adAccounts.id }).from(adAccounts)
       .where(and(eq(adAccounts.tenantId, loja.id), eq(adAccounts.active, true))),
   ]);
@@ -36,6 +39,7 @@ export default async function Pagina({ searchParams }: {
       periodo={periodo}
       temGasto={contas.length > 0}
       ind={ind} funil={fun} horario={hor} origens={ori} pagamento={pag}
+      aoVivo={vivo}
     />
   );
 }

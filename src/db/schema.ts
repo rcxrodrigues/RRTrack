@@ -259,6 +259,20 @@ export const clickSessions = pgTable("click_sessions", {
 
   ip: text("ip"),
   userAgent: text("user_agent"),
+
+  /*
+   * De onde a pessoa acessou, lido dos cabeçalhos que a Vercel injeta na
+   * requisição — `x-vercel-ip-country` e companhia. Não é consulta a serviço
+   * externo nem banco de IPs: chega de graça e sem latência.
+   *
+   * Guardado na sessão em vez de derivado do IP na hora de consultar, porque
+   * IP muda: o mesmo visitante volta amanhã de outra rede, e a origem da
+   * visita de ontem tem que continuar sendo a de ontem.
+   */
+  country: text("country"),
+  region: text("region"),
+  city: text("city"),
+
   landingUrl: text("landing_url"),
   referrer: text("referrer"),
 

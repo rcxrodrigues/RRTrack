@@ -331,4 +331,47 @@
 
   if (document.readyState !== "loading") verProduto();
   document.addEventListener("DOMContentLoaded", verProduto);
+
+  /* ------------------------------------------------- quem ainda está aqui */
+
+  /*
+   * Pulso: um aviso periódico de que a aba continua aberta.
+   *
+   * Sem ele, "visitantes agora" seria "quem carregou uma página no último
+   * minuto" — alguém lendo a página de vendas por dez minutos sumiria da
+   * contagem, e o número diria menos do que a realidade justamente quando há
+   * gente prestando atenção.
+   *
+   * Três limites, para não virar tráfego à toa:
+   *
+   *   - só pulsa com a aba visível; aba de fundo não é visitante olhando;
+   *   - para depois de meia hora sem nenhuma interação, porque aba esquecida
+   *     aberta a noite inteira contaria como pessoa presente para sempre;
+   *   - um minuto entre pulsos, que é a granularidade que a tela mostra.
+   */
+  var PULSO_MS = 60000;
+  var OCIOSO_MS = 30 * 60000;
+  var ultimaInteracao = Date.now();
+
+  ["click", "keydown", "scroll", "mousemove", "touchstart"].forEach(function (evt) {
+    document.addEventListener(evt, function () { ultimaInteracao = Date.now(); },
+      { passive: true });
+  });
+
+  setInterval(function () {
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - ultimaInteracao > OCIOSO_MS) return;
+    send("ping");
+  }, PULSO_MS);
+
+  /*
+   * Voltar para a aba conta como presença imediata, sem esperar o próximo
+   * ciclo: quem alterna entre abas apareceria com até um minuto de atraso.
+   */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      ultimaInteracao = Date.now();
+      send("ping");
+    }
+  });
 })(window, document);

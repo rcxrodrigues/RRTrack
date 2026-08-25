@@ -132,6 +132,23 @@ export async function POST(req: Request): Promise<Response> {
     })(),
     ip: clientIp(req) ?? null,
     userAgent: req.headers.get("user-agent"),
+
+    /*
+     * A Vercel resolve o IP antes da função rodar e entrega o resultado nos
+     * cabeçalhos. Sai de graça e sem latência — consultar um banco de IPs aqui
+     * acrescentaria uma chamada de rede no caminho mais quente do sistema.
+     *
+     * O país vem como sigla de duas letras e a região como código curto
+     * ("MG"); a cidade vem com escape de URL quando tem acento, então é
+     * decodificada antes de gravar.
+     */
+    country: req.headers.get("x-vercel-ip-country"),
+    region: req.headers.get("x-vercel-ip-country-region"),
+    city: (() => {
+      const c = req.headers.get("x-vercel-ip-city");
+      if (!c) return null;
+      try { return decodeURIComponent(c); } catch { return c; }
+    })(),
     landingUrl: str(attr.landing_url) ?? str(body.page_url),
     referrer: str(body.referrer),
     firstSeenAt: agora,
@@ -167,8 +184,19 @@ export async function POST(req: Request): Promise<Response> {
       placement: sql`COALESCE(EXCLUDED.placement, ${clickSessions.placement})`,
       ip: sql`COALESCE(EXCLUDED.ip, ${clickSessions.ip})`,
       userAgent: sql`COALESCE(EXCLUDED.user_agent, ${clickSessions.userAgent})`,
+      country: sql`COALESCE(EXCLUDED.country, ${clickSessions.country})`,
+      region: sql`COALESCE(EXCLUDED.region, ${clickSessions.region})`,
+      city: sql`COALESCE(EXCLUDED.city, ${clickSessions.city})`,
     },
   }).returning();
+
+  /*
+   * O pulso só serve para dizer "ainda estou aqui", e o `lastSeenAt` acima já
+   * registrou isso. Gravar um evento por pulso encheria a tabela com uma linha
+   * por minuto por visitante — em troca de nada, porque nenhuma tela conta
+   * pulso.
+   */
+  if (eventName === "ping") return new Response(null, { status: 204, headers });
 
   const eventId = str(body.event_id) ?? `${eventName}.${clickId}.${Date.now()}`;
   const params = (body.params ?? {}) as Record<string, unknown>;

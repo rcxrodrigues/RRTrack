@@ -1,6 +1,8 @@
 "use client";
 
 import { Cabecalho, Cartao, Nota, brl, brlCurto, corValor, num, pct, razao, brlOuNa } from "./comum";
+import { SecaoAoVivo } from "./ao-vivo";
+import type { AoVivo } from "@/core/aovivo";
 import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao } from "@/core/resumo";
 
 /*
@@ -15,7 +17,7 @@ import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao } from "@/core/
 const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
 export function Resumo({
-  periodo, temGasto, ind, funil, horario, origens, pagamento,
+  periodo, temGasto, ind, funil, horario, origens, pagamento, aoVivo,
 }: {
   periodo: string;
   temGasto: boolean;
@@ -24,6 +26,7 @@ export function Resumo({
   horario: Celula[];
   origens: Origem[];
   pagamento: Aprovacao[];
+  aoVivo: AoVivo;
 }) {
   const vazio = ind.vendasAprovadas === 0 && funil[0]!.valor === 0;
 
@@ -77,6 +80,10 @@ export function Resumo({
       <Cabecalho periodo={periodo} />
 
       <div className="rr-conteudo" style={{ padding: "16px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+        {/* Acima de tudo: é o que se abre o painel para ver quando a campanha
+            acabou de subir, e é a única coisa aqui que não olha para trás. */}
+        <SecaoAoVivo dados={aoVivo} />
 
         {vazio && (
           <div style={{
