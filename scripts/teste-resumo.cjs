@@ -101,6 +101,9 @@ const eq = (l, g, w) => {
   eq("ticket médio sobre o bruto", ind.ticketMedioCents, 17500);
   eq("ROAS é null sem gasto, não zero", ind.roas, null);
   eq("lucro = líquido − custo − gasto", ind.lucroCents, 18100);
+  /* Em pontos percentuais: 18100/24100 = 75,1%. Sem esta asserção a margem
+     saiu como proporção por muito tempo, e a tela mostrava 0,8% no lugar. */
+  eq("margem em pontos percentuais", Math.round(ind.margem * 10) / 10, 75.1);
 
   console.log("\n== funil ==");
   const fun = await R.funil(p);

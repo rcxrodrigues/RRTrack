@@ -50,6 +50,14 @@ export interface LinhaMetrica {
   cpcCents: number | null;
   ctr: number | null;
   cpmCents: number | null;
+
+  /*
+   * Quando o gasto desta linha foi buscado pela última vez. Em milissegundos
+   * para atravessar a fronteira servidor→cliente sem virar string e voltar.
+   * Serve para o operador saber se está olhando número fresco ou de uma hora
+   * atrás — diferença que decide se vale agir agora ou esperar.
+   */
+  atualizadoEmMs: number | null;
 }
 
 /** Divisão que admite não ter resposta. */
@@ -117,6 +125,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
       gasto: sql<number>`coalesce(sum(${adSpendDaily.spendCents}), 0)::int`,
       impressoes: sql<number>`coalesce(sum(${adSpendDaily.impressions}), 0)::int`,
       cliques: sql<number>`coalesce(sum(${adSpendDaily.clicks}), 0)::int`,
+      atualizadoEm: sql<string | null>`max(${adSpendDaily.syncedAt})`,
     })
     .from(adSpendDaily)
     .where(and(
@@ -254,6 +263,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
       cpcCents: g.cliques ? Math.round(gasto / g.cliques) : null,
       ctr: dividir(g.cliques, g.impressoes),
       cpmCents: g.impressoes ? Math.round((gasto / g.impressoes) * 1000) : null,
+      atualizadoEmMs: g.atualizadoEm ? new Date(g.atualizadoEm).getTime() : null,
     };
   });
 
@@ -300,5 +310,17 @@ export function totalizar(linhas: LinhaMetrica[]): LinhaMetrica {
     cpcCents: cliques ? Math.round(gasto / cliques) : null,
     ctr: dividir(cliques, impressoes),
     cpmCents: impressoes ? Math.round((gasto / impressoes) * 1000) : null,
+
+    /*
+     * O total mostra a atualização MAIS ANTIGA, não a mais recente.
+     *
+     * Se uma conta sincronizou agora e outra há três horas, o número somado tem
+     * três horas de idade — é tão fresco quanto sua parte mais velha. Mostrar a
+     * mais recente diria que o total está atualizado quando metade dele não está.
+     */
+    atualizadoEmMs: linhas.reduce<number | null>((menor, l) => {
+      if (l.atualizadoEmMs === null) return menor;
+      return menor === null ? l.atualizadoEmMs : Math.min(menor, l.atualizadoEmMs);
+    }, null),
   };
 }

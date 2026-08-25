@@ -103,7 +103,13 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
     reembolsadas: Number(linha?.reembolsadas ?? 0),
     ticketMedioCents: aprovadas ? Math.round(bruto / aprovadas) : null,
     roas: gasto ? liquido / gasto : null,
-    margem: liquido ? lucro / liquido : null,
+    /*
+     * Em pontos percentuais (0 a 100), como toda taxa deste módulo — a do
+     * funil e a de aprovação também multiplicam por 100. Devolver a proporção
+     * crua aqui fazia a tela mostrar "0,3%" onde havia 27% de margem, porque o
+     * formatador de porcentagem da interface só acrescenta o símbolo.
+     */
+    margem: liquido ? (lucro / liquido) * 100 : null,
     cpaCents: aprovadas && gasto ? Math.round(gasto / aprovadas) : null,
   };
 }

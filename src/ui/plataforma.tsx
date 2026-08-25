@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { LinhaMetrica, Nivel } from "@/core/metricas";
+import {
+  DialogoColunas, PADRAO, carregarEscolha, colunasDe, salvarEscolha,
+  type Coluna,
+} from "./colunas";
 
 /*
  * Tela de uma fonte de tráfego.
@@ -44,10 +48,46 @@ const numero = (n: number) => n.toLocaleString("pt-BR");
 const razao = (v: number | null, casas = 2) =>
   v === null ? "N/A" : v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
-const pct = (v: number | null) =>
+/*
+ * Proporção para porcentagem: 0,2712 vira "27,12%".
+ *
+ * Tem nome diferente do `pct` de comum.tsx de propósito. Os dois formatam
+ * porcentagem e faziam coisas opostas — um multiplica por 100, o outro não — e
+ * o nome igual escondia a diferença até alguém chamar o errado.
+ */
+const pctRazao = (v: number | null) =>
   v === null ? "N/A" : (v * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
 const dinheiroOuNa = (c: number | null) => (c === null ? "N/A" : brl(c));
+
+/*
+ * Idade do dado em texto relativo.
+ *
+ * Só é chamado depois da montagem — ver `montado` no componente. Tempo
+ * relativo depende de `Date.now()`, que difere entre o servidor e o navegador;
+ * renderizar nos dois lados produziria divergência de hidratação.
+ */
+const quando = (ms: number | null) => {
+  if (ms === null) return "N/A";
+  const min = Math.round((Date.now() - ms) / 60_000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.round(h / 24)} d`;
+};
+
+function formatar(c: Coluna, l: LinhaMetrica): string {
+  const v = c.valor(l);
+  switch (c.formato) {
+    case "dinheiro": return dinheiroOuNa(v as number | null);
+    case "numero": return numero((v as number) ?? 0);
+    case "razao": return razao(v as number | null);
+    case "pct": return pctRazao(v as number | null);
+    case "quando": return quando(v as number | null);
+    default: return v === null ? "N/A" : String(v);
+  }
+}
 
 function corDoValor(v: number) {
   return v > 0 ? "var(--positivo)" : v < 0 ? "var(--negativo)" : "var(--ink-medio)";
@@ -81,6 +121,23 @@ export function Plataforma({
   const params = useSearchParams();
   const [busca, setBusca] = useState(nome);
   const [sincronizando, setSincronizando] = useState(false);
+
+  /*
+   * A escolha de colunas vive no navegador, então o primeiro render — o do
+   * servidor — não pode conhecê-la. Começamos no padrão e trocamos depois de
+   * montar. Sem isso o HTML do servidor divergiria do primeiro do cliente e o
+   * React descartaria a árvore inteira.
+   *
+   * O padrão não inclui "Última Atualização", a única coluna cujo texto depende
+   * do relógio — logo nada relativo ao tempo chega a ser renderizado no
+   * servidor, e a divergência não tem por onde aparecer.
+   */
+  const [escolhidas, setEscolhidas] = useState<string[]>(PADRAO);
+  const [abrirColunas, setAbrirColunas] = useState(false);
+
+  useEffect(() => {
+    setEscolhidas(carregarEscolha(plataforma));
+  }, [plataforma]);
   /*
    * O resultado da sincronização fica visível.
    *
@@ -123,47 +180,28 @@ export function Plataforma({
 
   const colunaNome = NIVEIS.find((n) => n.id === nivel)?.coluna ?? "Nome";
 
-  const COLS = [
-    { r: colunaNome, w: "2.4fr", esq: true },
-    { r: "Vendas", w: "0.7fr" },
-    { r: "CPA", w: "0.9fr" },
-    { r: "Gastos", w: "1fr" },
-    { r: "Faturamento", w: "1.1fr" },
-    { r: "Lucro", w: "1.1fr" },
-    { r: "ROAS", w: "0.7fr" },
-    { r: "Margem", w: "0.85fr" },
-    { r: "ROI", w: "0.7fr" },
-    { r: "IC", w: "0.6fr" },
-    { r: "CPI", w: "0.85fr" },
-    { r: "CPC", w: "0.85fr" },
-    { r: "CTR", w: "0.75fr" },
-    { r: "CPM", w: "0.9fr" },
-    { r: "Impressões", w: "0.95fr" },
-    { r: "Cliques", w: "0.75fr" },
-  ];
+  const colunas = colunasDe(escolhidas);
+  /* A coluna de nome é sempre a primeira e não sai do lugar. */
+  const grade = ["2.4fr", ...colunas.map((c) => c.largura)].join(" ");
 
-  const grade = COLS.map((c) => c.w).join(" ");
+  function corDe(c: Coluna, l: LinhaMetrica): string | undefined {
+    const v = c.valor(l);
+    if (c.realce === "roas") return corRoas(v as number | null);
+    if (c.realce === "valor") return v === null ? "var(--ink-tenue)" : corDoValor(v as number);
+    return c.fraca ? "var(--ink-fraco)" : undefined;
+  }
 
   const celulas = (l: LinhaMetrica, forte: boolean) => [
-    <span key="n" style={{
+    <span key="__nome" style={{
       fontWeight: forte ? 600 : 500, overflow: "hidden",
       textOverflow: "ellipsis", whiteSpace: "nowrap",
     }}>{l.nome}</span>,
-    <span key="v" className="num">{numero(l.vendas)}</span>,
-    <span key="cpa" className="num" style={{ color: "var(--ink-fraco)" }}>{dinheiroOuNa(l.cpaCents)}</span>,
-    <span key="g" className="num">{brl(l.gastoCents)}</span>,
-    <span key="f" className="num" style={{ fontWeight: 500 }}>{brl(l.faturamentoCents)}</span>,
-    <span key="l" className="num" style={{ fontWeight: 600, color: corDoValor(l.lucroCents) }}>{brl(l.lucroCents)}</span>,
-    <span key="r" className="num" style={{ fontWeight: 600, color: corRoas(l.roas) }}>{razao(l.roas)}</span>,
-    <span key="m" className="num" style={{ color: l.margem === null ? "var(--ink-tenue)" : corDoValor(l.margem) }}>{pct(l.margem)}</span>,
-    <span key="roi" className="num" style={{ color: l.roi === null ? "var(--ink-tenue)" : corDoValor(l.roi) }}>{razao(l.roi)}</span>,
-    <span key="ic" className="num" style={{ color: "var(--ink-fraco)" }}>{numero(l.ic)}</span>,
-    <span key="cpi" className="num" style={{ color: "var(--ink-fraco)" }}>{dinheiroOuNa(l.cpiCents)}</span>,
-    <span key="cpc" className="num" style={{ color: "var(--ink-fraco)" }}>{dinheiroOuNa(l.cpcCents)}</span>,
-    <span key="ctr" className="num" style={{ color: "var(--ink-fraco)" }}>{pct(l.ctr)}</span>,
-    <span key="cpm" className="num" style={{ color: "var(--ink-fraco)" }}>{dinheiroOuNa(l.cpmCents)}</span>,
-    <span key="i" className="num" style={{ color: "var(--ink-fraco)" }}>{numero(l.impressoes)}</span>,
-    <span key="c" className="num" style={{ color: "var(--ink-fraco)" }}>{numero(l.cliques)}</span>,
+    ...colunas.map((c) => (
+      <span key={c.id} className="num" style={{
+        color: corDe(c, l),
+        fontWeight: c.realce || c.id === "faturamento" ? 600 : undefined,
+      }}>{formatar(c, l)}</span>
+    )),
   ];
 
   return (
@@ -173,11 +211,18 @@ export function Plataforma({
       <div style={{ padding: "16px 20px 0", background: "var(--painel)", borderBottom: "1px solid var(--linha)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>{titulo}</h1>
-          <button onClick={sincronizar} disabled={sincronizando || !temConta} style={{
-            padding: "7px 14px", borderRadius: 5, border: "none", fontWeight: 600, fontSize: 12,
-            background: temConta ? "var(--acento)" : "var(--linha)",
-            color: temConta ? "#062026" : "var(--ink-tenue)",
-          }}>{sincronizando ? "sincronizando…" : "Atualizar gasto"}</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setAbrirColunas(true)} style={{
+              padding: "7px 13px", borderRadius: 5, fontWeight: 500, fontSize: 12,
+              border: "1px solid var(--linha-forte)", background: "transparent",
+              color: "var(--ink-fraco)",
+            }}>Colunas ({colunas.length})</button>
+            <button onClick={sincronizar} disabled={sincronizando || !temConta} style={{
+              padding: "7px 14px", borderRadius: 5, border: "none", fontWeight: 600, fontSize: 12,
+              background: temConta ? "var(--acento)" : "var(--linha)",
+              color: temConta ? "#062026" : "var(--ink-tenue)",
+            }}>{sincronizando ? "sincronizando…" : "Atualizar gasto"}</button>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 4 }}>
@@ -282,7 +327,10 @@ export function Plataforma({
           />
         ) : (
           <div style={{
-            minWidth: 1500, border: "1px solid var(--linha)",
+            /* Acompanha a quantidade de colunas: fixar 1500 espremeria a
+               tabela cheia e deixaria a enxuta com vão vazio à direita. */
+            minWidth: Math.max(760, 300 + colunas.length * 92),
+            border: "1px solid var(--linha)",
             borderRadius: 8, overflow: "hidden", background: "var(--painel)",
           }}>
             <div style={{
@@ -292,8 +340,9 @@ export function Plataforma({
               fontSize: 10, letterSpacing: ".06em", textTransform: "uppercase",
               color: "var(--ink-tenue)", fontWeight: 600,
             }}>
-              {COLS.map((c) => (
-                <div key={c.r} style={{ textAlign: c.esq ? "left" : "right" }}>{c.r}</div>
+              <div style={{ textAlign: "left" }}>{colunaNome}</div>
+              {colunas.map((c) => (
+                <div key={c.id} title={c.ajuda} style={{ textAlign: "right" }}>{c.rotulo}</div>
               ))}
             </div>
 
@@ -339,6 +388,19 @@ export function Plataforma({
           </div>
         )}
       </div>
+
+      {abrirColunas && (
+        <DialogoColunas
+          plataforma={plataforma}
+          escolhidas={escolhidas}
+          aoFechar={() => setAbrirColunas(false)}
+          aoSalvar={(ids) => {
+            setEscolhidas(ids);
+            salvarEscolha(plataforma, ids);
+            setAbrirColunas(false);
+          }}
+        />
+      )}
     </div>
   );
 }

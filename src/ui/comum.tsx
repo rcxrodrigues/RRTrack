@@ -23,6 +23,14 @@ export const brlCurto = (c: number) => {
 
 export const num = (n: number) => n.toLocaleString("pt-BR");
 
+/*
+ * Porcentagem já em pontos percentuais: 27,2 vira "27,2%".
+ *
+ * NÃO multiplica por 100. Quem calcula a taxa é que faz isso, e todo o
+ * src/core/resumo.ts e src/core/rastreio.ts já entregam assim. Passar uma
+ * proporção crua aqui não dá erro nenhum — só mostra um número cem vezes
+ * menor, que foi exatamente o que aconteceu com a margem.
+ */
 export const pct = (v: number | null, casas = 1) =>
   v === null ? "N/A" : v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }) + "%";
 
