@@ -64,6 +64,19 @@ const COLUNA: Record<Nivel, { id: AnyPgColumn; nome: AnyPgColumn }> = {
   anuncio: { id: adSpendDaily.adId, nome: adSpendDaily.adName },
 };
 
+/*
+ * Por qual coluna da sessão as vendas se agrupam, em cada nível.
+ *
+ * Campanha, conjunto e anúncio têm coluna equivalente na sessão, porque a UTM
+ * carrega os três ids. Conta não tem: a plataforma não põe o id da conta de
+ * anúncio na URL, e não há de onde a sessão saber a que conta o clique
+ * pertence.
+ *
+ * Por isso conta agrupa por anúncio aqui e é somada depois, usando o mapa
+ * anúncio→conta que o próprio gasto fornece. Cruzar direto o id da conta com
+ * o id do anúncio — que é o que este arquivo fazia — não casa nunca: toda
+ * venda sumia no nível de conta, e a aba mostrava prejuízo em tudo.
+ */
 const SESSAO: Record<Nivel, AnyPgColumn> = {
   conta: clickSessions.adId,
   campanha: clickSessions.campaignId,
@@ -148,8 +161,59 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     ))
     .groupBy(colSessao);
 
-  const porVenda = new Map(vendas.map((v) => [v.id, v]));
-  const porIc = new Map(ics.map((i) => [i.id, i.quantidade]));
+  /*
+   * No nível de conta, as vendas vieram agrupadas por anúncio e ainda precisam
+   * subir para a conta. O próprio gasto diz a que conta cada anúncio pertence —
+   * é a única fonte que sabe, já que a sessão nunca soube.
+   */
+  let paraConta: Map<string, string> | null = null;
+  if (f.nivel === "conta") {
+    const pares = await db
+      .selectDistinct({ adId: adSpendDaily.adId, conta: adSpendDaily.adAccountId })
+      .from(adSpendDaily)
+      .where(and(
+        eq(adSpendDaily.tenantId, f.tenantId),
+        eq(adSpendDaily.platform, f.plataforma),
+        between(adSpendDaily.date, f.de, f.ate),
+        isNotNull(adSpendDaily.adId),
+      ));
+
+    paraConta = new Map(
+      pares.filter((p): p is { adId: string; conta: string } => !!p.adId).map((p) => [p.adId, p.conta]),
+    );
+  }
+
+  /*
+   * Traduz a chave de agrupamento e soma o que cair na mesma. Fora do nível de
+   * conta, `paraConta` é nulo e isto é uma cópia fiel do que veio do banco.
+   */
+  function agrupar<T extends { id: string | null }>(
+    linhas: T[],
+    somar: (a: T, b: T) => T,
+  ): Map<string, T> {
+    const m = new Map<string, T>();
+    for (const l of linhas) {
+      const chave = paraConta ? (l.id ? paraConta.get(l.id) : undefined) : l.id;
+      /* Anúncio sem gasto no período não tem conta conhecida; fica de fora. */
+      if (!chave) continue;
+      const atual = m.get(chave);
+      m.set(chave, atual ? somar(atual, l) : { ...l, id: chave });
+    }
+    return m;
+  }
+
+  const porVenda = agrupar(vendas, (a, b) => ({
+    ...a,
+    quantidade: a.quantidade + b.quantidade,
+    faturamento: a.faturamento + b.faturamento,
+    custo: a.custo + b.custo,
+  }));
+
+  const porIcAgrupado = agrupar(ics, (a, b) => ({
+    ...a,
+    quantidade: a.quantidade + b.quantidade,
+  }));
+  const porIc = new Map([...porIcAgrupado].map(([k, v]) => [k, v.quantidade]));
 
   /*
    * A base é o gasto, não a venda. Uma campanha que gastou e não vendeu

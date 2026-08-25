@@ -33,7 +33,17 @@ const eq = (l, g, w) => {
   const [conn] = await sql`INSERT INTO gateway_connections (tenant_id, gateway, label, webhook_secret) VALUES (${t.id}, 'pagou', 'P', ${"ws" + Date.now()}) RETURNING id`;
   const [dest] = await sql`INSERT INTO destinations (tenant_id, platform, label, external_id, credentials) VALUES (${t.id}, 'meta', 'Pixel', '1', '{}'::jsonb) RETURNING id`;
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  /*
+   * O dia precisa ser o do FUSO DA LOJA, não o de UTC.
+   *
+   * A query converte occurred_at para America/Sao_Paulo antes de comparar. Entre
+   * 00h e 03h UTC — 21h e 00h em São Paulo — o dia UTC já virou e o de São Paulo
+   * não, então "hoje" em UTC não contém venda nenhuma gravada agora. Esta suíte
+   * passava 21 horas por dia e falhava nas outras 3.
+   */
+  const hoje = new Date()
+    .toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" })
+    .slice(0, 10);
   const DIRETO = "(direto)";
 
   const ses = [];

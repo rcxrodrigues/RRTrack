@@ -102,6 +102,32 @@ eq("lucro negativo", ruim.lucroCents, -80000);
 eq("CPA é N/A sem venda", ruim.cpaCents, null);
 eq("margem é N/A sem faturamento", ruim.margem, null);
 
+
+/*
+ * Os dois níveis que ninguém cobria.
+ *
+ * "Conjuntos" e "Contas" existem como aba na tela desde sempre, mas o teste só
+ * exercitava anúncio e campanha. Um nível que agrupa errado não quebra nada —
+ * só mostra número errado, em silêncio, justamente na aba que se abre para
+ * decidir o que escalar e o que matar.
+ */
+console.log("\n== por conjunto ==");
+const conjuntos = await metricas({ ...janela, nivel: "conjunto" });
+eq("um conjunto", conjuntos.length, 1);
+eq("gasto somado dos dois anúncios", conjuntos[0] && conjuntos[0].gastoCents, 50000);
+eq("vendas somadas", conjuntos[0] && conjuntos[0].vendas, 3);
+eq("faturamento somado", conjuntos[0] && conjuntos[0].faturamentoCents, 45000);
+eq("nome do conjunto", conjuntos[0] && conjuntos[0].nome, "Conjunto A");
+
+console.log("\n== por conta ==");
+const contas = await metricas({ ...janela, nivel: "conta" });
+eq("uma conta", contas.length, 1);
+/* 130000 = os dois anúncios do conjunto A mais a campanha que só gastou. */
+  eq("gasto da conta soma tudo", contas[0] && contas[0].gastoCents, 130000);
+eq("vendas chegam na conta", contas[0] && contas[0].vendas, 3);
+eq("faturamento chega na conta", contas[0] && contas[0].faturamentoCents, 45000);
+eq("IC chega na conta", contas[0] && contas[0].ic, 5);
+
 console.log("\n== filtro por nome ==");
 const filtrado = await metricas({ ...janela, nivel: "campanha", nome: "queimando" });
 eq("acha sem diferenciar maiúscula", filtrado.length, 1);
