@@ -735,6 +735,37 @@ export function Integracoes({
                     carrega — quem tiver ela pode mandar evento para esta loja, então
                     trate como segredo de configuração, não como identificador público.
                   </div>
+                  {/*
+                    Regerar só faz sentido antes de o script ir para o ar, ou
+                    quando a chave vazou. Depois de publicado, trocar derruba a
+                    coleta sem erro nenhum aparecer — daí o aviso e a confirmação.
+                  */}
+                  {editando === "regerar" ? (
+                    <div style={{
+                      marginTop: 12, padding: "11px 13px", borderRadius: 6,
+                      background: "var(--alerta-fundo)", border: "1px solid var(--alerta)",
+                    }}>
+                      <div style={{ fontSize: 12, color: "var(--ink-medio)", lineHeight: 1.5, marginBottom: 10 }}>
+                        A chave nova só vale para o script atualizado. Se o antigo já
+                        estiver em alguma página, ela para de coletar ali — sem erro,
+                        só sem eventos.
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Botao pequeno disabled={salvando}
+                          onClick={() => salvar({ tipo: "regerar_chave" })}>
+                          {salvando ? "gerando…" : "Gerar chave nova"}
+                        </Botao>
+                        <Botao tipo="secundario" pequeno onClick={() => setEditando(null)}>
+                          Cancelar
+                        </Botao>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setEditando("regerar")} style={{
+                      marginTop: 10, background: "none", border: "none", padding: 0,
+                      cursor: "pointer", color: "var(--ink-tenue)", fontSize: 11,
+                    }}>gerar uma chave nova</button>
+                  )}
                 </>
               ) : (
                 <>

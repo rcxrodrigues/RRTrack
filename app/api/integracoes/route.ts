@@ -219,6 +219,25 @@ export async function POST(req: Request): Promise<Response> {
         return Response.json({ ok: true, dominio, chave, novo: true });
       }
 
+      /*
+       * Gera uma chave de site nova.
+       *
+       * Operação destrutiva por natureza: o script já publicado carrega a
+       * chave antiga, e a partir daqui ele para de ser aceito. Não há erro
+       * visível — os eventos simplesmente somem — então a tela precisa avisar
+       * e o pedido precisa ser explícito.
+       */
+      case "regerar_chave": {
+        const [site] = await db.select({ id: sites.id })
+          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+
+        if (!site) return Response.json({ erro: "nenhum site cadastrado" }, { status: 404 });
+
+        const chave = "pk_" + aleatorio(12);
+        await db.update(sites).set({ publicKey: chave }).where(eq(sites.id, site.id));
+        return Response.json({ ok: true, chave });
+      }
+
       case "pixel": {
         const plataforma = texto(corpo.plataforma);
         const externalId = texto(corpo.externalId);
