@@ -47,55 +47,34 @@ export const FAIXAS = [
 
 export interface Placar {
   totalCents: number;
-  /** Início da faixa atual, em centavos. Zero na primeira. */
-  deCents: number;
-  /** Fim da faixa atual. `null` quando passou da última — aí não há teto. */
+  /** A próxima marca. `null` quando passou da última — aí não há teto. */
   ateCents: number | null;
-  /** Quanto falta para a próxima fronteira. `null` quando não há próxima. */
-  faltamCents: number | null;
-  /** Progresso dentro da faixa atual, de 0 a 1. */
+  /*
+   * Preenchimento da barra, de 0 a 1, medido contra a próxima marca — e não
+   * dentro da faixa atual.
+   *
+   * A tela mostra dois números: o acumulado e a marca no fim da barra. O
+   * preenchimento tem que ser a razão entre esses dois, senão a barra
+   * contradiz o que está escrito nela: com 60 mil rumo a 100 mil, medir dentro
+   * da faixa daria 20% de barra ao lado de um número que qualquer um lê como
+   * 60% do caminho.
+   */
   progresso: number;
-  /** Em que degrau está, a partir de 1. */
-  degrau: number;
-  totalDegraus: number;
 }
 
 export function faixaDe(totalCents: number): Placar {
-  const base = {
-    totalCents,
-    degrau: FAIXAS.length + 1,
-    totalDegraus: FAIXAS.length + 1,
-  };
-
-  for (let i = 0; i < FAIXAS.length; i++) {
-    const ate = FAIXAS[i]!;
+  for (const ate of FAIXAS) {
     if (totalCents < ate) {
-      const de = i === 0 ? 0 : FAIXAS[i - 1]!;
-      const largura = ate - de;
       return {
-        ...base,
-        deCents: de,
+        totalCents,
         ateCents: ate,
-        faltamCents: ate - totalCents,
-        /*
-         * Progresso dentro da faixa, não do total. Uma loja com 60 mil está a
-         * 20% do caminho entre 50 e 100 mil — mostrar 6% de um milhão faria a
-         * barra parecer parada por meses.
-         */
-        progresso: largura > 0 ? (totalCents - de) / largura : 0,
-        degrau: i + 1,
+        progresso: ate > 0 ? totalCents / ate : 0,
       };
     }
   }
 
-  /* Passou da última fronteira: não há próxima meta, a barra fica cheia. */
-  return {
-    ...base,
-    deCents: FAIXAS[FAIXAS.length - 1]!,
-    ateCents: null,
-    faltamCents: null,
-    progresso: 1,
-  };
+  /* Passou da última marca: não há próxima meta, a barra fica cheia. */
+  return { totalCents, ateCents: null, progresso: 1 };
 }
 
 /** Soma tudo que a loja já recebeu, desde sempre. */

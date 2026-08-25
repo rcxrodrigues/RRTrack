@@ -131,13 +131,8 @@ input::placeholder { color: var(--ink-tenue); }
 
   .rr-rodape { display: none !important; }
 
-  /* O placar empilha: três blocos lado a lado viram ilegíveis. */
-  .rr-barra {
-    flex-wrap: wrap;
-    gap: 8px 12px !important;
-    padding: 10px 14px !important;
-  }
-  .rr-barra-progresso { order: 3; flex-basis: 100%; }
+  /* O placar já empilha sozinho; aqui só encolhe o respiro das laterais. */
+  .rr-barra { padding: 9px 14px 10px !important; }
 
   /* Respiro menor: 20px de cada lado num telefone é a metade da tela. */
   .rr-conteudo { padding-left: 14px !important; padding-right: 14px !important; }

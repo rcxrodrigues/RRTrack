@@ -111,26 +111,30 @@ eq("diz o que inclui", descreverRegra(TUDO), "inclui frete e juros");
 eq("diz o que tirou", descreverRegra(NENHUM), "sem frete nem juros");
 eq("diz só um", descreverRegra(SEMF), "sem frete");
 
-console.log("\n== faixas do placar ==");
+console.log("\n== a marca e o preenchimento ==");
 const zero = faixaDe(0);
-eq("começa na primeira faixa", zero.degrau, 1);
-eq("progresso zero", zero.progresso, 0);
-eq("de zero", zero.deCents, 0);
+eq("primeira marca é 10 mil", zero.ateCents, 1_000_000);
+eq("barra vazia", zero.progresso, 0);
 
-/* 60 mil reais: entre 50 mil (5.000.000c) e 100 mil (10.000.000c). */
+/* 60 mil reais: a próxima marca é 100 mil (10.000.000 centavos). */
 const meio = faixaDe(6_000_000);
-eq("faixa certa", [meio.deCents, meio.ateCents], [5_000_000, 10_000_000]);
-eq("progresso DENTRO da faixa, não do total", Number(meio.progresso.toFixed(2)), 0.2);
-eq("faltam 40 mil", meio.faltamCents, 4_000_000);
+eq("marca certa", meio.ateCents, 10_000_000);
+/*
+ * O preenchimento é contra a MARCA, não dentro da faixa. A tela escreve os
+ * dois números — "R$ 60 mil / R$ 100 mil" — e a barra tem que ser a razão
+ * entre eles. Medir dentro da faixa daria 20% de barra ao lado de um par de
+ * números que qualquer um lê como 60% do caminho.
+ */
+eq("preenchimento é total sobre a marca", Number(meio.progresso.toFixed(2)), 0.6);
 
 const teto = faixaDe(FAIXAS[FAIXAS.length - 1] + 1);
-eq("passou do teto: sem próxima", teto.ateCents, null);
+eq("passou da última: sem marca", teto.ateCents, null);
 eq("barra cheia", teto.progresso, 1);
-eq("faltam nada", teto.faltamCents, null);
 
-/* Exatamente na fronteira pertence à faixa DE CIMA, não à de baixo. */
-const fronteira = faixaDe(1_000_000);
-eq("fronteira sobe de faixa", fronteira.degrau, 2);
+/* Exatamente na marca já aponta para a seguinte, não para a que acabou. */
+const naMarca = faixaDe(1_000_000);
+eq("na marca, aponta para a próxima", naMarca.ateCents, 5_000_000);
+eq("e o preenchimento recomeça", Number(naMarca.progresso.toFixed(1)), 0.2);
 
 console.log("\n== não vaza entre lojas ==");
 await sql`DELETE FROM tenants WHERE slug = 'faturamento-outro'`;
