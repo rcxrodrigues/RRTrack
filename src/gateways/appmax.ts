@@ -258,6 +258,8 @@ export const appmaxAdapter: GatewayAdapter = {
       grossCents: gross,
       shippingCents: data.freight_value !== undefined
         ? cents(data.freight_value) : undefined,
+      /* A Appmax é a única das três que separa o juro do parcelamento. */
+      interestCents: data.interest !== undefined ? cents(data.interest) : undefined,
       discountCents: data.discount !== undefined ? cents(data.discount) : undefined,
       paymentMethod: METHOD_MAP[pagamento.metodo.toLowerCase()] ?? "other",
       installments: pagamento.parcelas,

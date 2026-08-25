@@ -30,9 +30,25 @@ export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  /* Para quem tem muitos dashboards e não lembra o que cada um cobre. */
+  description: text("description"),
   /* Fuso de apuração. "Horário das vendas" e o corte do dia dependem disto. */
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   currency: text("currency").notNull().default("BRL"),
+
+  /*
+   * O que conta como faturamento.
+   *
+   * Não é preferência de exibição: muda o ROAS. O gateway cobra do cliente o
+   * produto mais o frete mais o juro do parcelamento, e manda o total. Quem
+   * repassa frete ao transportador não faturou aquilo — contar infla receita
+   * com dinheiro que sai no mesmo dia. Quem embute o frete no preço, contou.
+   *
+   * O padrão liga os dois porque é o que o gateway informa; desligar é uma
+   * decisão contábil de quem opera, e ela precisa ser explícita.
+   */
+  countShipping: boolean("count_shipping").notNull().default(true),
+  countInterest: boolean("count_interest").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -277,6 +293,8 @@ export const orders = pgTable("orders", {
   grossCents: bigint("gross_cents", { mode: "number" }).notNull(),
   feeCents: bigint("fee_cents", { mode: "number" }),
   shippingCents: bigint("shipping_cents", { mode: "number" }),
+  /* Juro do parcelamento cobrado do comprador — a Appmax manda como `interest`. */
+  interestCents: bigint("interest_cents", { mode: "number" }),
   discountCents: bigint("discount_cents", { mode: "number" }),
   /* Custo das mercadorias, somado dos itens. Base do lucro. */
   cogsCents: bigint("cogs_cents", { mode: "number" }),

@@ -1,0 +1,134 @@
+/*
+ * O que conta como faturamento, e o placar acumulado.
+ *
+ * Testa a coisa que muda dinheiro sem parecer que mudou: desligar "contabilizar
+ * frete" tira receita de todo lugar ao mesmo tempo — resumo, tela de plataforma
+ * e placar. Se um dos três discordar, o painel passa a se contradizer sozinho,
+ * e ninguém confia mais em nenhum dos números.
+ */
+const { neon } = require("@neondatabase/serverless");
+const { webcrypto: wc } = require("node:crypto");
+process.loadEnvFile(".env");
+const sql = neon(process.env.DATABASE_URL);
+
+const { metricas } = require("../_tmp/core/metricas.js");
+const { indicadores } = require("../_tmp/core/resumo.js");
+const { faturamentoAcumulado, faixaDe, FAIXAS } = require("../_tmp/core/faixas.js");
+const { valorEmMemoria, descreverRegra } = require("../_tmp/core/faturamento.js");
+
+let f = 0;
+const eq = (l, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) f++;
+  console.log(`  ${ok ? "ok  " : "FALHA"} | ${l}` + (ok ? "" : `  obtido ${JSON.stringify(g)}, esperado ${JSON.stringify(w)}`)); };
+
+(async () => {
+await sql`DELETE FROM tenants WHERE slug = 'faturamento-teste'`;
+const [t] = await sql`INSERT INTO tenants (name, slug, timezone) VALUES ('Faturamento', 'faturamento-teste', 'America/Sao_Paulo') RETURNING id`;
+const [site] = await sql`INSERT INTO sites (tenant_id, domain, public_key) VALUES (${t.id}, ${'f'+Date.now()+'.exemplo'}, ${'pk_f_'+Date.now()}) RETURNING id`;
+const [conta] = await sql`INSERT INTO ad_accounts (tenant_id, platform, external_id, label, credentials) VALUES (${t.id}, 'meta', 'act_f', 'Conta', '{}'::jsonb) RETURNING id`;
+const [conn] = await sql`INSERT INTO gateway_connections (tenant_id, gateway, label, webhook_secret) VALUES (${t.id}, 'appmax', 'A', ${'ws_'+Date.now()}) RETURNING id`;
+
+/* Dia no fuso da loja — a query converte antes de comparar. */
+const hoje = new Date().toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 10);
+
+await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date, campaign_id, campaign_name, ad_id, ad_name, spend_cents, impressions, clicks)
+  VALUES (${t.id}, ${conta.id}, 'meta', ${hoje}, 'C1', 'Campanha', 'A1', 'Anuncio', 20000, 5000, 100)`;
+
+const ses = wc.randomUUID();
+await sql`INSERT INTO click_sessions (click_id, tenant_id, site_id, campaign_id, ad_id, utm_source)
+  VALUES (${ses}, ${t.id}, ${site.id}, 'C1', 'A1', 'facebook')`;
+
+/*
+ * Duas vendas: produto 10.000 + frete 2.000 + juro 500 = 12.500 cada.
+ * Total bruto 25.000, frete 4.000, juro 1.000.
+ */
+for (let i = 0; i < 2; i++) {
+  await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, shipping_cents, interest_cents, click_id, attribution_method, occurred_at, paid_at)
+    VALUES (${t.id}, ${conn.id}, ${'o'+wc.randomUUID()}, 'paid', 12500, 2000, 500, ${ses}, 'click_id', now(), now())`;
+}
+/* Uma venda sem frete nem juro informados: as colunas ficam NULL. */
+await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, click_id, attribution_method, occurred_at, paid_at)
+  VALUES (${t.id}, ${conn.id}, ${'o'+wc.randomUUID()}, 'paid', 30000, ${ses}, 'click_id', now(), now())`;
+
+const TUDO   = { countShipping: true,  countInterest: true  };
+const SEMF   = { countShipping: false, countInterest: true  };
+const SEMJ   = { countShipping: true,  countInterest: false };
+const NENHUM = { countShipping: false, countInterest: false };
+
+const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje, nivel: "anuncio" };
+const per = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo" };
+
+console.log("\n== tela de plataforma ==");
+const a = await metricas({ ...janela, regra: TUDO });
+eq("tudo incluso", a[0]?.faturamentoCents, 55000);
+const b = await metricas({ ...janela, regra: SEMF });
+eq("sem frete tira 4.000", b[0]?.faturamentoCents, 51000);
+const c = await metricas({ ...janela, regra: SEMJ });
+eq("sem juros tira 1.000", c[0]?.faturamentoCents, 54000);
+const d = await metricas({ ...janela, regra: NENHUM });
+eq("sem os dois tira 5.000", d[0]?.faturamentoCents, 50000);
+
+/* O ROAS acompanha: é o motivo de isto não ser preferência de exibição. */
+eq("ROAS muda junto", Number(d[0]?.roas.toFixed(2)), 2.5);
+eq("ROAS com tudo é outro", Number(a[0]?.roas.toFixed(2)), 2.75);
+
+console.log("\n== resumo ==");
+eq("bruto com tudo", (await indicadores({ ...per, regra: TUDO })).faturamentoBrutoCents, 55000);
+eq("bruto sem frete", (await indicadores({ ...per, regra: SEMF })).faturamentoBrutoCents, 51000);
+eq("bruto sem os dois", (await indicadores({ ...per, regra: NENHUM })).faturamentoBrutoCents, 50000);
+
+console.log("\n== placar acumulado ==");
+eq("acumulado com tudo", await faturamentoAcumulado(t.id, TUDO), 55000);
+eq("acumulado sem os dois", await faturamentoAcumulado(t.id, NENHUM), 50000);
+
+console.log("\n== os tres concordam ==");
+const m = await metricas({ ...janela, regra: SEMF });
+const r = await indicadores({ ...per, regra: SEMF });
+const p = await faturamentoAcumulado(t.id, SEMF);
+eq("plataforma = resumo = placar", [m[0]?.faturamentoCents, r.faturamentoBrutoCents, p], [51000, 51000, 51000]);
+
+console.log("\n== venda sem frete informado ==");
+/* A de 30.000 tem shipping_cents NULL. Em SQL, 30000 - NULL é NULL — sem
+   coalesce ela zeraria e o total cairia para 21.000 em vez de 51.000. */
+eq("NULL não zera a venda", b[0]?.faturamentoCents, 51000);
+
+console.log("\n== a mesma regra em memória ==");
+eq("desconta frete", valorEmMemoria({ grossCents: 12500, shippingCents: 2000, interestCents: 500 }, SEMF), 10500);
+eq("desconta os dois", valorEmMemoria({ grossCents: 12500, shippingCents: 2000, interestCents: 500 }, NENHUM), 10000);
+eq("nulos não quebram", valorEmMemoria({ grossCents: 30000 }, NENHUM), 30000);
+eq("tudo incluso não mexe", valorEmMemoria({ grossCents: 12500, shippingCents: 2000 }, TUDO), 12500);
+
+console.log("\n== legenda ==");
+eq("diz o que inclui", descreverRegra(TUDO), "inclui frete e juros");
+eq("diz o que tirou", descreverRegra(NENHUM), "sem frete nem juros");
+eq("diz só um", descreverRegra(SEMF), "sem frete");
+
+console.log("\n== faixas do placar ==");
+const zero = faixaDe(0);
+eq("começa na primeira faixa", zero.degrau, 1);
+eq("progresso zero", zero.progresso, 0);
+eq("de zero", zero.deCents, 0);
+
+/* 60 mil reais: entre 50 mil (5.000.000c) e 100 mil (10.000.000c). */
+const meio = faixaDe(6_000_000);
+eq("faixa certa", [meio.deCents, meio.ateCents], [5_000_000, 10_000_000]);
+eq("progresso DENTRO da faixa, não do total", Number(meio.progresso.toFixed(2)), 0.2);
+eq("faltam 40 mil", meio.faltamCents, 4_000_000);
+
+const teto = faixaDe(FAIXAS[FAIXAS.length - 1] + 1);
+eq("passou do teto: sem próxima", teto.ateCents, null);
+eq("barra cheia", teto.progresso, 1);
+eq("faltam nada", teto.faltamCents, null);
+
+/* Exatamente na fronteira pertence à faixa DE CIMA, não à de baixo. */
+const fronteira = faixaDe(1_000_000);
+eq("fronteira sobe de faixa", fronteira.degrau, 2);
+
+console.log("\n== não vaza entre lojas ==");
+await sql`DELETE FROM tenants WHERE slug = 'faturamento-outro'`;
+const [o] = await sql`INSERT INTO tenants (name, slug) VALUES ('Outro', 'faturamento-outro') RETURNING id`;
+eq("outra loja não vê nada", await faturamentoAcumulado(o.id, TUDO), 0);
+
+await sql`DELETE FROM tenants WHERE slug IN ('faturamento-teste','faturamento-outro')`;
+console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
+process.exit(f === 0 ? 0 : 1);
+})();

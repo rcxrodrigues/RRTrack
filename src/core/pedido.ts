@@ -130,6 +130,7 @@ export async function registrarPedido(
     grossCents: pedido.grossCents,
     feeCents: pedido.feeCents ?? null,
     shippingCents: pedido.shippingCents ?? null,
+    interestCents: pedido.interestCents ?? null,
     discountCents: pedido.discountCents ?? null,
     paymentMethod: pedido.paymentMethod,
     installments: pedido.installments ?? null,

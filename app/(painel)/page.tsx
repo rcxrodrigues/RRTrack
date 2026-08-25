@@ -21,7 +21,9 @@ export default async function Pagina({ searchParams }: {
   const busca = await searchParams;
   const periodo = um(busca.periodo) || "7d";
   const { de, ate } = janelaDe(periodo, loja.timezone);
-  const p = { tenantId: loja.id, de, ate, timezone: loja.timezone };
+  /* O que esta loja conta como faturamento — ver core/faturamento.ts. */
+  const regra = { countShipping: loja.countShipping, countInterest: loja.countInterest };
+  const p = { tenantId: loja.id, de, ate, timezone: loja.timezone, regra };
 
   const [ind, fun, hor, ori, pag, contas] = await Promise.all([
     indicadores(p), funil(p), porHorario(p), porOrigem(p), porPagamento(p),

@@ -22,6 +22,7 @@ import { and, between, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "../db/index";
 import { adSpendDaily, clickSessions, events, orders } from "../db/schema";
+import { REGRA_PADRAO, valorDaVenda, type RegraFaturamento } from "./faturamento";
 
 export type Nivel = "conta" | "campanha" | "conjunto" | "anuncio";
 
@@ -101,6 +102,11 @@ export interface Filtro {
   nivel: Nivel;
   /** Filtra por parte do nome, como o campo de busca da tela. */
   nome?: string;
+  /*
+   * O que a loja conta como faturamento. Omitir cai no padrão do gateway
+   * (tudo incluso), que é o comportamento de antes desta opção existir.
+   */
+  regra?: RegraFaturamento;
 }
 
 export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
@@ -141,7 +147,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     .select({
       id: colSessao,
       quantidade: sql<number>`count(*)::int`,
-      faturamento: sql<number>`coalesce(sum(${orders.grossCents}), 0)::int`,
+      faturamento: sql<number>`coalesce(sum(${valorDaVenda(f.regra ?? REGRA_PADRAO)}), 0)::int`,
       custo: sql<number>`coalesce(sum(${orders.cogsCents}), 0)::int`,
     })
     .from(orders)

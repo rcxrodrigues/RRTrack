@@ -135,6 +135,10 @@ export interface LojaDoUsuario {
   papel: string;
   timezone: string;
   currency: string;
+  descricao: string | null;
+  /* O que conta como faturamento nesta loja — ver core/faturamento.ts. */
+  countShipping: boolean;
+  countInterest: boolean;
 }
 
 /**
@@ -154,6 +158,9 @@ export async function lojasDoUsuario(userId: string): Promise<LojaDoUsuario[]> {
       papel: memberships.role,
       timezone: tenants.timezone,
       currency: tenants.currency,
+      descricao: tenants.description,
+      countShipping: tenants.countShipping,
+      countInterest: tenants.countInterest,
     })
     .from(memberships)
     .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
@@ -175,6 +182,9 @@ export async function acessoALoja(userId: string, tenantId: string): Promise<Loj
       papel: memberships.role,
       timezone: tenants.timezone,
       currency: tenants.currency,
+      descricao: tenants.description,
+      countShipping: tenants.countShipping,
+      countInterest: tenants.countInterest,
     })
     .from(memberships)
     .innerJoin(tenants, eq(tenants.id, memberships.tenantId))

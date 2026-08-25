@@ -13,6 +13,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db/index";
+import { REGRA_PADRAO, valorCru, type RegraFaturamento } from "./faturamento";
 
 /*
  * O driver HTTP da Neon devolve `{ rows }`, e não a lista direto — diferente
@@ -25,6 +26,8 @@ async function linhasDe<T>(consulta: Promise<{ rows: T[] }>): Promise<T[]> {
 
 export interface Periodo {
   tenantId: string;
+  /* O que a loja conta como faturamento — ver core/faturamento.ts. */
+  regra?: RegraFaturamento;
   de: string;   /* AAAA-MM-DD, no fuso da loja */
   ate: string;
   timezone: string;
@@ -51,18 +54,19 @@ export interface Indicadores {
 }
 
 export async function indicadores(p: Periodo): Promise<Indicadores> {
+  const v = valorCru(p.regra ?? REGRA_PADRAO);
   const [linha] = await linhasDe(db.execute<{
     bruto: number; taxas: number; custo: number; aprovadas: number;
     pendentes: number; pendente_valor: number; reembolsos: number; reembolsadas: number;
   }>(sql`
     SELECT
-      coalesce(sum(gross_cents)      filter (where status = 'paid'), 0)::bigint AS bruto,
+      coalesce(sum(${v})            filter (where status = 'paid'), 0)::bigint AS bruto,
       coalesce(sum(fee_cents)        filter (where status = 'paid'), 0)::bigint AS taxas,
       coalesce(sum(cogs_cents)       filter (where status = 'paid'), 0)::bigint AS custo,
       count(*)                       filter (where status = 'paid')::int        AS aprovadas,
       count(*)                       filter (where status = 'pending')::int     AS pendentes,
-      coalesce(sum(gross_cents)      filter (where status = 'pending'), 0)::bigint AS pendente_valor,
-      coalesce(sum(gross_cents)      filter (where status in ('refunded','chargeback')), 0)::bigint AS reembolsos,
+      coalesce(sum(${v})            filter (where status = 'pending'), 0)::bigint AS pendente_valor,
+      coalesce(sum(${v})            filter (where status in ('refunded','chargeback')), 0)::bigint AS reembolsos,
       count(*)                       filter (where status in ('refunded','chargeback'))::int AS reembolsadas
     FROM orders
     WHERE tenant_id = ${p.tenantId}
@@ -170,12 +174,13 @@ export async function funil(p: Periodo): Promise<EtapaFunil[]> {
 export interface Celula { dia: number; hora: number; vendas: number; valorCents: number }
 
 export async function porHorario(p: Periodo): Promise<Celula[]> {
+  const v = valorCru(p.regra ?? REGRA_PADRAO);
   const linhas = await linhasDe(db.execute<{ dia: number; hora: number; n: number; valor: number }>(sql`
     SELECT
       EXTRACT(DOW  FROM (occurred_at AT TIME ZONE ${p.timezone}))::int AS dia,
       EXTRACT(HOUR FROM (occurred_at AT TIME ZONE ${p.timezone}))::int AS hora,
       count(*)::int AS n,
-      coalesce(sum(gross_cents), 0)::bigint AS valor
+      coalesce(sum(${v}), 0)::bigint AS valor
     FROM orders
     WHERE tenant_id = ${p.tenantId} AND status = 'paid'
       AND (occurred_at AT TIME ZONE ${p.timezone})::date BETWEEN ${p.de}::date AND ${p.ate}::date
@@ -201,6 +206,7 @@ export interface Origem {
 }
 
 export async function porOrigem(p: Periodo): Promise<Origem[]> {
+  const v = valorCru(p.regra ?? REGRA_PADRAO, "o");
   const linhas = await linhasDe(db.execute<{
     fonte: string; sessoes: number; vendas: number; faturamento: number;
   }>(sql`
@@ -209,7 +215,7 @@ export async function porOrigem(p: Periodo): Promise<Origem[]> {
         || coalesce(' / ' || nullif(cs.utm_medium, ''), '') AS fonte,
       count(DISTINCT cs.click_id)::int AS sessoes,
       count(o.id) FILTER (WHERE o.status = 'paid')::int AS vendas,
-      coalesce(sum(o.gross_cents) FILTER (WHERE o.status = 'paid'), 0)::bigint AS faturamento
+      coalesce(sum(${v}) FILTER (WHERE o.status = 'paid'), 0)::bigint AS faturamento
     FROM click_sessions cs
     LEFT JOIN orders o ON o.click_id = cs.click_id AND o.tenant_id = cs.tenant_id
     WHERE cs.tenant_id = ${p.tenantId}

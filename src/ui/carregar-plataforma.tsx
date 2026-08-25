@@ -84,7 +84,11 @@ export async function CarregarPlataforma({
   }
 
   const linhas = contas.length
-    ? await metricas({ tenantId: loja.id, plataforma, de, ate, nivel, nome })
+    ? await metricas({
+        tenantId: loja.id, plataforma, de, ate, nivel, nome,
+        /* O que esta loja conta como faturamento — ver core/faturamento.ts. */
+        regra: { countShipping: loja.countShipping, countInterest: loja.countInterest },
+      })
     : [];
 
   return (

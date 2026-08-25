@@ -143,6 +143,8 @@ export interface CanonicalOrder {
   /** Taxa do gateway, quando informada. */
   feeCents?: Cents;
   shippingCents?: Cents;
+  /* Juro do parcelamento cobrado do comprador, quando o gateway informa. */
+  interestCents?: Cents;
   discountCents?: Cents;
 
   paymentMethod: PaymentMethod;

@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { LojaDoUsuario } from "@/core/auth";
+import { SeletorLoja } from "./seletor-loja";
 
 /*
  * Barra lateral e topo do painel.
@@ -65,9 +66,10 @@ const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: strin
 ];
 
 export function Navegacao({
-  lojaAtual, usuario,
+  lojaAtual, lojas, usuario,
 }: {
   lojaAtual: LojaDoUsuario | null;
+  lojas: LojaDoUsuario[];
   usuario: { nome: string | null; email: string };
 }) {
   const caminho = usePathname();
@@ -98,23 +100,11 @@ export function Navegacao({
       </div>
 
       {/*
-        A loja aparece como rótulo, não como seletor.
-        Havia um menu de troca aqui; o usuário apontou que não precisa dele —
-        é uma operação só, e a distinção entre negócios vem da campanha, não de
-        trocar de contexto na barra lateral. O modelo de dados continua
-        multi-loja: o que saiu foi a troca manual, não o isolamento.
+        Seletor de dashboard. Cada um isola gateways, pixels e contas de
+        anúncio — é o que impede duas ofertas de disparar conversão para o
+        pixel uma da outra.
       */}
-      <div style={{ padding: "0 14px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ink-tenue)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
-            <path d="M2.5 6h11l-1 7.5h-9L2.5 6zM5.5 6V4a2.5 2.5 0 0 1 5 0v2" />
-          </svg>
-          <span style={{
-            fontSize: 11.5, fontWeight: 500, color: "var(--ink-fraco)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{lojaAtual?.nome ?? "sem loja"}</span>
-        </div>
-      </div>
+      <SeletorLoja atual={lojaAtual} lojas={lojas} />
 
       {/* navegação */}
       <nav style={{ flexGrow: 1, overflowY: "auto", padding: "0 10px" }}>
