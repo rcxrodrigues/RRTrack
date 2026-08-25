@@ -15,10 +15,14 @@ import { useState } from "react";
  * dentro.
  */
 
-export interface Faixa { ateParcelas: number; percentual: number; fixoCents: number }
+export interface Faixa {
+  ateParcelas: number; percentual: number; fixoCents: number;
+  /* Reserva financeira, somada ao percentual — ver core/taxas.ts. */
+  reservaPercentual?: number;
+}
 
 export interface Tabela {
-  pix?: { percentual: number; fixoCents: number };
+  pix?: { percentual: number; fixoCents: number; reservaPercentual?: number };
   credit_card?: Faixa[];
   /*
    * A tela não edita estes, mas eles existem na tabela e precisam sobreviver a
@@ -54,12 +58,18 @@ export function TaxasDoGateway({
   const atual = taxas as Tabela;
   const configurado = !!(atual?.pix || atual?.credit_card?.length);
 
+  /* Espelha as três colunas dos painéis de gateway: percentual, fixo, reserva. */
   const [pixPct, setPixPct] = useState(
     atual?.pix ? String(atual.pix.percentual).replace(".", ",") : "");
   const [pixFixo, setPixFixo] = useState(
     atual?.pix ? (atual.pix.fixoCents / 100).toFixed(2).replace(".", ",") : "");
   const [cartaoFixo, setCartaoFixo] = useState(
     atual?.credit_card?.[0] ? (atual.credit_card[0].fixoCents / 100).toFixed(2).replace(".", ",") : "");
+  const [pixReserva, setPixReserva] = useState(
+    atual?.pix?.reservaPercentual ? String(atual.pix.reservaPercentual).replace(".", ",") : "");
+  const [cartaoReserva, setCartaoReserva] = useState(
+    atual?.credit_card?.[0]?.reservaPercentual
+      ? String(atual.credit_card[0].reservaPercentual).replace(".", ",") : "");
   const [faixas, setFaixas] = useState<Faixa[]>(
     atual?.credit_card?.length ? atual.credit_card : SUGERIDO.credit_card);
 
@@ -81,14 +91,22 @@ export function TaxasDoGateway({
     const t: Tabela = { ...atual };
 
     if (pixPct.trim() || pixFixo.trim()) {
-      t.pix = { percentual: numero(pixPct), fixoCents: Math.round(numero(pixFixo) * 100) };
+      t.pix = {
+        percentual: numero(pixPct),
+        fixoCents: Math.round(numero(pixFixo) * 100),
+        ...(pixReserva.trim() ? { reservaPercentual: numero(pixReserva) } : {}),
+      };
     } else {
       delete t.pix;
     }
 
     if (faixas.length) {
       const fixo = Math.round(numero(cartaoFixo) * 100);
-      t.credit_card = faixas.map((f) => ({ ...f, fixoCents: fixo }));
+      const reserva = cartaoReserva.trim() ? numero(cartaoReserva) : undefined;
+      t.credit_card = faixas.map((f) => ({
+        ...f, fixoCents: fixo,
+        ...(reserva === undefined ? {} : { reservaPercentual: reserva }),
+      }));
     } else {
       delete t.credit_card;
     }
@@ -127,6 +145,10 @@ export function TaxasDoGateway({
       <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", lineHeight: 1.5 }}>
         Confira no extrato do gateway e ajuste. Quando o webhook informar a taxa
         cobrada, ela prevalece — isto aqui é estimativa, aquilo é o que saiu da conta.
+        <br />
+        A <strong>reserva</strong> é dinheiro retido que volta depois do prazo de
+        garantia. Preenchida, ela soma ao percentual e sai do lucro — o número
+        passa a ser o que pinga hoje, não o que pinga somando o que ainda volta.
       </div>
 
       <div>
@@ -139,6 +161,10 @@ export function TaxasDoGateway({
           <ComSufixo sufixo="R$">
             <input className="num" value={pixFixo} placeholder="0,00"
               onChange={(e) => setPixFixo(e.target.value)} />
+          </ComSufixo>
+          <ComSufixo sufixo="% reserva">
+            <input className="num" value={pixReserva} placeholder="0"
+              onChange={(e) => setPixReserva(e.target.value)} />
           </ComSufixo>
         </div>
       </div>
@@ -180,12 +206,21 @@ export function TaxasDoGateway({
           }}>+ faixa</button>
         </div>
 
-        <div style={{ marginTop: 9, maxWidth: 200 }}>
-          <Rotulo>Parte fixa do cartão</Rotulo>
-          <ComSufixo sufixo="R$ por venda">
-            <input className="num" value={cartaoFixo} placeholder="0,49"
-              onChange={(e) => setCartaoFixo(e.target.value)} />
-          </ComSufixo>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div>
+            <Rotulo>Parte fixa do cartão</Rotulo>
+            <ComSufixo sufixo="R$ por venda">
+              <input className="num" value={cartaoFixo} placeholder="0,49"
+                onChange={(e) => setCartaoFixo(e.target.value)} />
+            </ComSufixo>
+          </div>
+          <div>
+            <Rotulo>Reserva do cartão</Rotulo>
+            <ComSufixo sufixo="%">
+              <input className="num" value={cartaoReserva} placeholder="0"
+                onChange={(e) => setCartaoReserva(e.target.value)} />
+            </ComSufixo>
+          </div>
         </div>
 
         <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 7, lineHeight: 1.45 }}>

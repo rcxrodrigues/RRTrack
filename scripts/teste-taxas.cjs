@@ -78,6 +78,27 @@ eq("taxa nunca passa do valor da venda",
 eq("percentual negativo não devolve crédito",
   calcularTaxa(venda(10000, "pix"), { pix: { percentual: -5, fixoCents: 0 } }), 0);
 
+console.log("\n== reserva contada como taxa ==");
+/*
+ * Reserva e dinheiro retido e devolvido depois, nao custo. Entra no calculo
+ * por escolha de quem opera. Fica em campo separado para a escolha poder ser
+ * revista sem precisar redescobrir qual parte era taxa e qual era reserva.
+ */
+const COM_RESERVA = {
+  pix: { percentual: 7.99, fixoCents: 249, reservaPercentual: 0 },
+  credit_card: [{ ateParcelas: 12, percentual: 6.99, fixoCents: 599, reservaPercentual: 25 }],
+};
+/* 6,99% + 25% = 31,99% de R$ 100 = R$ 31,99, mais R$ 5,99 = R$ 37,98 */
+eq("soma reserva ao percentual", calcularTaxa(venda(10000, "credit_card", 1), COM_RESERVA), 3798);
+/* Sem reserva no pix nada muda: 7,99% + R$ 2,49 = R$ 10,48 */
+eq("reserva zero nao altera", calcularTaxa(venda(10000, "pix"), COM_RESERVA), 1048);
+/* O campo e opcional: tabela antiga, sem ele, calcula igual. */
+eq("ausente e o mesmo que zero",
+  calcularTaxa(venda(10000, "pix"), { pix: { percentual: 7.99, fixoCents: 249 } }), 1048);
+/* Reserva alta nao pode fazer a taxa passar da venda. */
+eq("teto continua valendo",
+  calcularTaxa(venda(10000, "pix"), { pix: { percentual: 50, fixoCents: 0, reservaPercentual: 90 } }), 10000);
+
 console.log("\n== a tabela está configurada? ==");
 eq("vazia não está", tabelaConfigurada(TABELA_VAZIA), false);
 eq("nula não está", tabelaConfigurada(null), false);

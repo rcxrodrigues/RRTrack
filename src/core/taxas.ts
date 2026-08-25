@@ -19,6 +19,18 @@ export interface Taxa {
   percentual: number;
   /** Parte fixa por transação, em centavos. */
   fixoCents: number;
+  /*
+   * Reserva financeira retida pelo gateway, em pontos percentuais.
+   *
+   * Não é taxa: é dinheiro que volta para a conta depois do prazo de garantia.
+   * Entra no cálculo por decisão do lojista — quem prefere ver o lucro pelo
+   * que pinga hoje, e não pelo que pinga somando o que ainda vai voltar.
+   *
+   * Fica em campo separado, e não somado ao percentual, justamente para essa
+   * decisão poder ser revista sem precisar redescobrir qual parte era taxa e
+   * qual era reserva.
+   */
+  reservaPercentual?: number;
 }
 
 /*
@@ -58,9 +70,10 @@ export function calcularTaxa(
   /*
    * O percentual incide sobre o valor cheio que o comprador pagou, que é a
    * base que todo gateway usa — inclusive sobre o frete, quando ele foi
-   * cobrado na mesma transação.
+   * cobrado na mesma transação. A reserva incide sobre a mesma base.
    */
-  const bruto = Math.round(venda.grossCents * (regra.percentual / 100)) + regra.fixoCents;
+  const taxa = regra.percentual + (regra.reservaPercentual ?? 0);
+  const bruto = Math.round(venda.grossCents * (taxa / 100)) + regra.fixoCents;
 
   /* Taxa maior que a venda é erro de cadastro; cobrar mais que o total não
      acontece, e deixar passar produziria faturamento líquido negativo. */
