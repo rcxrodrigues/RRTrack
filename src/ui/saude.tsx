@@ -64,7 +64,7 @@ export function Saude({
       <div style={{ padding: "16px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* a pergunta que importa primeiro */}
-        <div style={{
+        <div className="rr-cartoes" style={{
           display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10,
         }}>
           {[
@@ -106,7 +106,7 @@ export function Saude({
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, alignItems: "start" }}>
+        <div className="rr-paineis" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, alignItems: "start" }}>
 
           <Cartao titulo="Como cada venda foi atribuída" descricao={`${num(totalVendas)} vendas no período`}>
             <div style={{ display: "flex", height: 9, borderRadius: 4, overflow: "hidden", marginBottom: 15 }}>

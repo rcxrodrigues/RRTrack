@@ -141,6 +141,35 @@ input::placeholder { color: var(--ink-tenue); }
 
   /* Respiro menor: 20px de cada lado num telefone é a metade da tela. */
   .rr-conteudo { padding-left: 14px !important; padding-right: 14px !important; }
+
+  /*
+   * Dois por linha, não quatro.
+   *
+   * Quatro cartões em 375px dão 80px cada, e "Faturamento líquido" com
+   * R$ 1.443,00 embaixo não cabe em 80px — o rótulo quebra em três linhas e o
+   * número encolhe até virar decoração. Dois por linha dão 170px, que é onde
+   * rótulo e valor voltam a caber lado a lado sem quebra.
+   */
+  .rr-cartoes { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /*
+   * O funil empilha em vez de espremer.
+   *
+   * Cinco etapas em 375px dariam 75px cada, e a etapa é rótulo mais número
+   * mais taxa de passagem — três informações que não convivem nessa largura.
+   * Empilhado, o funil ainda lê de cima para baixo, que é a direção natural
+   * dele de qualquer forma.
+   */
+  .rr-funil { grid-template-columns: 1fr !important; }
+  .rr-funil > div {
+    border-left: none !important;
+    border-top: 1px solid var(--linha);
+    padding: 11px 0 !important;
+  }
+  .rr-funil > div:first-child { border-top: none; padding-top: 0 !important; }
+
+  /* Painéis lado a lado viram um embaixo do outro. */
+  .rr-paineis { grid-template-columns: 1fr !important; }
 }
 
 /*

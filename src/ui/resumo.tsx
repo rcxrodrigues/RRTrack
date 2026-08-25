@@ -94,7 +94,7 @@ export function Resumo({
         )}
 
         {/* indicadores */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+        <div className="rr-cartoes" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
           {cartoes.map((c) => (
             <div key={c.rotulo} style={{
               padding: "13px 15px", borderRadius: 8,
@@ -119,7 +119,7 @@ export function Resumo({
 
         {/* funil */}
         <Cartao titulo="Funil de conversão" descricao="Visitantes únicos em cada etapa — não eventos, para quem recarrega a página não virar visitante novo.">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+          <div className="rr-funil" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
             {funil.map((e, i) => (
               <div key={e.rotulo} style={{
                 padding: "0 16px",
@@ -154,7 +154,7 @@ export function Resumo({
           </div>
         </Cartao>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 12, alignItems: "start" }}>
+        <div className="rr-paineis" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 12, alignItems: "start" }}>
 
           {/* horário */}
           <Cartao
