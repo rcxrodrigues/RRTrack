@@ -5,8 +5,10 @@
  * qualquer sistema tem que nascer fora dele. Quando houver convite por e-mail,
  * esta lógica vira o aceite do convite.
  *
- *   node scripts/criar-usuario.mjs --email voce@exemplo.com --nome "Seu Nome" \
- *     --senha "uma senha longa" --loja loja-teste --loja outra-loja
+ *   node scripts/criar-usuario.mjs --email voce@exemplo.com --nome "Seu Nome"
+ *
+ * A senha é perguntada e não aparece enquanto se digita. Passá-la por --senha
+ * ainda funciona, para automação, mas deixa rastro — ver perguntarSenha().
  *
  * Sem --loja, dá acesso a TODAS as lojas existentes (o caso de quem é dono de
  * tudo). Rodar de novo com o mesmo e-mail troca a senha e refaz os acessos.
@@ -14,6 +16,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { webcrypto as wc } from "node:crypto";
+import { createInterface } from "node:readline";
 
 process.loadEnvFile(".env");
 const sql = neon(process.env.DATABASE_URL);
@@ -44,10 +47,60 @@ function args(argv) {
   return out;
 }
 
+/*
+ * Pergunta a senha sem mostrar o que está sendo digitado.
+ *
+ * Senha em linha de comando vaza por três caminhos ao mesmo tempo: fica no
+ * histórico do shell, aparece na lista de processos enquanto o comando roda, e
+ * sobra em qualquer transcrição da sessão. Perguntar aqui elimina os três.
+ */
+async function perguntarSenha() {
+  /*
+   * Sem terminal não há como perguntar nada. Acontece em CI, em `| cat` e em
+   * qualquer chamada com a entrada redirecionada — e sem este aviso o erro
+   * seria uma pilha de stack trace que não diz o que fazer.
+   */
+  if (!process.stdin.isTTY) {
+    console.error(
+      "\nErro: não há terminal para perguntar a senha.\n" +
+      "Rode direto no terminal, ou passe --senha se for automação.\n",
+    );
+    process.exit(1);
+  }
+
+  const rl = createInterface({
+    input: process.stdin, output: process.stdout, terminal: true,
+  });
+
+  const pedir = (rotulo) => new Promise((resolve) => {
+    process.stdout.write(rotulo);
+    /*
+     * O `write` do readline é chamado a cada tecla. Trocá-lo por uma função
+     * vazia é o que impede a senha — e até o tamanho dela — de aparecer.
+     */
+    const original = rl.output.write.bind(rl.output);
+    rl.output.write = () => {};
+    rl.question("", (valor) => {
+      rl.output.write = original;
+      process.stdout.write("\n");
+      resolve(valor);
+    });
+  });
+
+  const primeira = await pedir("Senha (não aparece enquanto digita): ");
+  const segunda = await pedir("Digite de novo para confirmar: ");
+  rl.close();
+
+  if (primeira !== segunda) {
+    console.error("\nAs duas não bateram. Rode o comando de novo.\n");
+    process.exit(1);
+  }
+  return primeira;
+}
+
 const a = args(process.argv.slice(2));
 
 const email = (a.email ?? "").trim().toLowerCase();
-const senha = a.senha ?? "";
 const nome = a.nome ?? null;
 
 if (!email || !email.includes("@")) {
@@ -55,13 +108,25 @@ if (!email || !email.includes("@")) {
   process.exit(1);
 }
 
+if (a.senha) {
+  console.warn(
+    "\nAviso: senha passada por argumento fica no histórico do shell e na\n" +
+    "lista de processos. Rode sem --senha para que ela seja perguntada.\n",
+  );
+}
+
+const senha = a.senha ?? await perguntarSenha();
+
 /*
  * Doze caracteres é o piso, não a recomendação. Senha curta em painel que
  * guarda token de API é o elo fraco de todo o resto — a cifragem das
  * credenciais no banco não vale nada se a porta da frente abre no chute.
  */
 if (senha.length < 12) {
-  console.error("\nErro: --senha precisa de pelo menos 12 caracteres\n");
+  console.error(
+    `\nErro: a senha precisa de pelo menos 12 caracteres (esta tem ${senha.length}).\n` +
+    "Quatro palavras aleatórias passam com folga e são fáceis de lembrar.\n",
+  );
   process.exit(1);
 }
 
