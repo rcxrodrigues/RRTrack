@@ -161,7 +161,15 @@ function Selo({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   );
 }
 
-function Copiavel({ valor, rotulo }: { valor: string; rotulo?: string }) {
+function Copiavel({ valor, rotulo, multilinha }: {
+  valor: string;
+  rotulo?: string;
+  /*
+   * Sem isto o bloco de várias linhas sai numa linha só: `nowrap` colapsa a
+   * quebra, e o que aparece na tela deixa de parecer com o que se cola.
+   */
+  multilinha?: boolean;
+}) {
   const [copiado, setCopiado] = useState(false);
   return (
     <div>
@@ -176,7 +184,9 @@ function Copiavel({ valor, rotulo }: { valor: string; rotulo?: string }) {
           flexGrow: 1, minWidth: 0, background: "#0A1014",
           border: "1px solid var(--linha-forte)", borderRadius: 5,
           padding: "9px 11px", fontSize: 11.5, color: "var(--ink-medio)",
-          overflowX: "auto", whiteSpace: "nowrap",
+          overflowX: "auto",
+          whiteSpace: multilinha ? "pre" : "nowrap",
+          lineHeight: multilinha ? 1.65 : undefined,
         }}>{valor}</code>
         <button
           onClick={() => {
@@ -291,8 +301,8 @@ function ExemploApi() {
  */
 const ASSINAM_WEBHOOK: Record<string, { rotulo: string; dica: string }> = {
   millions: {
-    rotulo: "Segredo de assinatura do webhook",
-    dica: "A MillionsPay mostra este segredo uma única vez, ao criar o endpoint. Não é a chave de API.",
+    rotulo: "Segredo de assinatura do webhook (opcional)",
+    dica: "Não fica na tela de chaves de API — a MillionsPay mostra ao CRIAR o endpoint de webhook, uma vez só. Em branco, a venda entra normalmente, apenas sem verificação de origem.",
   },
 };
 
@@ -485,8 +495,17 @@ export function Integracoes({
               identificada pela chave, não pelo endereço. Landing, página de vendas e
               obrigado usam este mesmo trecho.
             </div>
-            <Copiavel valor={
-              `<script>window.RRTrackConfig={siteKey:"${site.chave}",endpoint:"${base}/rr/collect"}</script><script src="${base}/rr.js" async></script>`
+            {/*
+              O comentário com o domínio existe para quem abrir o código-fonte
+              de um site e precisar saber qual dashboard aquele script alimenta.
+              Fica no comentário, e não dentro da chave, porque nome dentro de
+              credencial envelhece — foi o que aconteceu com as chaves antigas,
+              que ainda dizem o apelido que a loja tinha quando nasceram.
+            */}
+            <Copiavel multilinha valor={
+              `<!-- RRTrack · ${site.dominio} -->\n`
+              + `<script>window.RRTrackConfig={siteKey:"${site.chave}",endpoint:"${base}/rr/collect"}</script>\n`
+              + `<script src="${base}/rr.js" async></script>`
             } />
           </div>
         </div>
