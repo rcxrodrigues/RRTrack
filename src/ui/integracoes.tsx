@@ -650,15 +650,49 @@ export function Integracoes({
             </Cartao>
 
             <Cartao titulo="Seu site"
-              descricao="A chave que identifica este site no coletor.">
-              {site ? (
+              descricao="O endereço onde o script vai rodar, e a chave que ele carrega.">
+              {editando === "site" ? (
+                <>
+                  <Campo
+                    rotulo="Endereço do site"
+                    placeholder="sualoja.com.br"
+                    dica="Pode colar com https:// e www — eu limpo."
+                    value={form.dominio ?? site?.dominio ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, dominio: e.target.value }))}
+                  />
+                  {/*
+                    A chave não muda junto com o domínio, de propósito: ela é o
+                    que o snippet carrega, e trocá-la faria o script parar em
+                    toda página já publicada, sem erro visível.
+                  */}
+                  {site && (
+                    <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginBottom: 13, lineHeight: 1.5 }}>
+                      A chave do site continua a mesma. O script já publicado segue funcionando.
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Botao onClick={() => salvar({ tipo: "site", dominio: form.dominio })}
+                      disabled={salvando || !(form.dominio ?? "").trim()} pequeno>
+                      {salvando ? "salvando…" : "Salvar"}
+                    </Botao>
+                    <Botao tipo="secundario" pequeno
+                      onClick={() => { setEditando(null); setForm({}); }}>Cancelar</Botao>
+                  </div>
+                </>
+              ) : site ? (
                 <>
                   <div style={{ marginBottom: 14 }}>
                     <div style={{
                       fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
                       color: "var(--ink-tenue)", fontWeight: 600, marginBottom: 5,
                     }}>Domínio</div>
-                    <div className="num" style={{ fontSize: 12.5 }}>{site.dominio}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <span className="num" style={{ fontSize: 12.5, flexGrow: 1 }}>{site.dominio}</span>
+                      <Botao tipo="secundario" pequeno
+                        onClick={() => { setEditando("site"); setForm({ dominio: site.dominio }); }}>
+                        trocar
+                      </Botao>
+                    </div>
                   </div>
                   <Copiavel rotulo="Chave do site" valor={site.chave} />
                   <div style={{
@@ -670,9 +704,15 @@ export function Integracoes({
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: "var(--ink-tenue)" }}>
-                  Nenhum site cadastrado para esta loja.
-                </div>
+                <>
+                  <div style={{ fontSize: 12, color: "var(--ink-tenue)", marginBottom: 12, lineHeight: 1.5 }}>
+                    Nenhum site cadastrado. Sem ele o script não tem chave para carregar,
+                    e nenhum clique é coletado.
+                  </div>
+                  <Botao pequeno onClick={() => { setEditando("site"); setForm({}); }}>
+                    Cadastrar site
+                  </Botao>
+                </>
               )}
             </Cartao>
           </div>

@@ -9,7 +9,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/index";
-import { adAccounts, destinations, gatewayConnections } from "@/db/schema";
+import { adAccounts, destinations, gatewayConnections, sites } from "@/db/schema";
 import { exigirSessao } from "@/core/sessao";
 import { acessoALoja } from "@/core/auth";
 import { encryptValue } from "@/core/crypto";
@@ -170,6 +170,55 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       /* --------------------------------------------------------- pixel */
+      /* ---------------------------------------------------------- site */
+
+      /*
+       * O endereço do site desta loja.
+       *
+       * A chave pública NÃO muda quando o domínio muda. Ela é o que o snippet
+       * carrega, e regenerá-la faria o script parar de funcionar em toda página
+       * já publicada — sem erro visível, só eventos que somem.
+       */
+      case "site": {
+        const bruto = texto(corpo.dominio) ?? "";
+        /* Aceita colado do navegador, com protocolo, www e barra no fim. */
+        const dominio = bruto
+          .trim().toLowerCase()
+          .replace(/^https?:\/\//, "")
+          .replace(/^www\./, "")
+          .replace(/\/.*$/, "");
+
+        if (!dominio || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(dominio)) {
+          return Response.json({ erro: "endereço inválido" }, { status: 400 });
+        }
+
+        const [emUso] = await db.select({ id: sites.id, tenantId: sites.tenantId })
+          .from(sites).where(eq(sites.domain, dominio)).limit(1);
+
+        if (emUso && emUso.tenantId !== tenantId) {
+          return Response.json({ erro: "esse domínio já está em outro dashboard" }, { status: 409 });
+        }
+
+        const [existente] = await db.select({ id: sites.id, chave: sites.publicKey })
+          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+
+        if (existente) {
+          await db.update(sites).set({
+            domain: dominio,
+            collectorHost: `t.${dominio}`,
+            active: true,
+          }).where(eq(sites.id, existente.id));
+          return Response.json({ ok: true, dominio, chave: existente.chave, novo: false });
+        }
+
+        const chave = "pk_" + aleatorio(12);
+        await db.insert(sites).values({
+          tenantId, domain: dominio, collectorHost: `t.${dominio}`,
+          publicKey: chave, active: true,
+        });
+        return Response.json({ ok: true, dominio, chave, novo: true });
+      }
+
       case "pixel": {
         const plataforma = texto(corpo.plataforma);
         const externalId = texto(corpo.externalId);
