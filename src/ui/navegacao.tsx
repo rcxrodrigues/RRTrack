@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { LojaDoUsuario } from "@/core/auth";
@@ -75,6 +76,29 @@ export function Navegacao({
   const caminho = usePathname();
   const router = useRouter();
 
+  /*
+   * Recolhido vira faixa de ícones, e não some de vez: com onze destinos, o
+   * menu escondido custaria um clique a mais em toda navegação, e o que se
+   * queria era espaço, não menos caminho.
+   *
+   * Começa aberto e aplica a escolha depois de montar. O servidor não conhece
+   * o localStorage, e renderizar recolhido de um lado e aberto do outro faria
+   * o React descartar a árvore inteira.
+   */
+  const [recolhido, setRecolhido] = useState(false);
+
+  useEffect(() => {
+    try { setRecolhido(localStorage.getItem("rr_menu") === "recolhido"); } catch { /* modo privado */ }
+  }, []);
+
+  function alternar() {
+    setRecolhido((v) => {
+      const novo = !v;
+      try { localStorage.setItem("rr_menu", novo ? "recolhido" : "aberto"); } catch { /* idem */ }
+      return novo;
+    });
+  }
+
   const iniciais = (usuario.nome ?? usuario.email)
     .split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
 
@@ -86,7 +110,9 @@ export function Navegacao({
 
   return (
     <aside className="rr-lateral" style={{
-      width: 178, flexShrink: 0, borderRight: "1px solid var(--linha)",
+      width: recolhido ? 52 : 178,
+      transition: "width .16s ease",
+      flexShrink: 0, borderRight: "1px solid var(--linha)",
       background: "var(--painel)", display: "flex", flexDirection: "column",
       height: "100vh", position: "sticky", top: 0,
     }}>
@@ -96,21 +122,42 @@ export function Navegacao({
           <circle cx="9" cy="9" r="1.8" fill="var(--acento)" stroke="none" />
           <path d="M4.2 4.2a6.8 6.8 0 0 0 0 9.6M13.8 4.2a6.8 6.8 0 0 1 0 9.6" />
         </svg>
-        <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-.2px" }}>RRTrack</span>
+        {!recolhido && (
+          <>
+            <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-.2px" }}>RRTrack</span>
+            <button onClick={alternar} title="Recolher menu" aria-label="Recolher menu"
+              style={{ ...botaoRecolher, marginLeft: "auto" }}>
+              <IconeRecolher recolhido={false} />
+            </button>
+          </>
+        )}
       </div>
+
+      {/*
+        Recolhido, o botão desce para uma linha própria: ao lado do logo, em
+        52px de largura, os dois se espremem e nenhum fica clicável.
+      */}
+      {recolhido && (
+        <button onClick={alternar} title="Expandir menu" aria-label="Expandir menu"
+          style={{ ...botaoRecolher, margin: "0 auto 10px" }}>
+          <IconeRecolher recolhido />
+        </button>
+      )}
 
       {/*
         Seletor de dashboard. Cada um isola gateways, pixels e contas de
         anúncio — é o que impede duas ofertas de disparar conversão para o
         pixel uma da outra.
       */}
-      <SeletorLoja atual={lojaAtual} lojas={lojas} />
+      {/* O seletor precisa do nome da loja para servir de alguma coisa; em
+          52px sobraria só a sacola, que não diz qual dashboard está aberto. */}
+      {!recolhido && <SeletorLoja atual={lojaAtual} lojas={lojas} />}
 
       {/* navegação */}
       <nav style={{ flexGrow: 1, overflowY: "auto", padding: "0 10px" }}>
         {SECOES.map((secao, i) => (
           <div key={i} style={{ marginBottom: 14 }}>
-            {secao.grupo && (
+            {secao.grupo && !recolhido && (
               <div className="rr-grupo" style={{
                 fontSize: 9.5, letterSpacing: ".1em", textTransform: "uppercase",
                 color: "var(--ink-tenue)", fontWeight: 600, padding: "6px 10px 6px",
@@ -119,15 +166,21 @@ export function Navegacao({
             {secao.itens.map((item) => {
               const ativo = caminho === item.href;
               return (
-                <Link key={item.href} href={item.href} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "7px 10px", borderRadius: 6, marginBottom: 1,
-                  background: ativo ? "var(--acento-fundo)" : "transparent",
-                  color: ativo ? "var(--acento)" : "var(--ink-fraco)",
-                  fontSize: 12.5, fontWeight: ativo ? 600 : 500,
-                }}>
+                <Link key={item.href} href={item.href}
+                  /* Recolhido, o rótulo vira dica do sistema — senão os ícones
+                     viram adivinhação para quem não abre o painel todo dia. */
+                  title={recolhido ? item.rotulo : undefined}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    justifyContent: recolhido ? "center" : "flex-start",
+                    padding: recolhido ? "8px 0" : "7px 10px",
+                    borderRadius: 6, marginBottom: 1,
+                    background: ativo ? "var(--acento-fundo)" : "transparent",
+                    color: ativo ? "var(--acento)" : "var(--ink-fraco)",
+                    fontSize: 12.5, fontWeight: ativo ? 600 : 500,
+                  }}>
                   {ico(item.icone)}
-                  <span>{item.rotulo}</span>
+                  {!recolhido && <span>{item.rotulo}</span>}
                 </Link>
               );
             })}
@@ -139,24 +192,64 @@ export function Navegacao({
       <div className="rr-rodape" style={{
         borderTop: "1px solid var(--linha)", padding: "10px",
         display: "flex", alignItems: "center", gap: 9,
+        justifyContent: recolhido ? "center" : "flex-start",
       }}>
-        <div className="num" style={{
-          width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-          background: "var(--acento-fundo)", color: "var(--acento)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontWeight: 600, fontSize: 10.5,
-        }}>{iniciais}</div>
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{
-            fontSize: 11.5, fontWeight: 600, overflow: "hidden",
-            textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{usuario.nome ?? usuario.email}</div>
-          <button onClick={sair} style={{
-            background: "none", border: "none", padding: 0,
-            fontSize: 10.5, color: "var(--ink-tenue)",
-          }}>sair</button>
-        </div>
+        {/* Recolhido, o próprio avatar vira o botão de sair: não há espaço
+            para o nome nem para o link, e a única ação dali é essa. */}
+        <div className="num"
+          title={recolhido ? `${usuario.nome ?? usuario.email} — clique para sair` : undefined}
+          onClick={recolhido ? sair : undefined}
+          style={{
+            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+            background: "var(--acento-fundo)", color: "var(--acento)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 600, fontSize: 10.5,
+            cursor: recolhido ? "pointer" : "default",
+          }}>{iniciais}</div>
+        {!recolhido && (
+          <div style={{ flexGrow: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 11.5, fontWeight: 600, overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{usuario.nome ?? usuario.email}</div>
+            <button onClick={sair} style={{
+              background: "none", border: "none", padding: 0,
+              fontSize: 10.5, color: "var(--ink-tenue)",
+            }}>sair</button>
+          </div>
+        )}
       </div>
     </aside>
+  );
+}
+
+const botaoRecolher: React.CSSProperties = {
+  width: 24, height: 24, flexShrink: 0, display: "grid", placeItems: "center",
+  border: "none", background: "transparent", borderRadius: 5,
+  color: "var(--ink-tenue)", padding: 0,
+};
+
+/*
+ * Aberto mostra uma seta para dentro; recolhido, as três barras de menu. O
+ * ícone diz o que vai ACONTECER ao clicar, e não o estado atual — é a
+ * convenção que as pessoas já leem sem pensar.
+ */
+function IconeRecolher({ recolhido }: { recolhido: boolean }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"
+         stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+         strokeLinejoin="round">
+      {recolhido ? (
+        <>
+          <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+        </>
+      ) : (
+        <>
+          <path d="M9.5 5 6.5 8l3 3" />
+          <path d="M13 3.8v8.4" opacity=".45" />
+          <path d="M2.5 8h4" opacity=".45" />
+        </>
+      )}
+    </svg>
   );
 }
