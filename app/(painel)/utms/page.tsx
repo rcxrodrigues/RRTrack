@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
-import { janelaDe, um } from "@/core/janela";
+import { janelaDe, um, PERIODO_PADRAO } from "@/core/janela";
 import { porUtm } from "@/core/rastreio";
 import { Utms } from "@/ui/utms";
 
@@ -18,7 +18,7 @@ export default async function Pagina({ searchParams }: {
   if (!loja) return <div style={{ padding: 40, color: "var(--ink-fraco)" }}>Nenhuma loja cadastrada.</div>;
 
   const busca = await searchParams;
-  const periodo = um(busca.periodo) || "7d";
+  const periodo = um(busca.periodo) || PERIODO_PADRAO;
   const pedido = um(busca.agrupar);
   const agrupar = (NIVEIS as readonly string[]).includes(pedido)
     ? (pedido as (typeof NIVEIS)[number]) : "fonte";

@@ -168,8 +168,45 @@ export const pagouAdapter: GatewayAdapter = {
     const customerRaw = pick(data, "customer");
 
     const items = parseItems(data);
-    const gross = cents(data.amount ?? data.total ?? 0)
+    /*
+     * `paid_amount` é o que o comprador pagou; `amount` é menor e não bate com
+     * o extrato. Numa venda de R$ 5,00 o payload traz paid_amount "500" e
+     * amount 475 — usar `amount` fazia o painel registrar R$ 4,75 de
+     * faturamento numa venda de cinco reais.
+     *
+     * Vem como string em `paid_amount` e como número em `amount`; `cents`
+     * trata os dois.
+     */
+    const gross = cents(data.paid_amount ?? data.amount ?? data.total ?? 0)
       || items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+
+    /*
+     * A taxa vem num objeto, não num número:
+     *
+     *   fee: { net_amount, estimated_fee, spread_percentage }
+     *
+     * `net_amount` é o que a pagou credita. A taxa real é tudo que o comprador
+     * pagou menos isso — e não `estimated_fee`, que é calculado sobre `amount`
+     * e deixa de fora a diferença entre os dois valores. Na venda de R$ 5,00:
+     * 500 − 188 = 312, que é exatamente o que o painel da pagou mostra.
+     *
+     * Ler o objeto como número devolvia zero, e zero informado pelo gateway
+     * vence a tabela de taxas — então a tabela nem chegava a ser consultada.
+     */
+    const taxa = (() => {
+      const f = data.fee;
+      if (typeof f === "number" || typeof f === "string") return cents(f);
+      if (!f || typeof f !== "object") return undefined;
+
+      const liquido = pick(f, "net_amount");
+      if (liquido !== undefined && liquido !== null) {
+        const restante = gross - cents(liquido);
+        return restante >= 0 ? restante : undefined;
+      }
+
+      const estimada = pick(f, "estimated_fee");
+      return estimada === undefined || estimada === null ? undefined : cents(estimada);
+    })();
 
     const occurredAt = (() => {
       const t = str(data.paid_at) ?? str(data.created_at) ?? str(body.created_at);
@@ -188,10 +225,17 @@ export const pagouAdapter: GatewayAdapter = {
       status,
       currency: (str(data.currency) ?? "BRL").toUpperCase(),
       grossCents: gross,
-      feeCents: data.fee !== undefined ? cents(data.fee) : undefined,
+      feeCents: taxa,
       shippingCents: data.shipping !== undefined ? cents(data.shipping) : undefined,
       discountCents: data.discount !== undefined ? cents(data.discount) : undefined,
-      paymentMethod: METHOD_MAP[(str(data.payment_method) ?? "").toLowerCase()] ?? "other",
+      /*
+       * O campo é `method`, não `payment_method`. Lendo o nome errado, toda
+       * venda caía em "other" — e "other" não tem regra na tabela de taxas,
+       * então nem a estimativa entrava.
+       */
+      paymentMethod: METHOD_MAP[
+        (str(data.method) ?? str(data.payment_method) ?? "").toLowerCase()
+      ] ?? "other",
       installments: data.installments ? Number(data.installments) : undefined,
       items,
       customer: customerRaw ? {
@@ -255,8 +299,12 @@ export const pagouAdapter: GatewayAdapter = {
       gatewayEventId: `api:${orderId}:${status}`,
       status,
       currency: (str(data.currency) ?? "BRL").toUpperCase(),
-      grossCents: cents(data.amount ?? data.total ?? 0),
-      paymentMethod: METHOD_MAP[(str(data.payment_method) ?? "").toLowerCase()] ?? "other",
+      /* Mesmos nomes do webhook: `paid_amount` é o que o comprador pagou, e o
+         campo do método é `method`. Ver os comentários em `parse`. */
+      grossCents: cents(data.paid_amount ?? data.amount ?? data.total ?? 0),
+      paymentMethod: METHOD_MAP[
+        (str(data.method) ?? str(data.payment_method) ?? "").toLowerCase()
+      ] ?? "other",
       items,
       customer: customerRaw ? {
         name: str(pick(customerRaw, "name")),

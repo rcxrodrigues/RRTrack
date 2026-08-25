@@ -283,6 +283,52 @@ const rSemChave = await fetch(`${BASE}/api/claim`, {
 check("site desconhecido rejeitado", rSemChave.status === 403, `status ${rSemChave.status}`);
 
 /* ================================================= ISOLAMENTO =========== */
+/* ==================================================== PAGOU.AI ========== */
+console.log("\nPAGOU.AI — payload real, com os nomes que ele usa de verdade");
+
+/*
+ * Copiado de uma venda que aconteceu. Cada campo aqui ja custou um numero
+ * errado no painel:
+ *
+ *   method        e nao payment_method  -> tudo caia em "other"
+ *   paid_amount   e nao amount          -> venda de R$ 5,00 virava R$ 4,75
+ *   fee           e objeto, nao numero  -> taxa lida como zero, e zero
+ *                                          informado pelo gateway vence a
+ *                                          tabela, entao nem ela entrava
+ */
+const trxReal = "trx_" + Buffer.from(wc.getRandomValues(new Uint8Array(6))).toString("hex");
+const rP = await enviar("pagou", JSON.stringify({
+  api_version: "v2",
+  id: "evt_" + Date.now(),
+  event: "transaction",
+  data: {
+    id: trxReal,
+    method: "pix",
+    status: "paid",
+    amount: 475,
+    fee: { net_amount: 188, estimated_fee: 287, spread_percentage: null },
+    currency: "BRL",
+    installments: 1,
+    paid_amount: "500",
+    paid_at: new Date().toISOString(),
+    customer: { name: "RYAN XAVIER", email: "r@exemplo.com", phone: "5531984105010" },
+    products: [{ title: "Carimbo", unit_price: 500, quantity: 1 }],
+    attribution: { sck: null, src: null, utm_source: null },
+  },
+}));
+check("webhook aceito", rP.status === 200, "status " + rP.status);
+
+const [vP] = await sql`SELECT * FROM orders WHERE gateway_order_id = ${trxReal}`;
+check("metodo pix, nao other", vP?.payment_method === "pix", vP?.payment_method);
+check("faturamento e o paid_amount", Number(vP?.gross_cents) === 500, String(vP?.gross_cents));
+/* 500 pago - 188 creditado = 312 que ficam com o gateway. */
+check("taxa e o que o gateway retem", Number(vP?.fee_cents) === 312, String(vP?.fee_cents));
+check("lucro bate com o painel deles", 500 - Number(vP?.fee_cents) === 188, "R$ 1,88");
+
+/* Sem sck nem src preenchidos, a venda entra orfa — e isso e o esperado. */
+check("sem repasse, fica sem atribuicao", vP?.attribution_method === "unattributed", vP?.attribution_method);
+
+
 console.log("\nISOLAMENTO");
 
 const rCruzado = await fetch(
@@ -293,7 +339,7 @@ check("segredo do pagou não abre o appmax", rCruzado.status === 404, `status ${
 
 const [{ count: nVendas }] = await sql`
   SELECT count(*)::int FROM orders WHERE tenant_id = ${seed.tenantId}`;
-check("duas vendas, uma por gateway", nVendas === 2, String(nVendas));
+check("tres vendas, uma por gateway", nVendas === 3, String(nVendas));
 
 console.log("\n" + (falhas === 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)") + "\n");
 process.exit(falhas === 0 ? 0 : 1);

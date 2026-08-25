@@ -6,6 +6,7 @@ import { adAccounts } from "@/db/schema";
 import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
 import { metricas, totalizar, type Nivel } from "@/core/metricas";
+import { PERIODO_PADRAO } from "@/core/janela";
 import { sincronizarGasto } from "@/core/sincronizar-gasto";
 import { Plataforma } from "./plataforma";
 
@@ -45,7 +46,7 @@ export async function CarregarPlataforma({
   const um = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
   const nivel = (NIVEIS.includes(um(busca.nivel) as Nivel) ? um(busca.nivel) : "campanha") as Nivel;
-  const periodo = um(busca.periodo) || "7d";
+  const periodo = um(busca.periodo) || PERIODO_PADRAO;
   const nome = um(busca.nome);
 
   const { de, ate } = janela(periodo, loja.timezone);
