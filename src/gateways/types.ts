@@ -39,7 +39,11 @@ export interface GatewayAdapter {
    * no path e confirma o valor contra a API antes de contabilizar. Um webhook
    * não verificado nunca dispara conversão para plataforma de anúncio.
    */
-  verify(req: WebhookRequest, secret: string): Promise<VerifyResult>;
+  verify(
+    req: WebhookRequest,
+    secret: string,
+    credentials?: GatewayCredentials,
+  ): Promise<VerifyResult>;
 
   /*
    * Traduz o payload para o formato canônico. Devolve `null` quando o evento

@@ -52,7 +52,23 @@ export async function receberVenda(
   const cabecalhos: Record<string, string> = {};
   req.headers.forEach((v, k) => { cabecalhos[k] = v; });
 
-  const verificacao = await adapter.verify({ headers: cabecalhos, rawBody, query: {} }, secret);
+  /*
+   * As credenciais sao decifradas antes da verificacao porque alguns gateways
+   * assinam o webhook com um segredo PROPRIO, guardado aqui — a MillionsPay e
+   * o caso. O segredo do caminho da URL diz quem pode bater na porta; o do
+   * gateway prova que quem bateu foi ele. Sao coisas diferentes, e confundi-las
+   * rejeita todo webhook verdadeiro com 401.
+   */
+  let credenciais: Record<string, string> | undefined;
+  if (Object.keys(conexao.credentials).length > 0) {
+    try {
+      credenciais = await decryptRecord(conexao.credentials);
+    } catch { /* credencial ilegivel: segue sem, e a assinatura nao confere */ }
+  }
+
+  const verificacao = await adapter.verify(
+    { headers: cabecalhos, rawBody, query: {} }, secret, credenciais,
+  );
 
   /*
    * `sem_assinatura` não é falha: é a constatação de que o gateway não oferece
@@ -142,8 +158,7 @@ export async function receberVenda(
    */
   if (adapter.enrich && temCredencial && !pedido.customer) {
     try {
-      const cred = await decryptRecord(conexao.credentials);
-      pedido = await adapter.enrich(pedido, cred);
+      pedido = await adapter.enrich(pedido, credenciais ?? await decryptRecord(conexao.credentials));
     } catch { /* segue com o que o webhook trouxe */ }
   }
 

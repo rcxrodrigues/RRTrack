@@ -281,8 +281,24 @@ function ExemploApi() {
  * entra sem confirmação: qualquer um que descubra a URL insere uma venda que
  * não houve, e dispara uma conversão falsa que a Meta usa para otimizar.
  */
+/*
+ * Gateways que assinam o webhook com segredo próprio.
+ *
+ * Esse segredo NÃO é a chave de API: ele é gerado quando se cria o endpoint no
+ * painel do gateway e serve só para provar que o webhook veio de lá. Sem ele
+ * cadastrado, a venda entra sem verificação — funciona, mas o painel não tem
+ * como distinguir o que está provado do que está só plausível.
+ */
+const ASSINAM_WEBHOOK: Record<string, { rotulo: string; dica: string }> = {
+  millions: {
+    rotulo: "Segredo de assinatura do webhook",
+    dica: "A MillionsPay mostra este segredo uma única vez, ao criar o endpoint. Não é a chave de API.",
+  },
+};
+
 function ChaveDeApi({
   conexao, aberto, abrir, fechar, valor, mudou, salvando, gravar,
+  assinatura, mudouAssinatura,
 }: {
   conexao: Conexao;
   aberto: boolean;
@@ -292,7 +308,11 @@ function ChaveDeApi({
   mudou: (v: string) => void;
   salvando: boolean;
   gravar: () => void;
+  assinatura: string;
+  mudouAssinatura: (v: string) => void;
 }) {
+  const assina = ASSINAM_WEBHOOK[conexao.gateway];
+
   if (aberto) {
     return (
       <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--linha)" }}>
@@ -300,12 +320,22 @@ function ChaveDeApi({
           rotulo={conexao.temCredencial ? "Trocar a chave de API" : "Chave de API"}
           type="password"
           placeholder="cole a chave do painel do gateway"
-          dica="Fica cifrada em repouso e nunca volta para a tela."
+          dica="Use a chave SECRETA, não a pública — o RRTrack chama a API pelo servidor. Fica cifrada em repouso e nunca volta para a tela."
           value={valor}
           onChange={(e) => mudou(e.target.value)}
         />
+        {assina && (
+          <Campo
+            rotulo={assina.rotulo}
+            type="password"
+            placeholder="cole o segredo do endpoint"
+            dica={assina.dica}
+            value={assinatura}
+            onChange={(e) => mudouAssinatura(e.target.value)}
+          />
+        )}
         <div style={{ display: "flex", gap: 8 }}>
-          <Botao disabled={salvando || !valor} onClick={gravar}>
+          <Botao disabled={salvando || (!valor && !assinatura)} onClick={gravar}>
             {salvando ? "salvando…" : "Salvar"}
           </Botao>
           <Botao tipo="secundario" onClick={fechar}>Cancelar</Botao>
@@ -598,10 +628,13 @@ export function Integracoes({
                           fechar={() => setEditando(null)}
                           valor={form.apiKey ?? ""}
                           mudou={(v) => setForm((f) => ({ ...f, apiKey: v }))}
+                          assinatura={form.signingSecret ?? ""}
+                          mudouAssinatura={(v) => setForm((f) => ({ ...f, signingSecret: v }))}
                           salvando={salvando}
                           gravar={() => salvar({
                             tipo: "gateway", gateway: c.gateway,
                             apiKey: form.apiKey, clientId: form.apiKey,
+                            signingSecret: form.signingSecret,
                           })}
                         />
                         <TaxasDoGateway

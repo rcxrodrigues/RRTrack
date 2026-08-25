@@ -14,7 +14,9 @@
  * de cidade, estado e CEP ficam de fora.
  */
 
-import type { GatewayAdapter, WebhookRequest, VerifyResult } from "./types";
+import type {
+  GatewayAdapter, WebhookRequest, VerifyResult, GatewayCredentials,
+} from "./types";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
 } from "../core/types";
@@ -107,7 +109,29 @@ export const millionsAdapter: GatewayAdapter = {
    *     compara em tempo constante.
    *   - o header vem prefixado com "sha256=", que precisa sair antes.
    */
-  async verify(req: WebhookRequest, secret: string): Promise<VerifyResult> {
+  async verify(
+    req: WebhookRequest,
+    _secret: string,
+    credentials?: GatewayCredentials,
+  ): Promise<VerifyResult> {
+    /*
+     * A chave do HMAC é o segredo que a MillionsPay gera ao criar o endpoint,
+     * NÃO o segredo do caminho da nossa URL. São dois valores sem relação: o
+     * nosso diz quem pode bater na porta, o dela prova que quem bateu foi ela.
+     *
+     * Usar o nosso aqui rejeitaria todo webhook verdadeiro com 401 — e o
+     * sintoma seria venda que simplesmente não chega, sem erro no painel.
+     */
+    const chave = credentials?.signingSecret;
+
+    /*
+     * Sem o segredo cadastrado, degrada para o mesmo caminho dos gateways que
+     * não assinam: o segredo da URL continua valendo como barreira, e a venda
+     * entra marcada como não verificada. Recusar seria pior — bloquearia a
+     * operação inteira de quem ainda não cadastrou.
+     */
+    if (!chave) return { ok: false, reason: "sem_assinatura" };
+
     const header = req.headers["x-soarlabz-signature"]
       ?? req.headers["X-SoarLabz-Signature"];
 
@@ -124,7 +148,7 @@ export const millionsAdapter: GatewayAdapter = {
 
     try {
       const key = await crypto.subtle.importKey(
-        "raw", enc.encode(secret),
+        "raw", enc.encode(chave),
         { name: "HMAC", hash: "SHA-256" }, false, ["verify"],
       );
       const ok = await crypto.subtle.verify("HMAC", key, assinatura, enc.encode(req.rawBody));

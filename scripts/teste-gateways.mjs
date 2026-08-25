@@ -49,6 +49,33 @@ async function novaSessao() {
   return clickId;
 }
 
+
+/*
+ * A MillionsPay assina com o segredo QUE ELA gera ao criar o endpoint, e nao
+ * com o segredo do caminho da nossa URL. Sao valores sem relacao, e o teste
+ * precisa cadastrar um e assinar com ele — assinar com o da URL validaria a
+ * implementacao contra ela mesma, que foi como o bug passou.
+ */
+const SEGREDO_MILLIONS = "whsk_" + Buffer.from(wc.getRandomValues(new Uint8Array(16))).toString("hex");
+
+async function cadastrarSegredoDeAssinatura() {
+  const { neon } = await import("@neondatabase/serverless");
+  process.loadEnvFile(".env");
+  const sql = neon(process.env.DATABASE_URL);
+
+  /* Mesma cifragem do src/core/crypto.ts: AES-256-GCM, formato "iv.dados". */
+  const bytes = Uint8Array.from(atob(process.env.CREDENTIALS_KEY), (c) => c.charCodeAt(0));
+  const key = await wc.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt"]);
+  const iv = wc.getRandomValues(new Uint8Array(12));
+  const out = await wc.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(SEGREDO_MILLIONS));
+  const b64 = (b) => btoa(String.fromCharCode(...b));
+  const cifrado = `${b64(iv)}.${b64(new Uint8Array(out))}`;
+
+  await sql`UPDATE gateway_connections SET credentials = ${JSON.stringify({ signingSecret: cifrado })}::jsonb
+    WHERE id = ${seed.gateways.millions.connectionId}`;
+}
+await cadastrarSegredoDeAssinatura();
+
 const enviar = (gw, corpo, headers = {}) =>
   fetch(`${BASE}/api/webhook/${gw}/${seed.gateways[gw].webhookSecret}`, {
     method: "POST",
@@ -177,7 +204,7 @@ const corpoMillions = JSON.stringify({
 
 const assinar = (corpo, segredo) =>
   "sha256=" + createHmac("sha256", segredo).update(corpo).digest("hex");
-const assinatura = assinar(corpoMillions, seed.gateways.millions.webhookSecret);
+const assinatura = assinar(corpoMillions, SEGREDO_MILLIONS);
 
 const rM = await enviar("millions", corpoMillions, { "x-soarlabz-signature": assinatura });
 const jM = await rM.json();

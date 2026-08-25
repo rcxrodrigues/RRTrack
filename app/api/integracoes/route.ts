@@ -98,7 +98,7 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         const cred: Record<string, string> = {};
-        for (const chave of ["apiKey", "apiSecret", "clientId", "clientSecret", "publicKey", "secretKey"]) {
+        for (const chave of ["apiKey", "apiSecret", "clientId", "clientSecret", "publicKey", "secretKey", "signingSecret"]) {
           const v = texto(corpo[chave]);
           if (v) cred[chave] = await encryptValue(v);
         }
