@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import type { AoVivo } from "@/core/aovivo";
 import { nomeDaRegiao, nomeDoPais } from "@/core/aovivo";
 
@@ -7,10 +10,52 @@ import { nomeDaRegiao, nomeDoPais } from "@/core/aovivo";
  * É a única parte do painel que não olha para trás, e por isso ignora o filtro
  * de período — agora é agora. Fica acima de tudo porque é o que se abre o
  * painel para ver primeiro quando a campanha acabou de subir.
+ *
+ * Busca os próprios números em vez de esperar o refresh geral da tela. O resto
+ * do Resumo são agregações pesadas que não mudam em dez segundos; recalculá-las
+ * nesse ritmo seria gastar consulta à toa. Aqui, meio minuto de atraso se nota:
+ * quem abre o site e olha o painel espera se ver.
  */
 
+const INTERVALO_MS = 10000;
+
 export function SecaoAoVivo({ dados }: { dados: AoVivo }) {
-  const { agora, ultimaHora, locais, semLocal } = dados;
+  /*
+   * Começa com o que o servidor renderizou, para a seção não nascer vazia e
+   * piscar no primeiro carregamento.
+   */
+  const [vivos, setVivos] = useState(dados);
+
+  /* Dado novo do servidor manda: veio de um refresh geral da tela. */
+  useEffect(() => { setVivos(dados); }, [dados]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function buscar() {
+      /* Aba escondida não consulta: painel aberto em segundo plano a semana
+         inteira faria milhares de chamadas para ninguém ler. */
+      if (document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch("/api/ao-vivo", { cache: "no-store" });
+        if (!r.ok || cancelado) return;
+        setVivos(await r.json());
+      } catch { /* rede caiu: mantém o último número em vez de zerar */ }
+    }
+
+    const t = setInterval(buscar, INTERVALO_MS);
+    /* Voltar para a aba atualiza na hora, sem esperar o ciclo. */
+    const aoVoltar = () => { if (document.visibilityState === "visible") buscar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+
+    return () => {
+      cancelado = true;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, []);
+
+  const { agora, ultimaHora, locais, semLocal } = vivos;
   const vivo = agora > 0;
   const maior = locais[0]?.sessoes ?? 1;
 
@@ -35,7 +80,7 @@ export function SecaoAoVivo({ dados }: { dados: AoVivo }) {
         }} />
         <span style={{ fontSize: 13, fontWeight: 600 }}>Ao vivo</span>
         <span style={{ fontSize: 11, color: "var(--ink-tenue)", marginLeft: "auto" }}>
-          atualiza sozinho
+          a cada 10s
         </span>
       </div>
 
