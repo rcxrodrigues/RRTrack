@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { LojaDoUsuario } from "@/core/auth";
 import { TaxasDoGateway } from "./taxas-gateway";
 
@@ -140,6 +140,45 @@ function Campo({ rotulo, dica, ...resto }: {
         </span>
       )}
     </label>
+  );
+}
+
+/*
+ * Login com o Facebook.
+ *
+ * É um link, não um botão com onClick: o consentimento acontece numa tela do
+ * próprio Facebook, e isso exige navegar a aba inteira. Um fetch aqui voltaria
+ * bloqueado por CORS e a pessoa não veria tela nenhuma.
+ *
+ * Continua existindo o cadastro manual logo abaixo, de propósito. Quem usa
+ * usuário de sistema do Business Manager tem um token que não vence, e obrigar
+ * essa pessoa a refazer o login a cada 60 dias seria uma piora.
+ */
+function ConectarFacebook({ tenantId }: { tenantId: string }) {
+  const erro = useSearchParams().get("meta_erro");
+
+  return (
+    <div style={{
+      background: "var(--painel)", border: "1px solid var(--linha)",
+      borderRadius: 8, padding: "15px 18px",
+      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    }}>
+      <div style={{ flexGrow: 1, minWidth: 220 }}>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Conectar com o Facebook</div>
+        <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 3 }}>
+          Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão.
+        </div>
+        {erro && (
+          <div style={{ fontSize: 11.5, color: "var(--negativo)", marginTop: 6 }}>{erro}</div>
+        )}
+      </div>
+
+      <a href={`/api/meta/conectar?tenantId=${tenantId}`} style={{
+        padding: "9px 16px", borderRadius: 5, textDecoration: "none",
+        fontWeight: 600, fontSize: 12.5,
+        background: "#1877F2", color: "#fff", whiteSpace: "nowrap",
+      }}>Entrar com o Facebook</a>
+    </div>
   );
 }
 
@@ -526,6 +565,8 @@ export function Integracoes({
               Conecte as contas de onde vem o <strong style={{ color: "var(--ink-medio)" }}>gasto</strong>.
               Sem elas o painel tem faturamento e lucro, mas não tem ROAS — não há com o que dividir.
             </p>
+
+            <ConectarFacebook tenantId={loja.id} />
 
             {PLATAFORMAS.map((p) => {
               const conta = contas.find((c) => c.plataforma === p.id && c.ativo);
