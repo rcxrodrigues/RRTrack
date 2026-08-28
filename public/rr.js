@@ -270,10 +270,23 @@
    * produto próprio — e é o que faz `add_to_cart` e `begin_checkout` levarem
    * valor. Sem valor, a Meta não consegue otimizar por retorno, só por volume.
    */
+  /*
+   * Começa com o que veio na configuração e MUDA quando a página avisa.
+   *
+   * A configuração é estática, escrita no <head>, e por isso não acompanha
+   * escolha de variante: numa oferta com cor, o comprador troca de Preto para
+   * Marrom e o identificador continuaria o do carregamento. Aí o `add_to_cart`
+   * sai com o SKU errado, e cruzar o dado do painel com o do GA4 depois vira
+   * adivinhação.
+   *
+   * `rr('setProduct', {...})` troca isto a qualquer momento. Só muda o padrão —
+   * botão com `data-rr-product` continua tendo a palavra final, porque quem
+   * marcou aquele botão foi mais específico de propósito.
+   */
+  var produtoAtual = cfg.product && cfg.product.id ? cfg.product : null;
+
   function produtoPadrao() {
-    var p = cfg.product;
-    if (!p || !p.id) return null;
-    return p;
+    return produtoAtual;
   }
 
   function paramsDe(produto) {
@@ -383,6 +396,21 @@
     viewContent: function (produto) { send("view_content", paramsDe(produto)); },
     addToCart: function (produto) { send("add_to_cart", paramsDe(produto)); },
     beginCheckout: function (produto) { send("begin_checkout", paramsDe(produto)); },
+    /*
+     * rr('setProduct', { id: '1414', name: 'Carimbo Marrom', price: 29.90 })
+     *
+     * Para página com variante: chame na troca de cor, tamanho ou plano. Os
+     * eventos seguintes saem com este produto. Passar nada volta ao que estava
+     * na configuração.
+     */
+    setProduct: function (produto) {
+      produtoAtual = produto && produto.id
+        ? produto
+        : (cfg.product && cfg.product.id ? cfg.product : null);
+      return produtoAtual;
+    },
+    /* O que os eventos estão levando agora — útil para conferir no console. */
+    product: function () { return produtoAtual; },
     /* Exposto para quem precisa montar a URL do checkout na mão. */
     decorate: decorate,
     clickId: function () { return state.click_id; },
