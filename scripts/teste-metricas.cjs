@@ -54,7 +54,8 @@ for (const [ses, n] of [[s1, 4], [s2, 1]]) {
   }
 }
 
-const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje };
+const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje,
+  timezone: "America/Sao_Paulo" };
 
 console.log("\n== por anúncio ==");
 const ads = await metricas({ ...janela, nivel: "anuncio" });
@@ -135,7 +136,8 @@ eq("é a certa", filtrado[0].id, "CAMP2");
 
 console.log("\n== não vaza entre lojas ==");
 const [outra] = await sql`SELECT id FROM tenants WHERE slug != 'metricas-teste' LIMIT 1`;
-const deOutra = await metricas({ tenantId: outra.id, plataforma: "meta", de: hoje, ate: hoje, nivel: "campanha" });
+const deOutra = await metricas({ tenantId: outra.id, plataforma: "meta", de: hoje, ate: hoje,
+  timezone: "America/Sao_Paulo", nivel: "campanha" });
 eq("outra loja não vê nada disto", deOutra.some((l) => l.id === "CAMP1"), false);
 
 await sql`DELETE FROM tenants WHERE slug = 'metricas-teste'`;

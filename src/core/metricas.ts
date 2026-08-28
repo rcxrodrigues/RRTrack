@@ -96,9 +96,16 @@ const SESSAO: Record<Nivel, AnyPgColumn> = {
 export interface Filtro {
   tenantId: string;
   plataforma: string;
-  /** AAAA-MM-DD, inclusivas. */
+  /** AAAA-MM-DD, inclusivas, no fuso da loja. */
   de: string;
   ate: string;
+  /*
+   * Fuso da loja. Obrigatório, e não opcional com padrão UTC, de propósito:
+   * um padrão silencioso é exatamente o que fazia esta tela zerar faturamento
+   * das 21h à meia-noite. Sem valor, o compilador reclama; com padrão, ninguém
+   * reclamava e o número saía errado.
+   */
+  timezone: string;
   nivel: Nivel;
   /** Filtra por parte do nome, como o campo de busca da tela. */
   nome?: string;
@@ -110,18 +117,35 @@ export interface Filtro {
 }
 
 export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
+  /*
+   * O TypeScript já exige o fuso, mas os testes são .cjs e não passam por ele.
+   * Sem esta linha, fuso ausente vira `AT TIME ZONE` sem argumento e o Postgres
+   * responde "syntax error at or near )" — mensagem que não aponta para nada.
+   * Falhar aqui custa uma linha e diz o que fazer.
+   */
+  if (!f.timezone) throw new Error("metricas: falta o fuso da loja (timezone)");
+
   const colId = COLUNA[f.nivel].id;
   const colNome = COLUNA[f.nivel].nome;
   const colSessao = SESSAO[f.nivel];
 
   /*
-   * As datas de venda vêm como instante, e as de gasto como dia no fuso da
-   * conta. Comparar os dois exige uma borda: usamos o dia inteiro em UTC, o
-   * que basta enquanto conta e loja estiverem no mesmo fuso. Quando divergirem,
-   * é aqui que a conversão entra — e o aviso da sincronização avisa antes.
+   * A venda é um instante; o gasto é um dia já fechado no fuso da conta.
+   * Comparar os dois exige converter a venda para o dia da loja ANTES de
+   * comparar — que é o que `AT TIME ZONE` faz, e o que resumo.ts e rastreio.ts
+   * já faziam.
+   *
+   * Antes daqui havia um atalho: a borda era o dia inteiro em UTC. O comentário
+   * dizia que bastava "enquanto conta e loja estiverem no mesmo fuso", e errava
+   * o diagnóstico — a loja nunca está em UTC. Com America/Sao_Paulo, das 21h à
+   * meia-noite o dia já virou lá fora, e toda venda do dia caía fora da janela.
+   * O gasto continuava aparecendo, porque a data dele é literal e não passa por
+   * conversão nenhuma. Resultado: três horas por dia, todo dia, a tela mostrava
+   * campanha gastando sem vender — número plausível o bastante para alguém
+   * pausar uma campanha lucrativa por causa dele.
    */
-  const inicio = new Date(f.de + "T00:00:00.000Z");
-  const fim = new Date(f.ate + "T23:59:59.999Z");
+  const noPeriodo = (coluna: AnyPgColumn) =>
+    sql`(${coluna} AT TIME ZONE ${f.timezone})::date BETWEEN ${f.de}::date AND ${f.ate}::date`;
 
   /* -------------------------------------------------- gasto por nível -- */
   const gastos = await db
@@ -155,7 +179,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     .where(and(
       eq(orders.tenantId, f.tenantId),
       eq(orders.status, "paid"),
-      between(orders.occurredAt, inicio, fim),
+      noPeriodo(orders.occurredAt),
       isNotNull(colSessao),
     ))
     .groupBy(colSessao);
@@ -171,7 +195,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     .where(and(
       eq(events.tenantId, f.tenantId),
       inArray(events.name, ["begin_checkout", "initiate_checkout", "open_cart"]),
-      between(events.occurredAt, inicio, fim),
+      noPeriodo(events.occurredAt),
       isNotNull(colSessao),
     ))
     .groupBy(colSessao);

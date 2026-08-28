@@ -54,7 +54,8 @@ const SEMF   = { countShipping: false, countInterest: true  };
 const SEMJ   = { countShipping: true,  countInterest: false };
 const NENHUM = { countShipping: false, countInterest: false };
 
-const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje, nivel: "anuncio" };
+const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje,
+  timezone: "America/Sao_Paulo", nivel: "anuncio" };
 const per = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo" };
 
 console.log("\n== tela de plataforma ==");
@@ -70,6 +71,48 @@ eq("sem os dois tira 5.000", d[0]?.faturamentoCents, 50000);
 /* O ROAS acompanha: é o motivo de isto não ser preferência de exibição. */
 eq("ROAS muda junto", Number(d[0]?.roas.toFixed(2)), 2.5);
 eq("ROAS com tudo é outro", Number(a[0]?.roas.toFixed(2)), 2.75);
+
+/*
+ * O corte do dia acontece no fuso da LOJA, nunca em UTC.
+ *
+ * Este bloco existe porque o teste acima passava de manha e falhava a noite, e
+ * ninguem desconfia de um teste que passa. A janela era montada em UTC: as 21h
+ * em Sao Paulo ja e o dia seguinte la, entao toda venda do dia caia fora e o
+ * faturamento da tela de campanhas zerava — enquanto o gasto continuava
+ * aparecendo, porque a data dele e literal e nao passa por conversao.
+ *
+ * Aqui a venda e gravada num instante escolhido a dedo, 22h30 de Brasilia, que
+ * e 01h30 do dia seguinte em UTC. Assim o teste faz a pergunta certa
+ * independentemente da hora em que alguem o rodar.
+ */
+console.log("\n== o dia vira no fuso da loja, nao em UTC ==");
+{
+  const ontem = new Date(Date.now() - 864e5)
+    .toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 10);
+  const aNoite = new Date(ontem + "T22:30:00-03:00");
+
+  const ses = wc.randomUUID();
+  await sql`INSERT INTO click_sessions (click_id, tenant_id, site_id, campaign_id, ad_id, utm_source)
+    VALUES (${ses}, ${t.id}, ${site.id}, 'C1', 'A1', 'facebook')`;
+  await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status,
+      gross_cents, click_id, attribution_method, occurred_at, paid_at)
+    VALUES (${t.id}, ${conn.id}, ${"noite-" + wc.randomUUID()}, 'paid', 7700, ${ses},
+      'click_id', ${aNoite}, ${aNoite})`;
+  await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date,
+      campaign_id, campaign_name, ad_id, ad_name, spend_cents)
+    VALUES (${t.id}, ${conta.id}, 'meta', ${ontem}, 'C1', 'Campanha', 'A1', 'Anuncio', 1000)`;
+
+  const noite = await metricas({ ...janela, de: ontem, ate: ontem, regra: TUDO });
+  eq("venda das 22h30 conta no dia dela", noite[0]?.faturamentoCents, 7700);
+  eq("e o gasto do mesmo dia aparece junto", noite[0]?.gastoCents, 1000);
+
+  /* A venda de ontem sai daqui: o placar acumulado mais abaixo soma TUDO da
+     loja, sem recorte de data, e ela desregularia um teste que nao e sobre
+     fuso nenhum. */
+  await sql`DELETE FROM orders WHERE tenant_id = ${t.id} AND click_id = ${ses}`;
+  await sql`DELETE FROM click_sessions WHERE click_id = ${ses}`;
+  await sql`DELETE FROM ad_spend_daily WHERE tenant_id = ${t.id} AND date = ${ontem}`;
+}
 
 console.log("\n== resumo ==");
 eq("bruto com tudo", (await indicadores({ ...per, regra: TUDO })).faturamentoBrutoCents, 55000);
