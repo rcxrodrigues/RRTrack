@@ -21,7 +21,6 @@ import { gatewayConnections, webhookDeliveries } from "../db/schema";
 import { getGateway } from "../gateways/registry";
 import { reenviarPendentes } from "./dispatch";
 import { reconciliar } from "./reconciliacao";
-import { reenviarPendentesShopify } from "../checkout/shopify";
 import { registrarPedido } from "./pedido";
 import { decryptRecord } from "./crypto";
 
@@ -205,9 +204,6 @@ export async function receberVenda(
       try {
         await reenviarPendentes(conexao.tenantId, 10);
         await reconciliar(conexao.tenantId, 10);
-        /* Venda paga que nao virou pedido na Shopify: loja sem saber que
-           vendeu e comprador esperando encomenda que ninguem separou. */
-        await reenviarPendentesShopify(conexao.tenantId, 5);
       } catch { /* melhor-esforco; a venda desta requisicao ja entrou */ }
     });
 

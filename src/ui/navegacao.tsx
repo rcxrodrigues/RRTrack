@@ -33,7 +33,6 @@ const D = {
   integra: '<path d="M7 3v5M13 3v5M4.5 8h11v3a5.5 5.5 0 0 1-11 0V8zM10 16.5V18"/>',
   produtos: '<path d="M10 2.5l7 3.7v7.6l-7 3.7-7-3.7V6.2l7-3.7zM3 6.2l7 3.7 7-3.7M10 9.9V17"/>',
   testes: '<path d="M8 2.5v5.2L4 15a1.6 1.6 0 0 0 1.4 2.5h9.2A1.6 1.6 0 0 0 16 15l-4-7.3V2.5M7 2.5h6M6.2 12h7.6"/>',
-  checkout: '<path d="M2.5 3h2l2 9.5h8.4M6 6.5h11l-1.3 5H6.9"/><circle cx="8" cy="16" r="1.2"/><circle cx="14.5" cy="16" r="1.2"/>',
 };
 
 const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: string; icone: string }> }> = [
@@ -58,7 +57,6 @@ const SECOES: Array<{ grupo?: string; itens: Array<{ href: string; rotulo: strin
     grupo: "Configuração",
     itens: [
       { href: "/produtos", rotulo: "Produtos", icone: D.produtos },
-      { href: "/checkouts", rotulo: "Checkout", icone: D.checkout },
       { href: "/integracoes", rotulo: "Integrações", icone: D.integra },
     ],
   },

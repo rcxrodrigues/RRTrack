@@ -42,13 +42,8 @@ export const config = {
    * 307 para /entrar, e quem chamou vê 405 ou uma página de login em vez da
    * resposta. Do lado do gateway isso é venda perdida em silêncio. Rota nova
    * de ingestão entra nesta lista no mesmo commit em que nasce.
-   *
-   * `c/` e `api/checkout` seguem a mesma regra por um motivo ainda mais direto:
-   * são a página de pagamento e a rota que cobra. Quem abre não tem — nem deve
-   * ter — sessão no painel. Fora desta lista, todo comprador cairia na tela de
-   * login da nossa conta, e o checkout não venderia uma vez sequer.
    */
   matcher: [
-    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|api/checkout|c/|rr/|rr\.js|_next|favicon).*)",
+    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|rr/|rr\.js|_next|favicon).*)",
   ],
 };

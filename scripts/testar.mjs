@@ -21,8 +21,6 @@ const COMPILAR = [
   "src/core/metricas.ts", "src/core/reconciliacao.ts", "src/core/dispatch.ts",
   "src/core/sincronizar-gasto.ts",
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
-  "src/checkout/index.ts", "src/checkout/appmax.ts", "src/checkout/gestao.ts",
-  "src/checkout/shopify.ts", "src/checkout/cobradores.ts",
   "src/core/robos.ts", "src/core/redes.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
@@ -32,7 +30,7 @@ const COMPILAR = [
 const UNITARIOS = [
   "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
   "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
-  "checkout", "shopify", "robos",
+  "robos",
 ];
 
 /* De ponta a ponta: batem no servidor de verdade, e precisam de uma semente. */
@@ -100,7 +98,6 @@ rmSync("_tmp", { recursive: true, force: true });
  */
 const DESCARTAVEIS = [
   "loja-de-teste", "metricas-teste", "faturamento-teste", "faturamento-outro",
-  "checkout-teste",
 ];
 
 try {
