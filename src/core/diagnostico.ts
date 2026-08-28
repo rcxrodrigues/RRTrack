@@ -194,7 +194,86 @@ export async function verificacoes(tenantId: string): Promise<Verificacao[]> {
     };
   })();
 
-  return [script, webhook, pixel, disparo];
+  return [script, webhook, pixel, disparo, await credenciais(tenantId)];
+}
+
+/* --------------------------------------------------- 5. credenciais -- */
+
+/*
+ * Alguma chave está perto de vencer?
+ *
+ * É a única das cinco perguntas que olha para o FUTURO, e existe por causa de
+ * um modo de falha que nenhuma das outras pega. Quando um token vence, nada
+ * quebra de forma visível: o webhook continua chegando, a venda continua
+ * entrando, o painel continua somando. O que para é a confirmação por API — e
+ * a venda passa a entrar sem comprador, com metade das chaves de
+ * correspondência. A qualidade do envio despenca e o sintoma é nenhum.
+ *
+ * A data não vem de lugar nenhum automaticamente: nem gateway nem plataforma
+ * de anúncio expõe o vencimento do próprio token. Quem sabe é quem gerou. Por
+ * isso o aviso só existe para quem preencheu — e a ausência de data não é
+ * tratada como erro, porque token sem prazo também existe.
+ */
+async function credenciais(tenantId: string): Promise<Verificacao> {
+  const linhas = await linhasDe(db.execute<{
+    nome: string; dias: number;
+  }>(sql`
+    SELECT label AS nome,
+           (credentials_expire_at::date - now()::date)::int AS dias
+    FROM gateway_connections
+    WHERE tenant_id = ${tenantId} AND active AND credentials_expire_at IS NOT NULL
+    UNION ALL
+    SELECT label AS nome,
+           (credentials_expire_at::date - now()::date)::int AS dias
+    FROM ad_accounts
+    WHERE tenant_id = ${tenantId} AND active AND credentials_expire_at IS NOT NULL
+    ORDER BY dias ASC
+  `));
+
+  const etapa = "5 · Validade das chaves";
+  const pergunta = "Alguma credencial está por vencer?";
+
+  if (linhas.length === 0) {
+    return {
+      etapa, pergunta,
+      estado: "nunca",
+      detalhe: "nenhuma data de vencimento cadastrada",
+      conserto: "Em Integrações, informe quando cada chave vence. A da pagou.ai dura 180 dias e o vencimento é silencioso — a venda passa a entrar sem o comprador, sem erro nenhum aparecer.",
+    };
+  }
+
+  const vencidas = linhas.filter((l) => l.dias < 0);
+  if (vencidas.length > 0) {
+    const q = vencidas.map((v) => `${v.nome} (há ${Math.abs(v.dias)} dias)`).join(", ");
+    return {
+      etapa, pergunta,
+      estado: "parado",
+      detalhe: `venceu: ${q}`,
+      conserto: "Gere uma chave nova no painel da plataforma e substitua em Integrações. Enquanto não trocar, a venda entra sem o comprador — e a correspondência na Meta cai pela metade.",
+    };
+  }
+
+  /*
+   * Quinze dias é o aviso, e não três: gerar chave nova em algumas
+   * plataformas depende de aprovação delas, que leva dias.
+   */
+  const perto = linhas.filter((l) => l.dias <= 15);
+  if (perto.length > 0) {
+    const q = perto.map((v) => `${v.nome} em ${v.dias} dia(s)`).join(", ");
+    return {
+      etapa, pergunta,
+      estado: "atencao",
+      detalhe: `vence logo: ${q}`,
+      conserto: "Gere a chave nova antes do prazo. Trocar com a antiga ainda válida não interrompe nada.",
+    };
+  }
+
+  const proxima = linhas[0]!;
+  return {
+    etapa, pergunta,
+    estado: "ok",
+    detalhe: `${linhas.length} chave(s) com prazo — a mais próxima, ${proxima.nome}, vence em ${proxima.dias} dias`,
+  };
 }
 
 /* --------------------------------------------------------- ao vivo -- */
