@@ -23,6 +23,7 @@ import { ORDER_STATUS_RANK, type CanonicalOrder } from "./types";
 import { aplicarCustos } from "./custos";
 import { decryptRecord, encryptRecord } from "./crypto";
 import { calcularTaxa, type TabelaTaxas } from "./taxas";
+import { sincronizarPedidoShopify } from "../checkout/shopify";
 
 export interface ContextoPedido {
   tenantId: string;
@@ -213,6 +214,23 @@ export async function registrarPedido(
   const disparos = pedido.status === "paid"
     ? await dispatchOrder(ctx.tenantId, orderRowId, pedido, atribuicao)
     : [];
+
+  /*
+   * Venda paga pelo nosso checkout vira pedido na Shopify.
+   *
+   * Aqui e não no webhook porque este é o único ponto por onde passam todos os
+   * caminhos — webhook, entrada por API e reconciliação. E logo depois do
+   * disparo de propósito: os dois obedecem à mesma condição e à mesma trava, a
+   * do estado que só avança, que é o que faz cada um acontecer uma vez só.
+   *
+   * Sai calado quando a venda não veio do checkout próprio, que é o caso da
+   * maioria. Falhar aqui deixa a linha pendente e o reenvio pega depois — o que
+   * não pode é derrubar o processamento de uma venda que já entrou.
+   */
+  if (pedido.status === "paid") {
+    await sincronizarPedidoShopify(ctx.conexaoId, pedido.gatewayOrderId)
+      .catch(() => { /* fica pendente; `reenviarPendentesShopify` recupera */ });
+  }
 
   return { orderId: orderRowId, status: pedido.status, atribuicao, disparos, ignorado: false };
 }
