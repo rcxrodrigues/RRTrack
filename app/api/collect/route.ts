@@ -12,6 +12,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import { clickSessions, events, sites } from "@/db/schema";
 import { dispatchBrowserEvent, normalizarEvento } from "@/core/dispatch";
+import { ehRobo } from "@/core/robos";
+import { ehRedeDaMeta } from "@/core/redes";
 import { extrairEstrutura } from "@/core/utm";
 
 export const runtime = "nodejs";
@@ -73,6 +75,33 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   /*
+   * Robô declarado não vira sessão nem evento.
+   *
+   * Responde 204, e não um erro, de propósito: erro convida a nova tentativa,
+   * e a prévia de link da Meta bate na mesma página várias vezes. Do lado de
+   * quem chamou não há diferença nenhuma; do nosso, a sessão simplesmente não
+   * nasce — e como o descarte acontece ANTES de gravar, nenhuma agregação
+   * precisa saber que robô existe. Ver src/core/robos.ts para o porquê.
+   */
+  const ip = clientIp(req);
+
+  /*
+   * Dois cortes, porque são dois tipos de robô.
+   *
+   * O primeiro se declara no agente — prévia de link, buscador, curl. O
+   * segundo NÃO se declara: a revisão de anúncio da Meta abre a página com o
+   * mesmo agente do app do Facebook, idêntico ao de um comprador, e só o IP
+   * separa. Foi metade do tráfego da primeira semana da Florè.
+   *
+   * Responde 204, e não erro, de propósito: erro convida a nova tentativa, e a
+   * prévia da Meta bate várias vezes na mesma página. Como o descarte acontece
+   * ANTES de gravar, nenhuma agregação do painel precisa saber que robô existe.
+   */
+  if (ehRobo(req.headers.get("user-agent")) || ehRedeDaMeta(ip)) {
+    return new Response(null, { status: 204, headers });
+  }
+
+  /*
    * A origem precisa ser um site cadastrado. Sem esta checagem, qualquer página
    * na internet poderia despejar eventos falsos na conta de qualquer loja.
    */
@@ -130,7 +159,7 @@ export async function POST(req: Request): Promise<Response> {
         placement: e.placement ?? null,
       };
     })(),
-    ip: clientIp(req) ?? null,
+    ip: ip ?? null,
     userAgent: req.headers.get("user-agent"),
 
     /*
