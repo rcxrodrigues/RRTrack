@@ -233,6 +233,59 @@ export async function porOrigem(p: Periodo): Promise<Origem[]> {
   }));
 }
 
+/* ----------------------------------------------------------- regiao -- */
+
+export interface Regiao {
+  pais: string | null;
+  regiao: string | null;
+  sessoes: number;
+  vendas: number;
+  faturamentoCents: number;
+}
+
+/*
+ * De onde veio o tráfego no período escolhido.
+ *
+ * Não confundir com a seção "ao vivo", que mostra a última hora e no máximo
+ * doze linhas. Ela responde "quem está aqui agora"; esta responde "de onde
+ * vieram meus acessos e minhas vendas hoje" — e a diferença aparece já no
+ * primeiro dia de tráfego, quando dezoito estados acessaram e a seção ao vivo
+ * mostrava três, porque os outros quinze tinham entrado antes da última hora.
+ *
+ * Agrupa por estado e não por cidade de propósito. Cidade é granular demais
+ * para decidir alguma coisa: cinquenta linhas com uma sessão cada não dizem
+ * nada, e é o estado que casa com a segmentação geográfica do gerenciador.
+ */
+export async function porRegiao(p: Periodo): Promise<Regiao[]> {
+  const v = valorCru(p.regra ?? REGRA_PADRAO, "o");
+  const linhas = await linhasDe(db.execute<{
+    pais: string | null; regiao: string | null;
+    sessoes: number; vendas: number; faturamento: number;
+  }>(sql`
+    SELECT
+      cs.country AS pais,
+      cs.region  AS regiao,
+      count(DISTINCT cs.click_id)::int AS sessoes,
+      count(o.id) FILTER (WHERE o.status = 'paid')::int AS vendas,
+      coalesce(sum(${v}) FILTER (WHERE o.status = 'paid'), 0)::bigint AS faturamento
+    FROM click_sessions cs
+    LEFT JOIN orders o ON o.click_id = cs.click_id AND o.tenant_id = cs.tenant_id
+    WHERE cs.tenant_id = ${p.tenantId}
+      AND (cs.first_seen_at AT TIME ZONE ${p.timezone})::date BETWEEN ${p.de}::date AND ${p.ate}::date
+    GROUP BY cs.country, cs.region
+    ORDER BY sessoes DESC, faturamento DESC
+    LIMIT 40
+  `));
+
+  return linhas.map((l) => ({
+    pais: l.pais,
+    regiao: l.regiao,
+    sessoes: Number(l.sessoes),
+    vendas: Number(l.vendas),
+    faturamentoCents: Number(l.faturamento),
+  }));
+}
+
 /* --------------------------------------------------------- pagamento -- */
 
 export interface Aprovacao { metodo: string; aprovadas: number; total: number; taxa: number | null }

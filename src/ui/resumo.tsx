@@ -3,7 +3,8 @@
 import { Cabecalho, Cartao, Nota, brl, brlCurto, corValor, num, pct, razao, brlOuNa } from "./comum";
 import { SecaoAoVivo } from "./ao-vivo";
 import type { AoVivo } from "@/core/aovivo";
-import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao } from "@/core/resumo";
+import { nomeDaRegiao, nomeDoPais } from "@/core/aovivo";
+import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao, Regiao } from "@/core/resumo";
 
 /*
  * O Resumo.
@@ -17,7 +18,7 @@ import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao } from "@/core/
 const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
 export function Resumo({
-  periodo, temGasto, ind, funil, horario, origens, pagamento, aoVivo,
+  periodo, temGasto, ind, funil, horario, origens, pagamento, regioes, aoVivo,
 }: {
   periodo: string;
   temGasto: boolean;
@@ -26,6 +27,7 @@ export function Resumo({
   horario: Celula[];
   origens: Origem[];
   pagamento: Aprovacao[];
+  regioes: Regiao[];
   aoVivo: AoVivo;
 }) {
   const vazio = ind.vendasAprovadas === 0 && funil[0]!.valor === 0;
@@ -71,6 +73,7 @@ export function Resumo({
   const pico = horario.reduce<Celula | null>((a, c) => (!a || c.vendas > a.vendas ? c : a), null);
 
   const maxFonte = Math.max(1, ...origens.map((o) => o.faturamentoCents));
+  const maxRegiao = Math.max(1, ...regioes.map((r) => r.sessoes));
   const topoFunil = Math.max(1, funil[0]!.valor);
 
   return (
@@ -255,6 +258,63 @@ export function Resumo({
             ))}
           </Cartao>
         </div>
+
+        {/*
+          De onde vieram os acessos no PERÍODO escolhido.
+
+          A seção "ao vivo" lá em cima responde outra pergunta — quem está no
+          site agora — e por isso só olha a última hora e corta em doze linhas.
+          No primeiro dia de tráfego isso confundiu: dezoito estados acessaram
+          e a seção mostrava três, porque os outros quinze tinham entrado antes
+          da última hora. Este quadro respeita o filtro de data e mostra todos.
+        */}
+        <Cartao largo titulo="Sessões por estado"
+          descricao="De onde veio o tráfego no período — respeita o filtro de data, ao contrário da seção ao vivo">
+          {regioes.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--ink-tenue)" }}>Nenhuma sessão no período.</div>
+          ) : (
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+              gap: "0 22px",
+            }}>
+              {regioes.map((r, i) => {
+                const uf = nomeDaRegiao(r.pais, r.regiao);
+                const nome = [nomeDoPais(r.pais), uf].filter(Boolean).join(" · ")
+                  || "origem não identificada";
+                return (
+                  <div key={i} style={{ marginBottom: 11 }}>
+                    <div style={{
+                      display: "flex", alignItems: "baseline",
+                      justifyContent: "space-between", gap: 8, marginBottom: 4,
+                    }}>
+                      <span style={{
+                        fontSize: 11.5, color: "var(--ink-medio)", overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{nome}</span>
+                      <span className="num" style={{ fontSize: 11.5, fontWeight: 600 }}>
+                        {num(r.sessoes)}
+                      </span>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 2, background: "var(--linha)" }}>
+                      <div style={{
+                        height: "100%", borderRadius: 2,
+                        background: r.vendas > 0 ? "var(--positivo)" : "var(--acento)",
+                        width: `${Math.max((r.sessoes / maxRegiao) * 100, 3)}%`,
+                      }} />
+                    </div>
+                    {r.vendas > 0 && (
+                      <div className="num" style={{
+                        fontSize: 10, color: "var(--positivo)", marginTop: 3,
+                      }}>
+                        {num(r.vendas)} venda(s) · {brlCurto(r.faturamentoCents)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Cartao>
 
         <Nota>
           O faturamento e o lucro saem das suas vendas; o gasto vem da API de cada plataforma.
