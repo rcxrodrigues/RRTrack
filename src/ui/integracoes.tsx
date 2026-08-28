@@ -39,9 +39,7 @@ interface Pixel {
 const PLATAFORMAS = [
   { id: "meta", nome: "Meta Ads", cor: "#4A7BC8" },
   { id: "google", nome: "Google Ads", cor: "#D6A344" },
-  { id: "kwai", nome: "Kwai Ads", cor: "#E8763C" },
   { id: "tiktok", nome: "TikTok Ads", cor: "#45C4D0" },
-  { id: "taboola", nome: "Taboola", cor: "#4A7BC8" },
 ];
 
 /*
@@ -62,12 +60,6 @@ const CREDENCIAIS: Record<string, Array<{
   tiktok: [
     { chave: "accessToken", rotulo: "Access token", segredo: true,
       dica: "TikTok Ads Manager → Ferramentas → Events API, ou no portal de desenvolvedor." },
-  ],
-  kwai: [
-    { chave: "accessToken", rotulo: "Access token", segredo: true },
-  ],
-  taboola: [
-    { chave: "accessToken", rotulo: "Access token", segredo: true },
   ],
   google: [
     { chave: "developerToken", rotulo: "Developer token", segredo: true,
@@ -385,7 +377,16 @@ export function Integracoes({
 }: {
   loja: LojaDoUsuario;
   base: string;
-  site: { dominio: string; chave: string } | null;
+  site: {
+    dominio: string;
+    chave: string;
+    config: {
+      viewContentOnLoad?: boolean;
+      productId?: string;
+      productName?: string;
+      productPriceCents?: number;
+    };
+  } | null;
   contas: Conta[];
   conexoes: Conexao[];
   pixels: Pixel[];
@@ -502,11 +503,9 @@ export function Integracoes({
               credencial envelhece — foi o que aconteceu com as chaves antigas,
               que ainda dizem o apelido que a loja tinha quando nasceram.
             */}
-            <Copiavel multilinha valor={
-              `<!-- RRTrack · ${site.dominio} -->\n`
-              + `<script>window.RRTrackConfig={siteKey:"${site.chave}",endpoint:"${base}/rr/collect"}</script>\n`
-              + `<script src="${base}/rr.js" async></script>`
-            } />
+            <Copiavel multilinha valor={montarSnippet(site, base)} />
+
+            <ProdutoDaPagina site={site} tenantId={loja.id} />
           </div>
         </div>
       )}
@@ -581,10 +580,22 @@ export function Integracoes({
 
                       <Campo rotulo="Apelido (opcional)" placeholder="Conta principal" {...campo("label")} />
 
+                      {/*
+                        Nenhuma plataforma avisa que o token venceu. O sintoma
+                        é mudo — a sincronização simplesmente para, e o painel
+                        mostra gasto zero como se a campanha tivesse parado.
+                        Quem sabe a data é quem gerou o token.
+                      */}
+                      <Campo rotulo="Vence em (opcional)" type="date"
+                        dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
+                        {...campo("expiraEm")} />
+
+
                       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                         <Botao disabled={salvando} onClick={() => salvar({
                           tipo: "conta_anuncio", plataforma: p.id,
                           externalId: form.externalId, label: form.label,
+                          expiraEm: form.expiraEm,
                           ...Object.fromEntries((CREDENCIAIS[p.id] ?? []).map((c) => [c.chave, form[c.chave]])),
                         })}>{salvando ? "salvando…" : "Salvar"}</Botao>
                         <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
@@ -688,10 +699,20 @@ export function Integracoes({
                   <Campo rotulo="Chave de API (opcional)" type="password"
                     dica="Só a Appmax exige, para buscar o comprador. Sem ela, ficam 5 chaves em vez de 9."
                     {...campo("apiKey")} />
+                  {/*
+                    A chave da pagou.ai vence em 180 dias e ninguém avisa: os
+                    webhooks continuam chegando, mas a confirmação por API passa
+                    a falhar e a venda entra sem comprador. Erro nenhum, só a
+                    qualidade do envio caindo.
+                  */}
+                  <Campo rotulo="Chave vence em (opcional)" type="date"
+                    dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
+                    {...campo("expiraEm")} />
                   <div style={{ display: "flex", gap: 8 }}>
                     <Botao disabled={salvando || !form.gateway} onClick={() => salvar({
                       tipo: "gateway", gateway: form.gateway,
                       clientId: form.apiKey, apiKey: form.apiKey,
+                      expiraEm: form.expiraEm,
                     })}>{salvando ? "salvando…" : "Adicionar"}</Botao>
                     <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                   </div>
@@ -1005,5 +1026,203 @@ function GeradorUtm() {
         orgânica, sem ficar pendurada num anúncio que não existe.
       </div>
     </Cartao>
+  );
+}
+
+/* --------------------------------------------------- produto da página -- */
+
+type ConfigDoSite = {
+  viewContentOnLoad?: boolean;
+  productId?: string;
+  productName?: string;
+  productPriceCents?: number;
+};
+
+/*
+ * O snippet, já com o que a loja configurou.
+ *
+ * Montar o texto aqui em vez de mandar o lojista editar à mão não é conforto:
+ * é a diferença entre uma opção que existe e uma opção que é usada. Ninguém
+ * abre o código-fonte do próprio site para acrescentar uma vírgula num objeto
+ * de configuração — e enquanto não acrescentasse, a etapa "viu o produto"
+ * ficaria zerada parecendo campanha ruim.
+ */
+export function montarSnippet(
+  site: { dominio: string; chave: string; config: ConfigDoSite },
+  base: string,
+): string {
+  const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${base}/rr/collect"`];
+
+  if (site.config.viewContentOnLoad) cfg.push("viewContentOnLoad:true");
+
+  if (site.config.productId) {
+    const p = [`id:${JSON.stringify(site.config.productId)}`];
+    if (site.config.productName) p.push(`name:${JSON.stringify(site.config.productName)}`);
+    /* O rr.js fala em reais, como o resto do mundo de pixel; o banco guarda
+       centavo. A conversão acontece aqui, num lugar só. */
+    if (site.config.productPriceCents) {
+      p.push(`price:${(site.config.productPriceCents / 100).toFixed(2)}`);
+    }
+    cfg.push(`product:{${p.join(",")}}`);
+  }
+
+  return `<!-- RRTrack · ${site.dominio} -->\n`
+    + `<script>window.RRTrackConfig={${cfg.join(",")}}</script>\n`
+    + `<script src="${base}/rr.js" async></script>`;
+}
+
+/*
+ * Diz ao script o que a página é.
+ *
+ * Duas perguntas só, e as duas nasceram de números errados no painel.
+ *
+ * A primeira — "a página de entrada já é a do produto" — conserta um funil com
+ * etapa permanentemente zerada. O rr.js espera um `data-rr-view` no HTML para
+ * disparar "viu o produto"; numa oferta de página única esse atributo nunca
+ * existe, porque não há uma página de produto separada para marcar.
+ *
+ * A segunda — o produto e o preço — conserta evento sem valor. Hoje o
+ * `begin_checkout` chega à Meta com o corpo vazio, e ela só consegue otimizar
+ * por quantidade de clique. Com preço, passa a otimizar por retorno, que é o
+ * que se quer de campanha de venda.
+ */
+export function ProdutoDaPagina({ site, tenantId }: {
+  site: { dominio: string; chave: string; config: ConfigDoSite };
+  tenantId: string;
+}) {
+  const router = useRouter();
+  const [aberto, setAberto] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [paginaDeProduto, setPaginaDeProduto] = useState(!!site.config.viewContentOnLoad);
+  const [id, setId] = useState(site.config.productId ?? "");
+  const [nome, setNome] = useState(site.config.productName ?? "");
+  const [preco, setPreco] = useState(
+    site.config.productPriceCents
+      ? (site.config.productPriceCents / 100).toFixed(2).replace(".", ",")
+      : "",
+  );
+
+  const configurado = !!site.config.viewContentOnLoad || !!site.config.productId;
+
+  async function salvar() {
+    setErro(null);
+    setSalvando(true);
+    try {
+      const r = await fetch("/api/integracoes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          tipo: "produto",
+          paginaDeProduto,
+          id: id.trim() || undefined,
+          nome: nome.trim() || undefined,
+          preco: preco.trim()
+            ? parseFloat(preco.replace(/\./g, "").replace(",", "."))
+            : undefined,
+        }),
+      });
+      const j = await r.json() as { erro?: string };
+      if (!r.ok) { setErro(j.erro ?? "falha ao gravar"); setSalvando(false); return; }
+      setAberto(false);
+      router.refresh();
+    } catch {
+      setErro("sem conexão com o servidor");
+    }
+    setSalvando(false);
+  }
+
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--linha)", paddingTop: 12 }}>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        style={{
+          background: "none", border: "none", padding: 0, display: "flex",
+          alignItems: "center", gap: 7, fontSize: 12, color: "var(--ink-fraco)",
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 20 20" fill="none"
+          stroke="currentColor" strokeWidth="2"
+          style={{ transform: aberto ? "rotate(90deg)" : "none", transition: "transform .15s" }}>
+          <path d="M7 4l6 6-6 6" />
+        </svg>
+        Produto da página
+        <span style={{ color: configurado ? "var(--positivo)" : "var(--alerta)" }}>
+          {configurado ? "configurado" : "não configurado"}
+        </span>
+      </button>
+
+      {!aberto && !configurado && (
+        <div style={{
+          fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 7, lineHeight: 1.55,
+        }}>
+          Sem isto, a etapa <b>Viu o produto</b> do funil fica em zero e os eventos
+          chegam à Meta sem valor.
+        </div>
+      )}
+
+      {aberto && (
+        <div style={{ marginTop: 13, maxWidth: 520 }}>
+          <label style={{
+            display: "flex", alignItems: "flex-start", gap: 8,
+            fontSize: 12.5, color: "var(--ink-medio)", marginBottom: 14, lineHeight: 1.5,
+          }}>
+            <input
+              type="checkbox"
+              checked={paginaDeProduto}
+              onChange={(e) => setPaginaDeProduto(e.target.checked)}
+              style={{ width: "auto", marginTop: 2 }}
+            />
+            <span>
+              A página que o visitante abre <b>já é</b> a página do produto.
+              <span style={{ display: "block", fontSize: 11, color: "var(--ink-tenue)", marginTop: 3 }}>
+                Marque em oferta de página única. Aí &quot;viu o produto&quot; passa a
+                valer o mesmo que &quot;visitou o site&quot;, que é a verdade — e o
+                ViewContent começa a chegar na Meta.
+              </span>
+            </span>
+          </label>
+
+          <Campo rotulo="Identificador do produto" placeholder="carimbo-delineador"
+            value={id} onChange={(e) => setId(e.target.value)}
+            dica="Qualquer código estável. É o que agrupa o produto nos relatórios das plataformas." />
+
+          <Campo rotulo="Nome" placeholder="Carimbo de Delineador Gatinho Perfeito"
+            value={nome} onChange={(e) => setNome(e.target.value)} />
+
+          <Campo rotulo="Preço (R$)" placeholder="89,90"
+            value={preco} onChange={(e) => setPreco(e.target.value)}
+            dica="Vai junto em cada evento. É o que deixa a Meta otimizar por retorno, e não só por volume de clique." />
+
+          {erro && (
+            <div style={{
+              background: "var(--negativo-fundo)", border: "1px solid var(--negativo)",
+              borderRadius: 5, padding: "8px 11px", fontSize: 12,
+              color: "var(--negativo)", marginBottom: 11,
+            }}>{erro}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <Botao pequeno onClick={salvar} disabled={salvando}>
+              {salvando ? "salvando..." : "Salvar"}
+            </Botao>
+            <Botao pequeno tipo="secundario" onClick={() => { setAberto(false); setErro(null); }}>
+              cancelar
+            </Botao>
+          </div>
+
+          <div style={{
+            fontSize: 11, color: "var(--ink-tenue)", marginTop: 12, lineHeight: 1.55,
+          }}>
+            Depois de salvar, copie o script de novo — ele sai com estes valores dentro.
+            <br />
+            O <b>adicionar ao carrinho</b> não precisa de configuração: o script já
+            reconhece botões com <span className="num">data-add-to-cart</span>.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

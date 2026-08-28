@@ -17,11 +17,26 @@ import { getGateway } from "@/gateways/registry";
 
 export const runtime = "nodejs";
 
-const PLATAFORMAS_ANUNCIO = ["meta", "google", "kwai", "tiktok", "taboola"];
-const PLATAFORMAS_PIXEL = ["meta", "google", "kwai", "tiktok", "taboola"];
+const PLATAFORMAS_ANUNCIO = ["meta", "google", "tiktok"];
+const PLATAFORMAS_PIXEL = ["meta", "google", "tiktok"];
 
 function texto(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+/*
+ * Data de vencimento da credencial, como AAAA-MM-DD.
+ *
+ * `undefined` quer dizer "não mexer"; `null` quer dizer "apagar". A diferença
+ * importa: um formulário que manda o campo vazio por não ter perguntado nada
+ * não pode apagar a data que a loja já tinha cadastrado.
+ */
+function vencimento(v: unknown): Date | null | undefined {
+  if (v === null) return null;
+  const t = texto(v);
+  if (!t) return undefined;
+  const d = new Date(t.length === 10 ? t + "T12:00:00Z" : t);
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 const aleatorio = (n: number) =>
@@ -71,8 +86,10 @@ export async function POST(req: Request): Promise<Response> {
           )).limit(1);
 
         if (existente) {
+          const venceAd = vencimento(corpo.expiraEm);
           await db.update(adAccounts).set({
             label: texto(corpo.label) ?? plataforma,
+            ...(venceAd !== undefined ? { credentialsExpireAt: venceAd } : {}),
             /* Credencial vazia não apaga a que já existe: quem só renomeou a
                conta não deveria perder o token por causa disso. */
             ...(Object.keys(cred).length ? { credentials: cred } : {}),
@@ -85,6 +102,7 @@ export async function POST(req: Request): Promise<Response> {
           tenantId, platform: plataforma, externalId,
           label: texto(corpo.label) ?? plataforma,
           credentials: cred, active: true,
+          credentialsExpireAt: vencimento(corpo.expiraEm) ?? null,
         }).returning({ id: adAccounts.id });
 
         return Response.json({ ok: true, id: nova!.id, novo: true });
@@ -109,8 +127,10 @@ export async function POST(req: Request): Promise<Response> {
           .limit(1);
 
         if (existente) {
+          const venceGw = vencimento(corpo.expiraEm);
           await db.update(gatewayConnections).set({
             label: texto(corpo.label) ?? gateway,
+            ...(venceGw !== undefined ? { credentialsExpireAt: venceGw } : {}),
             ...(Object.keys(cred).length ? { credentials: cred } : {}),
             active: corpo.active !== false,
           }).where(eq(gatewayConnections.id, existente.id));
@@ -125,6 +145,7 @@ export async function POST(req: Request): Promise<Response> {
           tenantId, gateway,
           label: texto(corpo.label) ?? gateway,
           credentials: cred, webhookSecret: segredo, active: true,
+          credentialsExpireAt: vencimento(corpo.expiraEm) ?? null,
         }).returning({ id: gatewayConnections.id });
 
         return Response.json({ ok: true, id: nova!.id, segredo, novo: true });
@@ -217,6 +238,47 @@ export async function POST(req: Request): Promise<Response> {
           publicKey: chave, active: true,
         });
         return Response.json({ ok: true, dominio, chave, novo: true });
+      }
+
+      /*
+       * O produto da página, e se a página de entrada já é a do produto.
+       *
+       * Existe porque o funil tinha duas etapas condenadas a ficar em zero.
+       * O rr.js só dispara "viu o produto" quando acha `data-rr-view` no HTML
+       * — o que faz sentido numa loja com catálogo, e nenhum sentido numa
+       * oferta de página única, onde a pessoa cai direto no produto. Marcar
+       * isto aqui faz o snippet sair com a instrução pronta.
+       *
+       * O produto é opcional, mas vale muito: é ele que dá VALOR aos eventos.
+       * Sem preço, a Meta recebe "alguém adicionou ao carrinho" e consegue
+       * otimizar por volume; com preço, ela otimiza por retorno.
+       */
+      case "produto": {
+        const [site] = await db.select({ id: sites.id })
+          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+
+        if (!site) {
+          return Response.json({ erro: "cadastre o endereço do site primeiro" }, { status: 400 });
+        }
+
+        const preco = Number(corpo.preco);
+        if (corpo.preco !== undefined && corpo.preco !== null && corpo.preco !== ""
+          && (!Number.isFinite(preco) || preco < 0)) {
+          return Response.json({ erro: "preço inválido" }, { status: 400 });
+        }
+
+        const config = {
+          viewContentOnLoad: corpo.paginaDeProduto === true,
+          productId: texto(corpo.id),
+          productName: texto(corpo.nome),
+          /* Centavo inteiro no banco, como em todo lugar; o snippet devolve
+             para reais na hora de escrever, porque é o que o rr.js espera. */
+          productPriceCents: Number.isFinite(preco) && preco > 0
+            ? Math.round(preco * 100) : undefined,
+        };
+
+        await db.update(sites).set({ config }).where(eq(sites.id, site.id));
+        return Response.json({ ok: true, config });
       }
 
       /*

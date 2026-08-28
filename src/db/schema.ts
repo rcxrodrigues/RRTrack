@@ -112,6 +112,29 @@ export const sites = pgTable("sites", {
   /* Subdomínio próprio do coletor, p.ex. "t.minhaloja.com.br". */
   collectorHost: text("collector_host"),
   publicKey: text("public_key").notNull(),
+
+  /*
+   * Ajustes do snippet que valem por site.
+   *
+   * Nasceu de um buraco concreto no funil: numa oferta de resposta direta a
+   * página que a pessoa abre JÁ É a página do produto, então "viu o produto" e
+   * "visitou o site" são o mesmo acontecimento. Sem dizer isso em algum lugar,
+   * o rr.js espera um atributo `data-rr-view` que ninguém escreveu, e a etapa
+   * fica zerada para sempre — o que parece campanha ruim, não configuração
+   * faltando.
+   *
+   * O produto declarado aqui também é o que dá VALOR aos eventos. Sem ele,
+   * `add_to_cart` e `begin_checkout` chegam à Meta sem preço, e ela só sabe
+   * otimizar por volume, nunca por retorno.
+   */
+  config: jsonb("config").$type<{
+    /* A página de entrada é a própria página do produto. */
+    viewContentOnLoad?: boolean;
+    productId?: string;
+    productName?: string;
+    productPriceCents?: number;
+  }>().notNull().default({}),
+
   active: boolean("active").notNull().default(true),
 }, (t) => [uniqueIndex("sites_domain").on(t.domain)]);
 
@@ -130,6 +153,17 @@ export const gatewayConnections = pgTable("gateway_connections", {
    * em gateway que não assina o payload.
    */
   webhookSecret: text("webhook_secret").notNull(),
+
+  /*
+   * Quando a credencial vence, se vencer.
+   *
+   * Nenhum gateway avisa. A chave da pagou.ai expira em 180 dias e o sintoma é
+   * silencioso: os webhooks continuam chegando, mas toda confirmação por API
+   * passa a falhar, e a venda entra sem o comprador — sem erro em lugar
+   * nenhum, só a qualidade do envio caindo. É a loja que sabe a data, então é
+   * a loja que preenche; o painel só precisa lembrar antes.
+   */
+  credentialsExpireAt: timestamp("credentials_expire_at", { withTimezone: true }),
 
   /*
    * Quanto este gateway cobra, por método de pagamento — ver core/taxas.ts.
@@ -173,6 +207,18 @@ export const adAccounts = pgTable("ad_accounts", {
   externalId: text("external_id").notNull(),
   label: text("label").notNull(),
   credentials: jsonb("credentials").$type<Record<string, string>>().notNull().default({}),
+
+  /*
+   * Quando a credencial vence, se vencer.
+   *
+   * Nenhum gateway avisa. A chave da pagou.ai expira em 180 dias e o sintoma é
+   * silencioso: os webhooks continuam chegando, mas toda confirmação por API
+   * passa a falhar, e a venda entra sem o comprador — sem erro em lugar
+   * nenhum, só a qualidade do envio caindo. É a loja que sabe a data, então é
+   * a loja que preenche; o painel só precisa lembrar antes.
+   */
+  credentialsExpireAt: timestamp("credentials_expire_at", { withTimezone: true }),
+
   active: boolean("active").notNull().default(true),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
 
@@ -540,3 +586,218 @@ export const productCosts = pgTable("product_costs", {
   unitCostCents: bigint("unit_cost_cents", { mode: "number" }).notNull(),
   effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("product_costs_tenant_sku").on(t.tenantId, t.sku, t.effectiveFrom)]);
+
+/* ------------------------------------------------------------- shopify -- */
+
+/*
+ * Uma loja da Shopify ligada a esta loja do RRTrack.
+ *
+ * Serve a dois momentos opostos da mesma venda. Na montagem do checkout, é de
+ * onde vêm produto, variante e preço — digitar catálogo à mão em dois lugares
+ * é garantir que um dia os dois discordem, e quem descobre é o comprador. Na
+ * confirmação do pagamento, é para onde o pedido vai: sem isso a Shopify não
+ * sabe que vendeu, não baixa estoque, não emite etiqueta e não avisa ninguém.
+ *
+ * O token é de app personalizado (Admin API), criado pelo lojista no admin da
+ * própria loja, e vive cifrado como qualquer credencial. Precisa dos escopos
+ * `read_products`, `write_orders` e `write_customers`.
+ */
+export const shopifyConnections = pgTable("shopify_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+
+  /* Sempre o domínio interno (loja.myshopify.com), nunca o domínio de vitrine:
+     o de vitrine muda quando o lojista troca de domínio, este não. */
+  shopDomain: text("shop_domain").notNull(),
+  /* Nome da loja como a Shopify devolve, só para a tela ter o que mostrar. */
+  label: text("label").notNull(),
+
+  credentials: jsonb("credentials").$type<Record<string, string>>().notNull().default({}),
+
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  /* Uma loja da Shopify por loja do RRTrack — ligar a mesma duas vezes criaria
+     o pedido em duplicidade quando as duas conexões estivessem ativas. */
+  uniqueIndex("shopify_tenant_shop").on(t.tenantId, t.shopDomain),
+]);
+
+/* ------------------------------------------------------------- checkout -- */
+
+/*
+ * Um checkout próprio: a página onde o comprador paga, no nosso domínio.
+ *
+ * Existe por duas razões que se somam. A primeira é dinheiro — a camada de
+ * checkout é a única das três taxas da venda que dá para cortar; gateway e
+ * adquirente ninguém escapa. A segunda é atribuição, e é a que vale mais: com
+ * o pagamento no nosso domínio, o clickId nunca precisa atravessar o domínio
+ * de terceiro e voltar. Some o `sck`, some a reivindicação, some o
+ * `unattributed`. A junção deixa de ser costura e passa a ser leitura.
+ *
+ * O preço mora AQUI e em nenhum outro lugar. Nada que venha do navegador
+ * decide valor: o corpo do POST manda quais itens e quantas parcelas, e o
+ * servidor busca o preço nesta linha. Checkout que confia no preço enviado
+ * pelo cliente é checkout que vende de graça na primeira vez que alguém abrir
+ * o inspetor.
+ */
+export const checkouts = pgTable("checkouts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+
+  /* Endereço público: /c/{slug}. Único no sistema todo, não por loja. */
+  slug: text("slug").notNull(),
+  name: text("name").notNull(),
+
+  /* Por onde o dinheiro entra. A tabela de taxas vem junto, pela conexão. */
+  gatewayConnectionId: uuid("gateway_connection_id")
+    .notNull().references(() => gatewayConnections.id, { onDelete: "cascade" }),
+
+  /*
+   * O site cujo rr.js alimenta a sessão. É o que liga a venda ao clique: a
+   * página do checkout carrega o mesmo script, e o clickId que chega no POST
+   * é conferido contra as sessões desta loja.
+   */
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+
+  /*
+   * A loja da Shopify que recebe o pedido depois de pago. Nulo é o caso comum:
+   * oferta em página própria não tem Shopify nenhuma atrás.
+   */
+  shopifyConnectionId: uuid("shopify_connection_id")
+    .references(() => shopifyConnections.id, { onDelete: "set null" }),
+
+  /* A oferta. Ver acima: preço confiável só o daqui. */
+  items: jsonb("items").$type<Array<{
+    sku: string;
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+    /* A Appmax exige "digital" ou "physical" por produto, e muda a entrega. */
+    digital?: boolean;
+    /*
+     * A variante na Shopify, quando o item veio de lá. É o que faz o pedido
+     * cair no produto certo e baixar o estoque certo — sem ela a linha entra
+     * como item avulso, e o estoque não anda.
+     */
+    shopifyVariantId?: string;
+  }>>().notNull().default([]),
+
+  shippingCents: bigint("shipping_cents", { mode: "number" }).notNull().default(0),
+
+  /* Meios aceitos e teto de parcelamento — o comprador não escolhe além disto. */
+  methods: jsonb("methods").$type<string[]>().notNull().default(["pix", "credit_card"]),
+  maxInstallments: integer("max_installments").notNull().default(12),
+
+  /* Aparência e destino: logo, cor, chamada, para onde vai depois de pagar. */
+  config: jsonb("config").$type<Record<string, string>>().notNull().default({}),
+
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("checkouts_slug").on(t.slug),
+  index("checkouts_tenant").on(t.tenantId),
+]);
+
+/*
+ * Toda tentativa de pagamento, dando certo ou não.
+ *
+ * Não é log: é defesa. Uma rota pública que cobra cartão é alvo de teste de
+ * cartão roubado — o fraudador dispara centenas de números na sua conta para
+ * descobrir quais passam, e quem paga o estorno e leva o bloqueio da adquirente
+ * é o lojista, não ele.
+ *
+ * A contagem precisa estar no banco e não em memória: cada requisição na Vercel
+ * pode cair numa instância diferente, e um contador em memória protege apenas
+ * contra quem tiver o azar de bater duas vezes no mesmo processo.
+ *
+ * Serve também para explicar depois por que uma venda não entrou — recusa do
+ * antifraude e erro de rede parecem a mesma coisa para quem só olha o painel.
+ */
+export const checkoutAttempts = pgTable("checkout_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  checkoutId: uuid("checkout_id").notNull().references(() => checkouts.id, { onDelete: "cascade" }),
+
+  ip: text("ip").notNull(),
+  paymentMethod: text("payment_method"),
+  /* "ok" | "recusado" | "erro" — recusa é do gateway, erro é nosso ou dele. */
+  outcome: text("outcome").notNull(),
+  gatewayOrderId: text("gateway_order_id"),
+  /* Motivo legível, para o painel. Nunca guarda dado de cartão. */
+  detail: text("detail"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  /* A consulta do limitador: quantas tentativas deste IP na última janela. */
+  index("attempts_ip_time").on(t.ip, t.createdAt),
+  index("attempts_checkout_time").on(t.checkoutId, t.createdAt),
+]);
+
+/*
+ * A venda que passou pelo NOSSO checkout — o que a cobrança sabe e o webhook
+ * não vai saber.
+ *
+ * Existe porque os dois momentos estão separados no tempo e no processo. Quem
+ * cobra conhece o comprador inteiro, o endereço e qual variante da Shopify é
+ * cada item; quem confirma é o webhook, minutos depois (no pix, muito depois),
+ * e chega sabendo só o id do pedido no gateway. Sem este registro no meio, na
+ * hora de criar o pedido na Shopify faltaria justamente tudo.
+ *
+ * Não dá para reaproveitar `order_claims`: ele só nasce quando há clickId
+ * válido, e venda sem clique — a pessoa que digitou o endereço direto — tem
+ * que chegar na Shopify do mesmo jeito.
+ *
+ * Os itens são cópia, não referência. O lojista muda preço e produto do
+ * checkout a qualquer momento, e o pedido tem que continuar dizendo o que foi
+ * vendido naquele dia, não o que a oferta virou depois.
+ */
+export const checkoutOrders = pgTable("checkout_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  checkoutId: uuid("checkout_id").notNull().references(() => checkouts.id, { onDelete: "cascade" }),
+
+  /* Por onde a cobrança saiu — é o par que o webhook depois usa para achar. */
+  gatewayConnectionId: uuid("gateway_connection_id")
+    .notNull().references(() => gatewayConnections.id, { onDelete: "cascade" }),
+  gatewayOrderId: text("gateway_order_id").notNull(),
+
+  /* Cifrado campo a campo, como todo dado pessoal em repouso. */
+  buyer: jsonb("buyer").$type<Record<string, string>>().notNull().default({}),
+
+  items: jsonb("items").$type<Array<{
+    sku: string;
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+    shopifyVariantId?: string;
+  }>>().notNull().default([]),
+  shippingCents: bigint("shipping_cents", { mode: "number" }).notNull().default(0),
+
+  /*
+   * O resultado da criação na Shopify. Nulo em `shopifyOrderId` com `syncError`
+   * preenchido é o caso que precisa aparecer no painel: o dinheiro entrou e a
+   * loja não sabe. Silenciar isso seria vender sem enviar.
+   */
+  shopifyConnectionId: uuid("shopify_connection_id")
+    .references(() => shopifyConnections.id, { onDelete: "set null" }),
+  shopifyOrderId: text("shopify_order_id"),
+  /* O número que o lojista vê na Shopify (#1042), para casar as duas telas. */
+  shopifyOrderName: text("shopify_order_name"),
+  shopifySyncedAt: timestamp("shopify_synced_at", { withTimezone: true }),
+  syncError: text("sync_error"),
+  syncAttempts: integer("sync_attempts").notNull().default(0),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  /*
+   * A chave que o webhook procura, e a que impede pedido duplicado na Shopify:
+   * uma cobrança, uma linha. Reentrega de webhook cai na linha já sincronizada
+   * e não cria nada.
+   */
+  uniqueIndex("checkout_orders_gateway").on(t.gatewayConnectionId, t.gatewayOrderId),
+  index("checkout_orders_tenant_time").on(t.tenantId, t.createdAt),
+  /* A varredura do reenvio: o que foi pago e ainda não entrou na Shopify. */
+  index("checkout_orders_pendentes").on(t.shopifySyncedAt),
+]);

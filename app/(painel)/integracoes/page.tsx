@@ -41,7 +41,7 @@ export default async function PaginaIntegracoes() {
     <Integracoes
       loja={loja}
       base={base}
-      site={site[0] ? { dominio: site[0].domain, chave: site[0].publicKey } : null}
+      site={site[0] ? { dominio: site[0].domain, chave: site[0].publicKey, config: site[0].config } : null}
       contas={contas.map((c) => ({
         id: c.id, plataforma: c.platform, externalId: c.externalId,
         label: c.label, ativo: c.active,

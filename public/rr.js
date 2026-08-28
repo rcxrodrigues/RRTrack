@@ -99,8 +99,17 @@
 
   /* ------------------------------------------------------------ identidade */
 
-  /* Chave de junção com o webhook. Nasce uma vez e não muda. */
-  state.click_id = state.click_id || getCookie("_rr_cid") || uuid();
+  /*
+   * Chave de junção com o webhook. Nasce uma vez e não muda.
+   *
+   * `cfg.clickId` vem na frente e é usado só pelo nosso checkout próprio, que
+   * recebe o clickId na URL (o `sck` que o `decorate` carimbou no link). Sem
+   * isso, o checkout hospedado noutro domínio não enxergaria o cookie do site
+   * e abriria uma sessão nova — a venda ficaria atribuída ao clique na própria
+   * página de pagamento, e não ao anúncio que trouxe a pessoa. No site do
+   * lojista `cfg.clickId` não existe, e nada muda.
+   */
+  state.click_id = cfg.clickId || state.click_id || getCookie("_rr_cid") || uuid();
   setCookie("_rr_cid", state.click_id, COOKIE_DAYS);
 
   /* Identificador de primeira parte, enviado hasheado como external_id. */
@@ -252,7 +261,23 @@
     }
   }
 
+  /*
+   * O produto da página, quando o site tem um só.
+   *
+   * Oferta de resposta direta quase sempre vende uma coisa numa página só, e
+   * escrever `data-rr-view` em cada botão é trabalho repetido. Declarado uma
+   * vez na configuração, ele vale para todos os eventos que não trouxerem
+   * produto próprio — e é o que faz `add_to_cart` e `begin_checkout` levarem
+   * valor. Sem valor, a Meta não consegue otimizar por retorno, só por volume.
+   */
+  function produtoPadrao() {
+    var p = cfg.product;
+    if (!p || !p.id) return null;
+    return p;
+  }
+
   function paramsDe(produto) {
+    produto = produto || produtoPadrao();
     if (!produto) return {};
     var preco = typeof produto.price === "number" ? produto.price : undefined;
     var qtd = produto.quantity || 1;
@@ -269,14 +294,39 @@
     return p;
   }
 
-  /* Produto da página: dispara view_content uma vez, quando a página carrega. */
+  /*
+   * Produto da página: dispara view_content uma vez, quando a página carrega.
+   *
+   * Dois caminhos. O normal é achar `data-rr-view` no HTML — serve para loja
+   * com catálogo, onde só ALGUMAS páginas são de produto.
+   *
+   * O segundo é `cfg.viewContentOnLoad`, para quando a página que a pessoa
+   * abre JÁ É a página do produto. Aí "viu o produto" e "visitou o site" são o
+   * mesmo acontecimento, e exigir um atributo no HTML só produziria uma etapa
+   * do funil eternamente zerada. Continua valendo a pena disparar mesmo sendo
+   * igual ao page_view: é o ViewContent que a Meta usa para montar público e
+   * para casar a conversão depois.
+   */
+  var jaViu = false;
+
   function verProduto() {
+    if (jaViu) return;
+
     var el = document.querySelector("[data-rr-view]");
-    if (!el || el.getAttribute("data-rr-visto") === "1") return;
-    var produto = lerProduto(el, "data-rr-view");
-    if (!produto) return;
-    el.setAttribute("data-rr-visto", "1");
-    send("view_content", paramsDe(produto));
+    if (el && el.getAttribute("data-rr-visto") !== "1") {
+      var produto = lerProduto(el, "data-rr-view");
+      if (produto) {
+        el.setAttribute("data-rr-visto", "1");
+        jaViu = true;
+        send("view_content", paramsDe(produto));
+        return;
+      }
+    }
+
+    if (cfg.viewContentOnLoad) {
+      jaViu = true;
+      send("view_content", paramsDe(null));
+    }
   }
 
   /*
@@ -288,6 +338,26 @@
     if (el) {
       var nome = el.getAttribute("data-rr-event");
       if (nome) send(nome, paramsDe(lerProduto(el, "data-rr-product")));
+      return;
+    }
+
+    /*
+     * Adicionar ao carrinho, sem precisar marcar o HTML.
+     *
+     * `data-rr-event` acima é o caminho explícito, e continua valendo. Só que
+     * a loja já costuma ter um atributo dizendo exatamente isso — `data-add-to-cart`
+     * é a convenção mais comum — e pedir para o lojista marcar de novo o mesmo
+     * botão é trabalho sem ganho, além de uma etapa a mais para esquecer.
+     *
+     * Aqui NÃO há trava de disparo único, ao contrário do checkout: quem
+     * adiciona duas vezes adicionou duas vezes, e é isso que a plataforma de
+     * anúncio precisa ouvir. O funil conta sessões distintas, então repetir não
+     * distorce a taxa de passagem.
+     */
+    var selCarrinho = cfg.addToCartSelector || "[data-add-to-cart], [data-rr-add-to-cart]";
+    var botao = ev.target && ev.target.closest ? ev.target.closest(selCarrinho) : null;
+    if (botao) {
+      send("add_to_cart", paramsDe(lerProduto(botao, "data-rr-product")));
       return;
     }
 
