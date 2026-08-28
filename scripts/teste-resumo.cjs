@@ -115,6 +115,19 @@ const eq = (l, g, w) => {
   eq("comprou", fun[4].valor, 2);
   eq("topo não tem taxa", fun[0].taxa, null);
   eq("passagem visita para produto", fun[1].taxa, 75);
+  eq("etapa normal não tem excedente", fun[1].excedente, 0);
+
+  /*
+   * A semente tem 1 no checkout e 2 compras — de propósito, porque é o que
+   * acontece de verdade: alguém comprou sem o navegador ter visto, ou o script
+   * não carregou na visita dele.
+   *
+   * A conta ingênua daria 200% de conversão. Número impossível na tela faz a
+   * pessoa desconfiar do painel inteiro, inclusive das partes certas — então
+   * não há taxa, e o excedente diz o que houve.
+   */
+  eq("mais compras que checkouts não vira 200%", fun[4].taxa, null);
+  eq("e o excedente diz quantos foram", fun[4].excedente, 1);
 
   console.log("\n== horário ==");
   const hs = await R.porHorario(p);

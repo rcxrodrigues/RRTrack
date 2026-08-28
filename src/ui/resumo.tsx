@@ -157,6 +157,19 @@ export function Resumo({
                     −{num(e.perda)} saíram aqui
                   </div>
                 )}
+                {/*
+                  Etapa com mais gente que a anterior não tem taxa de passagem.
+                  Em vez de mostrar 130% de conversão, diz o que de fato houve:
+                  chegou venda de quem o navegador nunca viu.
+                */}
+                {e.excedente > 0 && (
+                  <div style={{
+                    fontSize: 10, color: "var(--alerta)", marginTop: 5, lineHeight: 1.45,
+                  }}>
+                    +<span className="num">{num(e.excedente)}</span> sem passar pela
+                    etapa anterior — venda sem sessão registrada
+                  </div>
+                )}
               </div>
             ))}
           </div>

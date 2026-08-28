@@ -123,9 +123,23 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
 export interface EtapaFunil {
   rotulo: string;
   valor: number;
-  /* Passagem desde a etapa anterior. `null` no topo, que não tem anterior. */
+  /*
+   * Passagem desde a etapa anterior. `null` no topo, que não tem anterior — e
+   * também quando a etapa tem MAIS gente que a anterior, caso em que não existe
+   * taxa de passagem que faça sentido. Ver `excedente`.
+   */
   taxa: number | null;
   perda: number;
+  /*
+   * Quantos a mais que a etapa anterior.
+   *
+   * Zero quase sempre. Quando não é, quer dizer que chegou venda de alguém que
+   * o navegador nunca viu: a pessoa comprou sem passar pelo site, ou o script
+   * não carregou na visita dela. A conta ingênua daria algo como 130% de
+   * conversão, e número impossível na tela faz a pessoa desconfiar do painel
+   * inteiro — inclusive das partes que estão certas. Melhor dizer o que houve.
+   */
+  excedente: number;
 }
 
 export async function funil(p: Periodo): Promise<EtapaFunil[]> {
@@ -161,10 +175,17 @@ export async function funil(p: Periodo): Promise<EtapaFunil[]> {
 
   return etapas.map((e, i) => {
     const ant = i === 0 ? null : etapas[i - 1]!.valor;
+    const excedente = ant === null ? 0 : Math.max(0, e.valor - ant);
     return {
       ...e,
-      taxa: ant ? (ant === 0 ? null : (e.valor / ant) * 100) : null,
+      /*
+       * Sem taxa quando não há etapa anterior, quando a anterior é zero, e
+       * quando esta é maior que a anterior. Nos três casos a divisão existe
+       * mas não significa nada.
+       */
+      taxa: ant && excedente === 0 ? (e.valor / ant) * 100 : null,
       perda: ant ? Math.max(0, ant - e.valor) : 0,
+      excedente,
     };
   });
 }
