@@ -38,6 +38,11 @@ export const config = {
    * própria e precisam responder a quem não tem sessão nenhuma — o navegador
    * do visitante e o servidor do gateway.
    *
+   * O retorno do Facebook e as páginas de /vincular entram pelo mesmo motivo:
+   * quem autoriza em navegador antidetect não tem sessão do painel, e um
+   * desvio para /entrar ali interromperia o vínculo no meio. A credencial
+   * deles é o segredo da URL, conferido contra a tabela meta_links.
+   *
    * Esquecer uma rota de ingestão aqui NÃO dá erro: o middleware devolve um
    * 307 para /entrar, e quem chamou vê 405 ou uma página de login em vez da
    * resposta. Do lado do gateway isso é venda perdida em silêncio. Rota nova

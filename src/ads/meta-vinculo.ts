@@ -1,25 +1,38 @@
 /*
- * As peças que as três rotas do login com o Facebook compartilham.
+ * O estado de um login com o Facebook em andamento.
  *
- * Fica separado das rotas porque as três precisam concordar sobre duas coisas
- * — qual é a URL de retorno e como o token viaja entre um passo e outro — e
- * duas cópias divergentes disso quebram de um jeito silencioso: o vínculo
- * simplesmente não completa, sem erro em lugar nenhum.
+ * Mora no banco, não em cookie. A razão está no comentário da tabela
+ * `meta_links`: quem gerencia vários perfis autoriza dentro de um navegador
+ * antidetect, e o painel está aberto em outro. Cookie não atravessa essa
+ * fronteira — o retorno chegaria sem ele e seria descartado como se fosse
+ * ataque, sem nada na tela explicando por quê.
+ *
+ * O `secret` faz o papel que o cookie fazia: prova que o retorno pertence a um
+ * pedido que nasceu aqui. A diferença é que ele viaja na URL, então qualquer
+ * navegador serve — e é por isso que ele precisa valer pouco tempo e uma vez só.
  */
 
-import { cookies } from "next/headers";
+import { and, eq, gt, isNotNull } from "drizzle-orm";
+import { db } from "@/db/index";
+import { metaLinks } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
 import type { AppMeta } from "./meta-oauth";
 
+/* Quinze minutos: dá tempo de trocar de navegador, não dá tempo de esquecer. */
+const VALIDADE_MINUTOS = 15;
+
 /*
  * A URL de retorno tem de ser IDÊNTICA em dois lugares: aqui e na lista de
- * "URIs de redirecionamento válidos" do app na Meta. Um barra a mais no fim já
- * é motivo de recusa, e a mensagem que a Meta devolve não diz qual das duas
- * está diferente.
+ * "URIs de redirecionamento do OAuth válidos" do app na Meta. Uma barra a mais
+ * no fim já é motivo de recusa, e a mensagem que a Meta devolve não diz qual
+ * das duas está diferente.
  */
 export function urlDeRetorno(): string {
-  const base = process.env.RR_BASE ?? "https://rr-track.vercel.app";
-  return `${base.replace(/\/$/, "")}/api/meta/retorno`;
+  return `${base()}/api/meta/retorno`;
+}
+
+export function base(): string {
+  return (process.env.RR_BASE ?? "https://rr-track.vercel.app").replace(/\/$/, "");
 }
 
 export function appDaMeta(): AppMeta | null {
@@ -29,83 +42,100 @@ export function appDaMeta(): AppMeta | null {
   return { appId, appSecret };
 }
 
-/* ------------------------------------------------------------- estado -- */
-
-const COOKIE_ESTADO = "rr_meta_estado";
-
-/*
- * O `state` existe para provar que quem voltou do Facebook é quem saiu daqui.
- * Sem ele, qualquer site consegue mandar a pessoa logada para o nosso retorno
- * com um `code` de outra conta e vincular um perfil que ela não escolheu.
- *
- * O nonce fica num cookie e o par vem de volta na URL; se não baterem, o
- * retorno é descartado.
- */
-export async function abrirEstado(tenantId: string): Promise<string> {
-  const nonce = crypto.randomUUID();
-  const jar = await cookies();
-
-  jar.set(COOKIE_ESTADO, `${nonce}.${tenantId}`, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 600,
-  });
-
-  return `${nonce}.${tenantId}`;
-}
-
-export async function conferirEstado(state: string | null): Promise<string | null> {
-  const jar = await cookies();
-  const guardado = jar.get(COOKIE_ESTADO)?.value;
-  jar.delete(COOKIE_ESTADO);
-
-  if (!state || !guardado || state !== guardado) return null;
-  return state.slice(state.indexOf(".") + 1) || null;
-}
-
-/* -------------------------------------------------------------- token -- */
-
-const COOKIE_TOKEN = "rr_meta_token";
-
-/*
- * O token fica num cookie entre o retorno do Facebook e a tela de escolha.
- *
- * É um segredo, então vai cifrado com a mesma chave das credenciais e some em
- * quinze minutos. Guardá-lo no banco antes de a pessoa escolher as contas
- * criaria uma linha órfã toda vez que alguém desistisse no meio.
- */
-export async function guardarToken(dados: {
-  token: string;
-  expiraEm: string | null;
+export interface Vinculo {
+  id: string;
   tenantId: string;
-}): Promise<void> {
-  const jar = await cookies();
-  jar.set(COOKIE_TOKEN, await encryptValue(JSON.stringify(dados)), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 900,
-  });
+  secret: string;
+  token: string | null;
+  tokenExpiresAt: Date | null;
 }
 
-export async function lerToken(): Promise<
-  { token: string; expiraEm: string | null; tenantId: string } | null
-> {
-  const jar = await cookies();
-  const bruto = jar.get(COOKIE_TOKEN)?.value;
-  if (!bruto) return null;
+/* Um pedido novo. O segredo é o que vai na URL, então precisa ser imprevisível. */
+export async function abrirVinculo(tenantId: string, userId: string): Promise<Vinculo> {
+  const secret = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
 
-  try {
-    return JSON.parse(await decryptValue(bruto));
-  } catch {
-    return null;
-  }
+  const [linha] = await db.insert(metaLinks).values({
+    tenantId,
+    userId,
+    secret,
+    expiresAt: new Date(Date.now() + VALIDADE_MINUTOS * 60_000),
+  }).returning({ id: metaLinks.id });
+
+  return { id: linha!.id, tenantId, secret, token: null, tokenExpiresAt: null };
 }
 
-export async function esquecerToken(): Promise<void> {
-  const jar = await cookies();
-  jar.delete(COOKIE_TOKEN);
+/** O link que se abre no outro navegador. */
+export function urlDoLink(secret: string): string {
+  return `${base()}/vincular/meta/${secret}`;
+}
+
+/*
+ * Busca pelo segredo, já descartando o que venceu.
+ *
+ * O filtro de validade vive na consulta, não em um `if` depois: assim não
+ * existe caminho no código que leia um vínculo vencido por engano.
+ */
+export async function acharPeloSegredo(secret: string): Promise<Vinculo | null> {
+  const [linha] = await db.select().from(metaLinks)
+    .where(and(eq(metaLinks.secret, secret), gt(metaLinks.expiresAt, new Date())))
+    .limit(1);
+
+  if (!linha) return null;
+
+  return {
+    id: linha.id,
+    tenantId: linha.tenantId,
+    secret: linha.secret,
+    token: linha.token ? await decryptValue(linha.token) : null,
+    tokenExpiresAt: linha.tokenExpiresAt,
+  };
+}
+
+/*
+ * O vínculo pronto mais recente desta pessoa nesta loja.
+ *
+ * É como a tela de escolha reencontra o token depois que o consentimento
+ * aconteceu em OUTRO navegador: ela não tem o segredo, mas tem a sessão.
+ */
+export async function vinculoPronto(tenantId: string, userId: string): Promise<Vinculo | null> {
+  const [linha] = await db.select().from(metaLinks)
+    .where(and(
+      eq(metaLinks.tenantId, tenantId),
+      eq(metaLinks.userId, userId),
+      isNotNull(metaLinks.token),
+      gt(metaLinks.expiresAt, new Date()),
+    ))
+    .orderBy(metaLinks.createdAt)
+    .limit(1);
+
+  if (!linha) return null;
+
+  return {
+    id: linha.id,
+    tenantId: linha.tenantId,
+    secret: linha.secret,
+    token: linha.token ? await decryptValue(linha.token) : null,
+    tokenExpiresAt: linha.tokenExpiresAt,
+  };
+}
+
+export async function guardarToken(
+  id: string,
+  token: string,
+  expiraEm: Date | null,
+): Promise<void> {
+  await db.update(metaLinks)
+    .set({ token: await encryptValue(token), tokenExpiresAt: expiraEm })
+    .where(eq(metaLinks.id, id));
+}
+
+/*
+ * Uso único: o vínculo some assim que as escolhas viram linhas de verdade.
+ *
+ * Deixar a linha viva depois disso manteria um token de 60 dias guardado num
+ * lugar que ninguém mais consulta — cópia extra de credencial, sem utilidade.
+ */
+export async function fecharVinculo(id: string): Promise<void> {
+  await db.delete(metaLinks).where(eq(metaLinks.id, id));
 }

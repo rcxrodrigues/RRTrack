@@ -2,7 +2,7 @@
  * Passo 3 de 3: lista o que o perfil autorizado enxerga, e grava o escolhido.
  *
  * GET  devolve contas de anúncio e pixels — nunca o token.
- * POST grava as escolhas e descarta o token do cookie.
+ * POST grava as escolhas e apaga o vínculo, com o token dentro dele.
  *
  * O mesmo token vai para as duas tabelas, `ad_accounts` e `destinations`,
  * porque é o mesmo perfil que lê o gasto e envia a conversão. Duplicar parece
@@ -11,16 +11,38 @@
  * envio de evento de outra.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNotNull } from "drizzle-orm";
 import { db } from "@/db/index";
-import { adAccounts, destinations } from "@/db/schema";
+import { adAccounts, destinations, metaLinks } from "@/db/schema";
 import { exigirSessao } from "@/core/sessao";
 import { acessoALoja } from "@/core/auth";
 import { encryptValue } from "@/core/crypto";
 import { contasEPixels } from "@/ads/meta-oauth";
-import { appDaMeta, esquecerToken, lerToken } from "@/ads/meta-vinculo";
+import { appDaMeta, fecharVinculo, vinculoPronto } from "@/ads/meta-vinculo";
 
 export const runtime = "nodejs";
+
+/*
+ * Qual loja consultar quando o pedido não diz.
+ *
+ * O GET da tela de escolha não sabe o tenantId — ela acabou de chegar de um
+ * redirecionamento. Então procuramos entre as lojas da pessoa a que tem um
+ * vínculo pronto esperando.
+ */
+async function lojaDoPedido(userId: string, pedido?: string): Promise<string | null> {
+  if (pedido) return pedido;
+
+  const [pendente] = await db.select({ tenantId: metaLinks.tenantId })
+    .from(metaLinks)
+    .where(and(
+      eq(metaLinks.userId, userId),
+      isNotNull(metaLinks.token),
+      gt(metaLinks.expiresAt, new Date()),
+    ))
+    .limit(1);
+
+  return pendente?.tenantId ?? null;
+}
 
 /*
  * Confere as três coisas que precisam valer juntas: há sessão, há um vínculo
@@ -32,7 +54,18 @@ async function contextoDoVinculo(tenantIdPedido?: string) {
   const sessao = await exigirSessao();
   if (!sessao.ok) return { erro: sessao.resposta };
 
-  const vinculo = await lerToken();
+  /*
+   * A loja vem da sessão, não do pedido: o vínculo pronto é procurado pelo par
+   * (loja atual, pessoa logada). Aceitar um tenantId do corpo como origem da
+   * verdade deixaria alguém com sessão apontar o token para loja alheia.
+   */
+  const alvo = await lojaDoPedido(sessao.ctx.usuario.userId, tenantIdPedido);
+  if (!alvo) return { erro: Response.json({ erro: "falta a loja" }, { status: 400 }) };
+
+  const loja = await acessoALoja(sessao.ctx.usuario.userId, alvo);
+  if (!loja) return { erro: Response.json({ erro: "não encontrado" }, { status: 404 }) };
+
+  const vinculo = await vinculoPronto(alvo, sessao.ctx.usuario.userId);
   if (!vinculo) {
     return {
       erro: Response.json(
@@ -41,13 +74,6 @@ async function contextoDoVinculo(tenantIdPedido?: string) {
       ),
     };
   }
-
-  if (tenantIdPedido && tenantIdPedido !== vinculo.tenantId) {
-    return { erro: Response.json({ erro: "loja não confere" }, { status: 400 }) };
-  }
-
-  const loja = await acessoALoja(sessao.ctx.usuario.userId, vinculo.tenantId);
-  if (!loja) return { erro: Response.json({ erro: "não encontrado" }, { status: 404 }) };
 
   const app = appDaMeta();
   if (!app) {
@@ -62,10 +88,10 @@ export async function GET(): Promise<Response> {
   if (ctx.erro) return ctx.erro;
 
   try {
-    const { contas, pixels } = await contasEPixels(ctx.app, ctx.vinculo.token);
+    const { contas, pixels } = await contasEPixels(ctx.app, ctx.vinculo.token!);
     return Response.json({
       loja: { id: ctx.loja.id, nome: ctx.loja.nome },
-      expiraEm: ctx.vinculo.expiraEm,
+      expiraEm: ctx.vinculo.tokenExpiresAt ? ctx.vinculo.tokenExpiresAt.toISOString() : null,
       contas,
       pixels,
     });
@@ -107,8 +133,8 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const tenantId = ctx.vinculo.tenantId;
-  const cifrado = { accessToken: await encryptValue(ctx.vinculo.token) };
-  const vence = ctx.vinculo.expiraEm ? new Date(ctx.vinculo.expiraEm) : null;
+  const cifrado = { accessToken: await encryptValue(ctx.vinculo.token!) };
+  const vence = ctx.vinculo.tokenExpiresAt;
 
   for (const c of contas) {
     const [existente] = await db.select({ id: adAccounts.id }).from(adAccounts)
@@ -154,7 +180,7 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  await esquecerToken();
+  await fecharVinculo(ctx.vinculo.id);
 
   return Response.json({ ok: true, contas: contas.length, pixels: pixels.length });
 }

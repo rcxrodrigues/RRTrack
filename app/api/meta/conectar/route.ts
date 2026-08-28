@@ -1,16 +1,18 @@
 /*
- * Passo 1 de 3: manda a pessoa para o Facebook.
+ * Passo 1, no mesmo navegador: manda a pessoa direto para o Facebook.
  *
  * É uma navegação, não um fetch — o Facebook precisa desenhar a tela de
- * consentimento no navegador dela. Por isso a rota responde com redirect e o
- * botão do painel é um link comum, não um botão com onClick.
+ * consentimento. Por isso o botão do painel é um link comum.
+ *
+ * Quem autoriza em outro navegador não passa por aqui: usa /api/meta/link,
+ * que devolve a mesma coisa em forma de URL para copiar.
  */
 
 import { redirect } from "next/navigation";
 import { exigirSessao } from "@/core/sessao";
 import { acessoALoja } from "@/core/auth";
 import { urlAutorizacao } from "@/ads/meta-oauth";
-import { abrirEstado, appDaMeta, urlDeRetorno } from "@/ads/meta-vinculo";
+import { abrirVinculo, appDaMeta, urlDeRetorno } from "@/ads/meta-vinculo";
 
 export const runtime = "nodejs";
 
@@ -32,5 +34,6 @@ export async function GET(req: Request): Promise<Response> {
     );
   }
 
-  redirect(urlAutorizacao(app, urlDeRetorno(), await abrirEstado(tenantId)));
+  const vinculo = await abrirVinculo(tenantId, sessao.ctx.usuario.userId);
+  redirect(urlAutorizacao(app, urlDeRetorno(), vinculo.secret));
 }

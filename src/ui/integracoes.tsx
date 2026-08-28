@@ -156,28 +156,86 @@ function Campo({ rotulo, dica, ...resto }: {
  */
 function ConectarFacebook({ tenantId }: { tenantId: string }) {
   const erro = useSearchParams().get("meta_erro");
+  const [link, setLink] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  async function gerarLink() {
+    setGerando(true);
+    const r = await fetch("/api/meta/link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tenantId }),
+    }).catch(() => null);
+
+    const j = r ? await r.json().catch(() => null) : null;
+    setLink(r?.ok && j?.url ? j.url : null);
+    setGerando(false);
+
+    if (j?.url) {
+      navigator.clipboard?.writeText(j.url).then(() => setCopiado(true)).catch(() => {});
+    }
+  }
 
   return (
     <div style={{
       background: "var(--painel)", border: "1px solid var(--linha)",
       borderRadius: 8, padding: "15px 18px",
-      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
     }}>
-      <div style={{ flexGrow: 1, minWidth: 220 }}>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>Conectar com o Facebook</div>
-        <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 3 }}>
-          Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão.
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flexGrow: 1, minWidth: 220 }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Conectar com o Facebook</div>
+          <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 3 }}>
+            Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão.
+          </div>
+          {erro && (
+            <div style={{ fontSize: 11.5, color: "var(--negativo)", marginTop: 6 }}>{erro}</div>
+          )}
         </div>
-        {erro && (
-          <div style={{ fontSize: 11.5, color: "var(--negativo)", marginTop: 6 }}>{erro}</div>
-        )}
+
+        <a href={`/api/meta/conectar?tenantId=${tenantId}`} style={{
+          padding: "9px 16px", borderRadius: 5, textDecoration: "none",
+          fontWeight: 600, fontSize: 12.5,
+          background: "#1877F2", color: "#fff", whiteSpace: "nowrap",
+        }}>Entrar com o Facebook</a>
       </div>
 
-      <a href={`/api/meta/conectar?tenantId=${tenantId}`} style={{
-        padding: "9px 16px", borderRadius: 5, textDecoration: "none",
-        fontWeight: 600, fontSize: 12.5,
-        background: "#1877F2", color: "#fff", whiteSpace: "nowrap",
-      }}>Entrar com o Facebook</a>
+      {/*
+        * O segundo caminho existe para quem trabalha em navegador antidetect: o
+        * Facebook que precisa autorizar vive lá, e o painel está aqui. Sem ele,
+        * a única saída seria abrir o RRTrack de dentro do antidetect — ou seja,
+        * duplicar a sessão do painel num ambiente feito para não compartilhar
+        * sessão nenhuma.
+        */}
+      <div style={{
+        marginTop: 13, paddingTop: 13, borderTop: "1px solid var(--linha)",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      }}>
+        <div style={{ flexGrow: 1, minWidth: 220, fontSize: 11.5, color: "var(--ink-tenue)" }}>
+          Usa navegador antidetect ou multilogin? Gere um link e abra lá dentro.
+        </div>
+
+        <Botao pequeno tipo="secundario" onClick={gerarLink} disabled={gerando}>
+          {gerando ? "gerando…" : "Copiar link para outro navegador"}
+        </Botao>
+      </div>
+
+      {link && (
+        <div style={{ marginTop: 11 }}>
+          <div className="num" style={{
+            fontSize: 11, padding: "8px 10px", borderRadius: 5,
+            background: "var(--fundo)", border: "1px solid var(--linha)",
+            wordBreak: "break-all", color: "var(--ink-fraco)",
+          }}>{link}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 5 }}>
+            {copiado ? "Copiado. " : ""}Vale por 15 minutos e serve uma vez só. Depois de
+            autorizar lá,{" "}
+            <a href="/integracoes/meta" style={{ color: "var(--acento)" }}>
+              volte aqui para escolher o que vincular
+            </a>.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

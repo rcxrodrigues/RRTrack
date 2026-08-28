@@ -586,3 +586,51 @@ export const productCosts = pgTable("product_costs", {
   unitCostCents: bigint("unit_cost_cents", { mode: "number" }).notNull(),
   effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("product_costs_tenant_sku").on(t.tenantId, t.sku, t.effectiveFrom)]);
+
+/* ------------------------------------------------- vínculo com a Meta -- */
+
+/*
+ * Um login com o Facebook em andamento.
+ *
+ * Existe porque o consentimento nem sempre acontece no mesmo navegador que
+ * abriu o painel. Quem gerencia vários perfis usa navegador antidetect, e o
+ * Facebook em que se quer autorizar vive lá dentro, não aqui. Guardar o estado
+ * em cookie — que foi a primeira tentativa — funciona só quando os dois passos
+ * caem no mesmo navegador, e falha calada quando não caem: o retorno chega sem
+ * o cookie e é descartado como se fosse ataque.
+ *
+ * Com a linha no banco, o `secret` viaja na URL e o vínculo atravessa qualquer
+ * fronteira de navegador, dispositivo ou pessoa.
+ *
+ * O QUE PROTEGE quem receber o link: ele autoriza apenas ENTREGAR um token, e
+ * o token fica parado aqui. Nada é gravado em `ad_accounts` nem em
+ * `destinations` sem alguém com sessão no painel escolher o que vincular. Sem
+ * essa separação, um link vazado deixaria estranho apontar o pixel dele para a
+ * loja — e as conversões passariam a sair para o pixel errado, sem erro nenhum
+ * aparecendo.
+ */
+export const metaLinks = pgTable("meta_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /* Quem pediu. Serve para o painel achar o vínculo que ELA começou. */
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+
+  /* O que viaja na URL. Uso único: some assim que as escolhas são gravadas. */
+  secret: text("secret").notNull(),
+
+  /* Cifrado, como toda credencial. Nulo enquanto o Facebook não devolveu. */
+  token: text("token"),
+  /* Quando o token da Meta vence — 60 dias, no caso do token de usuário. */
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+
+  /*
+   * Validade do PRÓPRIO link, que é curta de propósito. Um link de vínculo é
+   * uma chave para entregar credencial; quanto menos tempo ele existir, menor
+   * a janela em que um print de tela compartilhado sem querer ainda vale.
+   */
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("meta_links_secret").on(t.secret),
+  index("meta_links_tenant_user").on(t.tenantId, t.userId),
+]);
