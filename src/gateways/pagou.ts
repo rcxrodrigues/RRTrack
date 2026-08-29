@@ -134,6 +134,7 @@ function parsePassthrough(data: unknown): Record<string, string> {
 export const pagouAdapter: GatewayAdapter = {
   id: "pagou",
   label: "Pagou.ai",
+  especie: "gateway",
   passthroughFields: PASSTHROUGH,
 
   async verify(_req: WebhookRequest, _secret: string): Promise<VerifyResult> {

@@ -25,6 +25,27 @@ export interface GatewayAdapter {
   label: string;
 
   /*
+   * Plataforma de venda ou gateway de pagamento.
+   *
+   * A distinção não é decorativa: enquanto tudo aqui dentro se chamava
+   * "gateway", a tela agrupava a Shopify sob "Gateways de pagamento" — e quem
+   * procurava onde ligar a loja não achava, porque a Shopify não é um gateway
+   * e a tela estava dizendo que era. O lojista concluiu, corretamente, que
+   * não havia lugar para ela.
+   *
+   * Uma plataforma é dona da venda inteira: catálogo, carrinho, checkout e
+   * endereço do comprador. Um gateway só processa o pagamento, e por isso
+   * quase nunca sabe o endereço — que é a razão de a Shopify render mais
+   * chaves de correspondência que qualquer um dos outros.
+   *
+   * `api` é a terceira, e não é preguiça de escolher entre as duas: é o
+   * servidor do próprio lojista empurrando a venda, sem plataforma nem
+   * gateway do outro lado. Enfiá-la numa das outras duas repetiria o mesmo
+   * erro de categoria, só que com outro nome.
+   */
+  especie: "plataforma" | "gateway" | "api";
+
+  /*
    * Como este gateway devolve o que mandamos no checkout. Determina onde o
    * `clickId` viaja. `src` e `sck` são a convenção dos gateways brasileiros;
    * gateways internacionais costumam ter `metadata` ou `note_attributes`.

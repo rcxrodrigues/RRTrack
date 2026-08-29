@@ -66,7 +66,7 @@ export default async function PaginaIntegracoes() {
         textoBotao: ((p.config as Record<string, unknown>)?.textoBotaoCheckout as string) ?? null,
       }))}
       gatewaysDisponiveis={listGateways().map((g) => ({
-        id: g.id, label: g.label,
+        id: g.id, label: g.label, especie: g.especie,
         repasse: g.passthroughFields.join(", "),
       }))}
       modelosUtm={MODELOS}

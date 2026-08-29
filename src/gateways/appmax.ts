@@ -205,6 +205,7 @@ async function obterToken(cred: GatewayCredentials): Promise<string | null> {
 export const appmaxAdapter: GatewayAdapter = {
   id: "appmax",
   label: "Appmax",
+  especie: "gateway",
   passthroughFields: PASSTHROUGH,
 
   async verify(_req: WebhookRequest, _secret: string): Promise<VerifyResult> {

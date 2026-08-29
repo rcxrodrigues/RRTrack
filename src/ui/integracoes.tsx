@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LojaDoUsuario } from "@/core/auth";
 import { TaxasDoGateway } from "./taxas-gateway";
@@ -548,7 +548,10 @@ export function Integracoes({
   contas: Conta[];
   conexoes: Conexao[];
   pixels: Pixel[];
-  gatewaysDisponiveis: Array<{ id: string; label: string; repasse: string }>;
+  gatewaysDisponiveis: Array<{
+    id: string; label: string; repasse: string;
+    especie: "plataforma" | "gateway" | "api";
+  }>;
   modelosUtm: Record<string, { rotulo: string; modelo: string; nota: string }>;
 }) {
   const router = useRouter();
@@ -796,12 +799,46 @@ export function Integracoes({
         {aba === "webhooks" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 1100, alignItems: "start" }}>
 
-            <Cartao titulo="Gateways de pagamento"
-              descricao="De onde as vendas chegam. Cada um recebe uma URL própria.">
-              {conexoes.filter((c) => c.ativo).map((c) => {
+            <Cartao titulo="Origem das vendas"
+              descricao="De onde as vendas chegam — plataforma, gateway ou o seu próprio servidor. Cada uma recebe uma URL própria.">
+              {/*
+                Agrupado por espécie, e não numa lista só.
+                
+                O cartão se chamava "Gateways de pagamento" e a Shopify caía
+                dentro dele. Quem foi ligar a loja não achou onde — e estava
+                certo: a Shopify não é um gateway, e a tela afirmava que era.
+                O menu tinha a opção o tempo todo; o rótulo é que escondia.
+              */}
+              {(() => {
+                const ORDEM = ["plataforma", "gateway", "api"] as const;
+                const TITULO: Record<string, string> = {
+                  plataforma: "Plataformas de venda",
+                  gateway: "Gateways de pagamento",
+                  api: "Entrada direta",
+                };
+                const especieDe = (gw: string) =>
+                  gatewaysDisponiveis.find((x) => x.id === gw)?.especie ?? "gateway";
+
+                const ativas = [...conexoes.filter((c) => c.ativo)].sort(
+                  (a, b) => ORDEM.indexOf(especieDe(a.gateway)) - ORDEM.indexOf(especieDe(b.gateway)),
+                );
+
+                let anterior: string | null = null;
+                return ativas.map((c) => {
                 const g = gatewaysDisponiveis.find((x) => x.id === c.gateway);
+                const esp = especieDe(c.gateway);
+                const cabecalho = esp !== anterior ? TITULO[esp] : null;
+                anterior = esp;
                 return (
-                  <div key={c.id} style={{
+                  <Fragment key={c.id}>
+                  {cabecalho && (
+                    <div style={{
+                      fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
+                      color: "var(--ink-tenue)", fontWeight: 600,
+                      margin: "14px 0 8px",
+                    }}>{cabecalho}</div>
+                  )}
+                  <div style={{
                     border: "1px solid var(--linha-forte)", borderRadius: 6,
                     padding: 14, marginBottom: 10,
                   }}>
@@ -828,6 +865,17 @@ export function Integracoes({
                         <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8 }}>
                           O identificador do clique volta em <span className="num">{g?.repasse}</span>
                           {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
+                          {/*
+                            A Shopify devolve o campo, mas ele chega vazio se o
+                            tema não puser nada nele. E aí a venda entra normal,
+                            só que sem origem — falha que não dá erro nenhum e
+                            que só aparece quando alguém estranha que nenhuma
+                            venda tem campanha.
+                          */}
+                          {c.gateway === "shopify" && (
+                            <> — o tema precisa gravar o clickId em <span className="num">note_attributes</span> do
+                            carrinho; sem isso a venda entra sem origem</>
+                          )}
                         </div>
                         <ChaveDeApi
                           conexao={c}
@@ -856,8 +904,10 @@ export function Integracoes({
                       </>
                     )}
                   </div>
+                  </Fragment>
                 );
-              })}
+                });
+              })()}
 
               {editando === "gateway:novo" ? (
                 <div style={{ borderTop: "1px solid var(--linha)", paddingTop: 14, marginTop: 4 }}>
@@ -866,17 +916,52 @@ export function Integracoes({
                       display: "block", fontSize: 10.5, letterSpacing: ".07em",
                       textTransform: "uppercase", color: "var(--ink-tenue)",
                       fontWeight: 600, marginBottom: 5,
-                    }}>Gateway</span>
+                    }}>De onde vem a venda</span>
+                    {/*
+                      Separado por espécie também aqui: no menu corrido, a
+                      Shopify aparecia entre gateways de pagamento e ninguém
+                      reconhecia aquilo como o lugar de ligar a loja.
+                    */}
                     <select value={form.gateway ?? ""} onChange={(e) => setForm((f) => ({ ...f, gateway: e.target.value }))}>
                       <option value="">escolha…</option>
-                      {gatewaysDisponiveis
-                        .filter((g) => !conexoes.some((c) => c.gateway === g.id && c.ativo))
-                        .map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                      {([
+                        ["plataforma", "Plataformas de venda"],
+                        ["gateway", "Gateways de pagamento"],
+                        ["api", "Entrada direta"],
+                      ] as const).map(([esp, titulo]) => {
+                        const desta = gatewaysDisponiveis.filter((g) =>
+                          g.especie === esp && !conexoes.some((c) => c.gateway === g.id && c.ativo));
+                        if (!desta.length) return null;
+                        return (
+                          <optgroup key={esp} label={titulo}>
+                            {desta.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                          </optgroup>
+                        );
+                      })}
                     </select>
                   </label>
-                  <Campo rotulo="Chave de API (opcional)" type="password"
-                    dica="Só a Appmax exige, para buscar o comprador. Sem ela, ficam 5 chaves em vez de 9."
-                    {...campo("apiKey")} />
+
+                  {/*
+                    Os campos mudam conforme o que foi escolhido, porque o que
+                    cada um precisa é diferente e mostrar os dois sempre faria
+                    a pessoa preencher o errado.
+
+                    A Shopify assina os webhooks dela, e o segredo é UM POR
+                    LOJA, mostrado no rodapé da página de webhooks do admin.
+                    Ele precisava estar AQUI: antes só existia depois da
+                    conexão criada, atrás do "trocar" — e uma conexão sem ele
+                    aceita a venda, mas marcada como não verificada. Funciona
+                    o bastante para ninguém perceber que falta.
+                  */}
+                  {gatewaysDisponiveis.find((g) => g.id === form.gateway)?.especie === "plataforma" ? (
+                    <Campo rotulo="Segredo de assinatura do webhook" type="password"
+                      dica="Na Shopify: Configurações → Notificações → Webhooks, no rodapé da página. É o que prova que o POST veio da loja."
+                      {...campo("signingSecret")} />
+                  ) : (
+                    <Campo rotulo="Chave de API (opcional)" type="password"
+                      dica="Só a Appmax exige, para buscar o comprador. Sem ela, ficam 5 chaves em vez de 9."
+                      {...campo("apiKey")} />
+                  )}
                   {/*
                     A chave da pagou.ai vence em 180 dias e ninguém avisa: os
                     webhooks continuam chegando, mas a confirmação por API passa
@@ -890,13 +975,14 @@ export function Integracoes({
                     <Botao disabled={salvando || !form.gateway} onClick={() => salvar({
                       tipo: "gateway", gateway: form.gateway,
                       clientId: form.apiKey, apiKey: form.apiKey,
+                      signingSecret: form.signingSecret,
                       expiraEm: form.expiraEm,
                     })}>{salvando ? "salvando…" : "Adicionar"}</Botao>
                     <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                   </div>
                 </div>
               ) : (
-                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar gateway</Botao>
+                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar origem</Botao>
               )}
             </Cartao>
 

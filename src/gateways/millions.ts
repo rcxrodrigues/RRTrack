@@ -95,6 +95,7 @@ const enc = new TextEncoder();
 export const millionsAdapter: GatewayAdapter = {
   id: "millions",
   label: "MillionsPay",
+  especie: "gateway",
   passthroughFields: PASSTHROUGH,
 
   /*

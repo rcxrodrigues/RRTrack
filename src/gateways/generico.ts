@@ -217,6 +217,8 @@ function lerRepasse(fonte: Record<string, unknown>): Record<string, string> {
 export const genericoAdapter: GatewayAdapter = {
   id: "api",
   label: "Entrada por API",
+  /* Nem plataforma nem gateway: o servidor do lojista falando direto conosco. */
+  especie: "api",
   passthroughFields: REPASSE,
 
   /*

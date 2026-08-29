@@ -306,6 +306,8 @@ function igualEmTempoConstante(a: Uint8Array, b: Uint8Array): boolean {
 export const shopifyAdapter: GatewayAdapter = {
   id: "shopify",
   label: "Shopify",
+  /* A loja inteira, nao so o pagamento — e e dai que vem o endereco. */
+  especie: "plataforma",
   /* A Shopify não tem `src`/`sck`: o campo livre por pedido é este. */
   passthroughFields: ["note_attributes"],
 
