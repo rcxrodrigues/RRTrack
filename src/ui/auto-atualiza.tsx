@@ -47,7 +47,63 @@ export function AutoAtualiza({ segundos = 30 }: { segundos?: number }) {
     return () => clearInterval(t);
   }, [router, segundos, pausado]);
 
+  /*
+   * Voltar para a tela atualiza NA HORA, sem esperar o ciclo.
+   *
+   * É o que faltava no atalho salvo na tela inicial do iPhone: o iOS congela
+   * a página quando você sai do app, o temporizador não roda, e ao voltar a
+   * tela mostrava o número de antes até o próximo ciclo completar. Como não
+   * há barra de endereço ali, não havia nem como recarregar — o painel
+   * simplesmente discordava do que o navegador do computador mostrava.
+   *
+   * Serve para o computador também: trocar de aba e voltar traz o número
+   * atual, que é exatamente quando alguém olha.
+   */
+  useEffect(() => {
+    if (pausado) return;
+
+    function aoVoltar() {
+      if (document.visibilityState !== "visible") return;
+      router.refresh();
+      setDesde(0);
+    }
+
+    document.addEventListener("visibilitychange", aoVoltar);
+    /* `pageshow` cobre o cache de volta-e-avança, que não dispara o de cima. */
+    window.addEventListener("pageshow", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("pageshow", aoVoltar);
+    };
+  }, [router, pausado]);
+
+  function atualizarAgora() {
+    router.refresh();
+    setDesde(0);
+  }
+
   return (
+    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <button
+      onClick={atualizarAgora}
+      title="Atualizar agora"
+      aria-label="Atualizar agora"
+      style={{
+        display: "flex", alignItems: "center",
+        background: "none", border: "none", padding: 0,
+        color: "var(--ink-tenue)", cursor: "pointer",
+      }}
+    >
+      {/*
+        Botão de atualizar, que só faz sentido depois do atalho no iPhone: sem
+        barra de endereço, não existia gesto nenhum para forçar a atualização.
+      */}
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M17 10a7 7 0 1 1-2.05-4.95" />
+        <path d="M17 3v4h-4" />
+      </svg>
+    </button>
     <button
       onClick={() => setPausado((p) => !p)}
       title={pausado ? "Retomar atualização automática" : "Pausar atualização automática"}
@@ -66,5 +122,6 @@ export function AutoAtualiza({ segundos = 30 }: { segundos?: number }) {
         {pausado ? "pausado" : desde < 5 ? "agora mesmo" : `há ${desde}s`}
       </span>
     </button>
+    </span>
   );
 }

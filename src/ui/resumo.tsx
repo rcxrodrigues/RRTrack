@@ -6,7 +6,7 @@ import { Cabecalho, Cartao, Nota, corValor, num, pct, razao } from "./comum";
 import { SecaoAoVivo } from "./ao-vivo";
 import type { AoVivo } from "@/core/aovivo";
 import { nomeDaRegiao, nomeDoPais } from "@/core/aovivo";
-import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao, Regiao } from "@/core/resumo";
+import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao, Regiao, Pagina } from "@/core/resumo";
 
 /*
  * O Resumo.
@@ -20,7 +20,7 @@ import type { Indicadores, EtapaFunil, Celula, Origem, Aprovacao, Regiao } from 
 const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
 export function Resumo({
-  periodo, temGasto, ind, funil, horario, origens, pagamento, regioes, aoVivo,
+  periodo, temGasto, ind, funil, horario, origens, pagamento, regioes, paginas, aoVivo,
 }: {
   periodo: string;
   temGasto: boolean;
@@ -30,6 +30,7 @@ export function Resumo({
   origens: Origem[];
   pagamento: Aprovacao[];
   regioes: Regiao[];
+  paginas: Pagina[];
   aoVivo: AoVivo;
 }) {
   const dinheiro = useDinheiro();
@@ -303,6 +304,59 @@ export function Resumo({
           e a seção mostrava três, porque os outros quinze tinham entrado antes
           da última hora. Este quadro respeita o filtro de data e mostra todos.
         */}
+        {/*
+          Páginas mais vistas.
+          
+          Não é o mesmo que "origem do tráfego": aquela diz de ONDE a pessoa
+          veio, esta diz o QUE ela olhou depois de chegar. É onde aparece a
+          coleção que recebe visita e não gera interesse, e o produto que
+          recebe pouca visita e converte bem — os dois pedem ação, e ações
+          opostas.
+        */}
+        <Cartao largo titulo="Páginas mais vistas"
+          descricao="O que o visitante olhou depois de chegar. `viu o produto` separa vitrine de página que desperta interesse">
+          {paginas.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--ink-tenue)" }}>Nenhuma visita no período.</div>
+          ) : (
+            <div>
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 72px 72px 92px",
+                gap: 10, fontSize: 10.5, letterSpacing: ".06em",
+                textTransform: "uppercase", color: "var(--ink-tenue)",
+                fontWeight: 600, paddingBottom: 7,
+                borderBottom: "1px solid var(--linha)", marginBottom: 8,
+              }}>
+                <span>Página</span>
+                <span className="num" style={{ textAlign: "right" }}>Visitas</span>
+                <span className="num" style={{ textAlign: "right" }}>Pessoas</span>
+                <span className="num" style={{ textAlign: "right" }}>Viu produto</span>
+              </div>
+              {paginas.map((pg) => (
+                <div key={pg.caminho} style={{
+                  display: "grid", gridTemplateColumns: "1fr 72px 72px 92px",
+                  gap: 10, fontSize: 12, padding: "5px 0",
+                  alignItems: "baseline",
+                }}>
+                  <span className="num" style={{
+                    color: "var(--ink-medio)", overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }} title={pg.caminho}>{pg.caminho}</span>
+                  <span className="num" style={{ textAlign: "right", fontWeight: 600 }}>
+                    {num(pg.visitas)}
+                  </span>
+                  <span className="num" style={{ textAlign: "right", color: "var(--ink-fraco)" }}>
+                    {num(pg.pessoas)}
+                  </span>
+                  <span className="num" style={{
+                    textAlign: "right",
+                    color: pg.viramProduto ? "var(--acento)" : "var(--ink-tenue)",
+                  }}>{pg.viramProduto ? num(pg.viramProduto) : "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Cartao>
+
         <Cartao largo titulo="Sessões por estado"
           descricao="De onde veio o tráfego no período — respeita o filtro de data, ao contrário da seção ao vivo">
           {regioes.length === 0 ? (

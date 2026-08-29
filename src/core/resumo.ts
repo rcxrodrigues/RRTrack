@@ -282,6 +282,76 @@ export async function porOrigem(p: Periodo): Promise<Origem[]> {
   }));
 }
 
+/* --------------------------------------------------------- paginas -- */
+
+export interface Pagina {
+  caminho: string;
+  visitas: number;
+  /** Visitantes distintos — duas visitas da mesma pessoa contam uma vez. */
+  pessoas: number;
+  /** Quantos VIRAM PRODUTO nesta página. Separa vitrine de página de produto. */
+  viramProduto: number;
+}
+
+/*
+ * As páginas mais vistas do site, no período.
+ *
+ * Agrupa pelo CAMINHO, jogando fora a query. Sem isso, a mesma página
+ * apareceria dez vezes — uma para cada combinação de utm_source, filtro de
+ * coleção e id de variante — e a página mais acessada da loja ficaria
+ * espalhada em pedaços pequenos demais para aparecer na lista.
+ *
+ * `viramProduto` está aqui porque é o que diferencia página que só é vista de
+ * página que desperta interesse. Uma coleção com muito acesso e nenhum
+ * view_content é vitrine que não converte em clique no produto; uma página de
+ * produto com muito acesso e pouca ida ao carrinho é outro problema, e os dois
+ * pedem ações diferentes.
+ */
+export async function porPagina(p: Periodo): Promise<Pagina[]> {
+  const linhas = await linhasDe(db.execute<{
+    caminho: string; visitas: number; pessoas: number; viram: number;
+  }>(sql`
+    WITH vistas AS (
+      SELECT
+        /*
+         * Só o caminho: corta a query em "?" e o âncora em "#". Uma URL sem
+         * barra inicial (o script manda a URL inteira) entra como "/".
+         */
+        coalesce(
+          nullif(regexp_replace(
+            regexp_replace(page_url, '^https?://[^/]+', ''),
+            '[?#].*$', ''
+          ), ''),
+          '/'
+        ) AS caminho,
+        click_id,
+        name
+      FROM events
+      WHERE tenant_id = ${p.tenantId}
+        AND name IN ('page_view', 'view_content')
+        AND page_url IS NOT NULL
+        AND (occurred_at AT TIME ZONE ${p.timezone})::date
+            BETWEEN ${p.de}::date AND ${p.ate}::date
+    )
+    SELECT
+      caminho,
+      count(*) FILTER (WHERE name = 'page_view')::int AS visitas,
+      count(DISTINCT click_id) FILTER (WHERE name = 'page_view')::int AS pessoas,
+      count(DISTINCT click_id) FILTER (WHERE name = 'view_content')::int AS viram
+    FROM vistas
+    GROUP BY caminho
+    ORDER BY visitas DESC
+    LIMIT 25
+  `));
+
+  return linhas.map((l) => ({
+    caminho: l.caminho,
+    visitas: Number(l.visitas),
+    pessoas: Number(l.pessoas),
+    viramProduto: Number(l.viram),
+  }));
+}
+
 /* ----------------------------------------------------------- regiao -- */
 
 export interface Regiao {
