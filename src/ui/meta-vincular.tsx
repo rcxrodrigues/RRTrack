@@ -100,7 +100,7 @@ function Linha({ marcado, alternar, titulo, detalhe, aviso }: {
   );
 }
 
-export function MetaVincular() {
+export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
   const router = useRouter();
   const [dados, setDados] = useState<Recursos | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -152,7 +152,7 @@ export function MetaVincular() {
       return;
     }
 
-    router.push("/integracoes");
+    if (!embutido) router.push("/integracoes");
     router.refresh();
   }
 
@@ -170,20 +170,35 @@ export function MetaVincular() {
   }
 
   if (!dados) {
-    return <div style={{ padding: 28, fontSize: 12.5, color: "var(--ink-tenue)" }}>lendo o que o perfil enxerga…</div>;
+    return (
+      <div style={{ padding: embutido ? "10px 0" : 28, fontSize: 12, color: "var(--ink-tenue)" }}>
+        lendo o que o perfil enxerga…
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: 28, maxWidth: 720, display: "flex", flexDirection: "column", gap: 18 }}>
-      <div>
-        <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>
-          O que pertence a {dados.loja.nome}?
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "4px 0 0" }}>
-          Conectado pelo perfil <strong style={{ color: "var(--ink-medio)" }}>{dados.perfil.nome}</strong>.
-          Marque só o que for desta loja — desmarcar desliga, e dá para voltar aqui quando quiser.
-        </p>
-      </div>
+    <div style={{
+      padding: embutido ? 0 : 28,
+      maxWidth: embutido ? "none" : 720,
+      display: "flex", flexDirection: "column", gap: embutido ? 14 : 18,
+    }}>
+      {/*
+        * Dentro do cartão da plataforma o título seria redundante: o perfil já
+        * está logo acima, na mesma caixa. Na página solta ele é necessário,
+        * porque a pessoa chega ali vinda de um redirecionamento.
+        */}
+      {!embutido && (
+        <div>
+          <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>
+            O que pertence a {dados.loja.nome}?
+          </h1>
+          <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "4px 0 0" }}>
+            Conectado pelo perfil <strong style={{ color: "var(--ink-medio)" }}>{dados.perfil.nome}</strong>.
+            Marque só o que for desta loja — desmarcar desliga, e dá para voltar aqui quando quiser.
+          </p>
+        </div>
+      )}
 
       <Cartao
         titulo="Contas de anúncio"

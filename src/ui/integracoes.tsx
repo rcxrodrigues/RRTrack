@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LojaDoUsuario } from "@/core/auth";
 import { TaxasDoGateway } from "./taxas-gateway";
+import { LogoPlataforma } from "./logos";
+import { MetaVincular } from "./meta-vincular";
 
 /*
  * Tela de Integrações.
@@ -45,18 +47,17 @@ const PLATAFORMAS = [
 /*
  * Cada plataforma pede credencial diferente, e a diferença não é cosmética.
  *
- * Meta e TikTok aceitam um token longo e pronto. O Google exige OAuth2 —
- * refresh token trocado por acesso a cada hora — mais um developer token que
- * ELE precisa aprovar, o que leva dias. Mostrar os mesmos dois campos para os
- * três faria o cadastro do Google parecer completo e não funcionar.
+ * O TikTok aceita um token longo e pronto. O Google exige OAuth2 — refresh
+ * token trocado por acesso a cada hora — mais um developer token que ELE
+ * precisa aprovar, o que leva dias. Mostrar os mesmos dois campos para os dois
+ * faria o cadastro do Google parecer completo e não funcionar.
+ *
+ * A Meta saiu daqui: o login com o Facebook cobre o caso inteiro, e manter o
+ * campo manual ao lado dele só criava dúvida sobre qual caminho é o certo.
  */
 const CREDENCIAIS: Record<string, Array<{
   chave: string; rotulo: string; dica?: string; segredo?: boolean; opcional?: boolean;
 }>> = {
-  meta: [
-    { chave: "accessToken", rotulo: "Token de usuário de sistema", segredo: true,
-      dica: "Business Manager → Usuários do sistema → Gerar token, com escopo ads_read e expiração Nunca." },
-  ],
   tiktok: [
     { chave: "accessToken", rotulo: "Access token", segredo: true,
       dica: "TikTok Ads Manager → Ferramentas → Events API, ou no portal de desenvolvedor." },
@@ -133,7 +134,15 @@ function Campo({ rotulo, dica, ...resto }: {
         textTransform: "uppercase", color: "var(--ink-tenue)",
         fontWeight: 600, marginBottom: 5,
       }}>{rotulo}</span>
-      <input {...resto} />
+      {/*
+        * Um campo type="password" ao lado de um campo de texto faz o navegador
+        * concluir que isto e uma tela de login e preencher os dois com o
+        * e-mail e a senha salvos. Ja aconteceu: o formulario apareceu com a
+        * senha da pessoa no lugar do token, a um clique de ser gravada como
+        * credencial da conta de anuncio.
+        */}
+      <input autoComplete={resto.type === "password" ? "new-password" : "off"}
+        data-1p-ignore data-lpignore="true" {...resto} />
       {dica && (
         <span style={{ display: "block", fontSize: 11, color: "var(--ink-tenue)", marginTop: 4 }}>
           {dica}
@@ -144,21 +153,25 @@ function Campo({ rotulo, dica, ...resto }: {
 }
 
 /*
- * Login com o Facebook.
+ * Os perfis do Facebook desta loja, e como adicionar outro.
  *
- * É um link, não um botão com onClick: o consentimento acontece numa tela do
- * próprio Facebook, e isso exige navegar a aba inteira. Um fetch aqui voltaria
- * bloqueado por CORS e a pessoa não veria tela nenhuma.
+ * A ordem da tela é a ordem da decisão: primeiro QUEM autoriza (o perfil),
+ * depois O QUE daquele perfil pertence a esta loja (as contas e os pixels).
+ * Inverter isso obriga a pessoa a escolher contas antes de dizer de onde elas
+ * vêm — foi por isso que a escolha saiu de uma página separada e desceu para
+ * dentro deste cartão.
  *
- * Continua existindo o cadastro manual logo abaixo, de propósito. Quem usa
- * usuário de sistema do Business Manager tem um token que não vence, e obrigar
- * essa pessoa a refazer o login a cada 60 dias seria uma piora.
+ * Não há mais cadastro manual de token para a Meta. Ele existia para quem usa
+ * usuário de sistema do Business Manager, mas dois caminhos com o mesmo peso
+ * lado a lado só produziam dúvida sobre qual é o certo — e o campo de senha
+ * ainda fazia o navegador oferecer a senha salva no lugar do token.
  */
-function ConectarFacebook({ tenantId, perfil }: {
+function PerfisDaMeta({ tenantId, perfil }: {
   tenantId: string;
   perfil: { nome: string; expiraEm: string | null } | null;
 }) {
   const erro = useSearchParams().get("meta_erro");
+  const [escolhendo, setEscolhendo] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
   const [copiado, setCopiado] = useState(false);
@@ -181,75 +194,109 @@ function ConectarFacebook({ tenantId, perfil }: {
   }
 
   return (
-    <div style={{
-      background: "var(--painel)", border: "1px solid var(--linha)",
-      borderRadius: 8, padding: "15px 18px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ flexGrow: 1, minWidth: 220 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-            {perfil ? perfil.nome : "Conectar com o Facebook"}
-            {perfil && <Selo ok>perfil conectado</Selo>}
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 3 }}>
-            {perfil
-              ? <>
-                  <a href="/integracoes/meta" style={{ color: "var(--acento)" }}>
-                    Escolher contas de anúncio e pixels
-                  </a>
-                  {perfil.expiraEm && ` · autorização vale até ${new Date(perfil.expiraEm).toLocaleDateString("pt-BR")}`}
-                </>
-              : "Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão."}
-          </div>
-          {erro && (
-            <div style={{ fontSize: 11.5, color: "var(--negativo)", marginTop: 6 }}>{erro}</div>
-          )}
-        </div>
-
-        <a href={`/api/meta/conectar?tenantId=${tenantId}`} style={{
-          padding: "9px 16px", borderRadius: 5, textDecoration: "none",
-          fontWeight: 600, fontSize: 12.5,
-          background: "#1877F2", color: "#fff", whiteSpace: "nowrap",
-        }}>{perfil ? "Reconectar" : "Entrar com o Facebook"}</a>
+    <>
+      <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginBottom: 10 }}>
+        Conecte seus perfis por aqui:
       </div>
+
+      {perfil && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          border: "1px solid var(--linha-forte)", borderRadius: 6,
+          padding: "10px 12px", marginBottom: 10,
+        }}>
+          <LogoPlataforma id="meta" tamanho={22} />
+          <div style={{ flexGrow: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{perfil.nome}</div>
+            {perfil.expiraEm && (
+              <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 1 }}>
+                autorização vale até {new Date(perfil.expiraEm).toLocaleDateString("pt-BR")}
+              </div>
+            )}
+          </div>
+          <Selo ok>ativo</Selo>
+        </div>
+      )}
+
+      {erro && (
+        <div style={{ fontSize: 11.5, color: "var(--negativo)", marginBottom: 10 }}>{erro}</div>
+      )}
+
+      <Botao pequeno tipo="secundario" onClick={() => { setEscolhendo(true); setLink(null); }}>
+        {perfil ? "Adicionar perfil" : "Conectar perfil"}
+      </Botao>
 
       {/*
-        * O segundo caminho existe para quem trabalha em navegador antidetect: o
-        * Facebook que precisa autorizar vive lá, e o painel está aqui. Sem ele,
-        * a única saída seria abrir o RRTrack de dentro do antidetect — ou seja,
-        * duplicar a sessão do painel num ambiente feito para não compartilhar
-        * sessão nenhuma.
+        * O popup existe porque a escolha entre "aqui" e "em outro navegador" é
+        * uma bifurcação, não uma opção secundária: quem trabalha em antidetect
+        * erraria o caminho todas as vezes se o segundo fosse um link discreto.
         */}
-      <div style={{
-        marginTop: 13, paddingTop: 13, borderTop: "1px solid var(--linha)",
-        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-      }}>
-        <div style={{ flexGrow: 1, minWidth: 220, fontSize: 11.5, color: "var(--ink-tenue)" }}>
-          Usa navegador antidetect ou multilogin? Gere um link e abra lá dentro.
-        </div>
+      {escolhendo && (
+        <div
+          onClick={() => setEscolhendo(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 40,
+            background: "rgba(0,0,0,.55)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "var(--painel)", border: "1px solid var(--linha-forte)",
+            borderRadius: 10, padding: 26, width: "min(400px, 100%)", textAlign: "center",
+          }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+              <LogoPlataforma id="meta" tamanho={34} />
+            </div>
 
-        <Botao pequeno tipo="secundario" onClick={gerarLink} disabled={gerando}>
-          {gerando ? "gerando…" : "Copiar link para outro navegador"}
-        </Botao>
-      </div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 5px" }}>Conectar Meta Ads</h2>
+            <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "0 0 18px" }}>
+              Escolha como deseja conectar sua conta
+            </p>
 
-      {link && (
-        <div style={{ marginTop: 11 }}>
-          <div className="num" style={{
-            fontSize: 11, padding: "8px 10px", borderRadius: 5,
-            background: "var(--fundo)", border: "1px solid var(--linha)",
-            wordBreak: "break-all", color: "var(--ink-fraco)",
-          }}>{link}</div>
-          <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 5 }}>
-            {copiado ? "Copiado. " : ""}Vale por 15 minutos e serve uma vez só. Depois de
-            autorizar lá,{" "}
-            <a href="/integracoes/meta" style={{ color: "var(--acento)" }}>
-              volte aqui para escolher o que vincular
-            </a>.
+            <a href={`/api/meta/conectar?tenantId=${tenantId}`} style={{
+              display: "block", padding: "11px 16px", borderRadius: 6,
+              background: "#1877F2", color: "#fff", textDecoration: "none",
+              fontWeight: 600, fontSize: 12.5,
+            }}>Continuar neste navegador</a>
+            <div style={{ fontSize: 11, color: "var(--ink-tenue)", margin: "6px 0 14px" }}>
+              Conecte diretamente, com o perfil que já está aberto aqui
+            </div>
+
+            <button onClick={gerarLink} disabled={gerando} style={{
+              display: "block", width: "100%", padding: "11px 16px", borderRadius: 6,
+              background: "transparent", border: "1px solid var(--linha-forte)",
+              color: "var(--ink)", fontWeight: 600, fontSize: 12.5,
+            }}>{gerando ? "gerando…" : "Copiar link para navegador multilogin"}</button>
+            <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 6 }}>
+              Gere um link para conectar em outro navegador ou compartilhar com colaboradores
+            </div>
+
+            {link && (
+              <div style={{ marginTop: 14, textAlign: "left" }}>
+                <div className="num" style={{
+                  fontSize: 10.5, padding: "8px 10px", borderRadius: 5,
+                  background: "var(--fundo)", border: "1px solid var(--linha)",
+                  wordBreak: "break-all", color: "var(--ink-fraco)",
+                }}>{link}</div>
+                <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 5 }}>
+                  {copiado ? "Copiado. " : ""}Vale 15 minutos e serve uma vez só.
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setEscolhendo(false)} style={{
+              marginTop: 16, background: "none", border: "none",
+              fontSize: 11.5, color: "var(--ink-tenue)",
+            }}>fechar</button>
           </div>
         </div>
       )}
-    </div>
+
+      {perfil && (
+        <div style={{ marginTop: 16, borderTop: "1px solid var(--linha)", paddingTop: 4 }}>
+          <MetaVincular embutido />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -507,6 +554,7 @@ export function Integracoes({
   const router = useRouter();
   const [aba, setAba] = useState<Aba>("anuncios");
   const [editando, setEditando] = useState<string | null>(null);
+  const [expandida, setExpandida] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -638,94 +686,104 @@ export function Integracoes({
               Sem elas o painel tem faturamento e lucro, mas não tem ROAS — não há com o que dividir.
             </p>
 
-            <ConectarFacebook tenantId={loja.id} perfil={perfilMeta} />
-
             {PLATAFORMAS.map((p) => {
               const conta = contas.find((c) => c.plataforma === p.id && c.ativo);
               const aberto = editando === `conta:${p.id}`;
+              const expandido = expandida === p.id;
+              const daMeta = p.id === "meta";
 
               return (
                 <div key={p.id} style={{
                   background: "var(--painel)", border: "1px solid var(--linha)", borderRadius: 8,
                 }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "14px 18px",
-                  }}>
-                    <span style={{
-                      width: 30, height: 30, borderRadius: 7, flexShrink: 0,
-                      background: p.cor + "22", border: `1px solid ${p.cor}55`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: p.cor, fontWeight: 700, fontSize: 12,
-                    }}>{p.nome[0]}</span>
+                  {/* O cabeçalho inteiro é o botão: alvo grande, sem caça ao ícone. */}
+                  <button
+                    onClick={() => { setExpandida(expandido ? null : p.id); setEditando(null); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12, width: "100%",
+                      padding: "14px 18px", background: "none", border: "none", textAlign: "left",
+                    }}>
+                    <LogoPlataforma id={p.id} tamanho={28} />
 
                     <div style={{ flexGrow: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{p.nome}</div>
-                      {conta ? (
-                        <div className="num" style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 2 }}>
-                          conta {conta.externalId}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 2 }}>
-                          não conectada
-                        </div>
-                      )}
+                      <div className="num" style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 2 }}>
+                        {daMeta && perfilMeta
+                          ? perfilMeta.nome
+                          : conta ? `conta ${conta.externalId}` : "não conectada"}
+                      </div>
                     </div>
 
-                    {conta && <Selo ok>conectada</Selo>}
+                    {(conta || (daMeta && perfilMeta)) && <Selo ok>conectada</Selo>}
 
-                    {/*
-                      * Quando o perfil do Facebook está conectado, o cadastro
-                      * manual vira caminho secundário — mas continua existindo.
-                      * Token de usuário de sistema não vence, e quem usa um
-                      * desses ficaria pior sendo obrigado a refazer login a
-                      * cada 60 dias.
-                      */}
-                    <Botao pequeno tipo="secundario"
-                      onClick={() => { setEditando(aberto ? null : `conta:${p.id}`); setForm({}); }}>
-                      {conta ? "editar" : (p.id === "meta" && perfilMeta) ? "token manual" : "conectar"}
-                    </Botao>
-                  </div>
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"
+                      stroke="var(--ink-tenue)" strokeWidth="1.8" style={{
+                        transform: expandido ? "rotate(90deg)" : "none", transition: "transform .15s",
+                      }}>
+                      <path d="M7 4l6 6-6 6" />
+                    </svg>
+                  </button>
 
-                  {aberto && (
+                  {expandido && daMeta && (
                     <div style={{ padding: "0 18px 18px", borderTop: "1px solid var(--linha)", paddingTop: 16 }}>
-                      <Campo rotulo="ID da conta de anúncio"
-                        placeholder={p.id === "meta" ? "act_1234567890" : p.id === "google" ? "123-456-7890" : "1234567890"}
-                        dica="É o identificador da conta no gerenciador, não o do pixel." {...campo("externalId")} />
+                      <PerfisDaMeta tenantId={loja.id} perfil={perfilMeta} />
+                    </div>
+                  )}
 
-                      {(CREDENCIAIS[p.id] ?? []).map((c) => (
-                        <Campo key={c.chave} rotulo={c.rotulo + (c.opcional ? " (opcional)" : "")}
-                          type={c.segredo ? "password" : "text"}
-                          placeholder="cole aqui" dica={c.dica} {...campo(c.chave)} />
-                      ))}
-
-                      <Campo rotulo="Apelido (opcional)" placeholder="Conta principal" {...campo("label")} />
-
-                      {/*
-                        Nenhuma plataforma avisa que o token venceu. O sintoma
-                        é mudo — a sincronização simplesmente para, e o painel
-                        mostra gasto zero como se a campanha tivesse parado.
-                        Quem sabe a data é quem gerou o token.
-                      */}
-                      <Campo rotulo="Vence em (opcional)" type="date"
-                        dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
-                        {...campo("expiraEm")} />
-
-
-                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                        <Botao disabled={salvando} onClick={() => salvar({
-                          tipo: "conta_anuncio", plataforma: p.id,
-                          externalId: form.externalId, label: form.label,
-                          expiraEm: form.expiraEm,
-                          ...Object.fromEntries((CREDENCIAIS[p.id] ?? []).map((c) => [c.chave, form[c.chave]])),
-                        })}>{salvando ? "salvando…" : "Salvar"}</Botao>
-                        <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
-                        {conta && (
-                          <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
-                            marginLeft: "auto", background: "none", border: "none",
-                            color: "var(--negativo)", fontSize: 11.5,
-                          }}>desconectar</button>
-                        )}
+                  {expandido && !daMeta && (
+                    <div style={{ padding: "0 18px 18px", borderTop: "1px solid var(--linha)", paddingTop: 16 }}>
+                      <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginBottom: 12 }}>
+                        Conecte sua conta por aqui:
                       </div>
+
+                      {!aberto && (
+                        <Botao pequeno tipo="secundario"
+                          onClick={() => { setEditando(`conta:${p.id}`); setForm({}); }}>
+                          {conta ? "editar credenciais" : "Adicionar conta"}
+                        </Botao>
+                      )}
+
+                      {aberto && (
+                        <>
+                          <Campo rotulo="ID da conta de anúncio"
+                            placeholder={p.id === "google" ? "123-456-7890" : "1234567890"}
+                            dica="É o identificador da conta no gerenciador, não o do pixel." {...campo("externalId")} />
+
+                          {(CREDENCIAIS[p.id] ?? []).map((c) => (
+                            <Campo key={c.chave} rotulo={c.rotulo + (c.opcional ? " (opcional)" : "")}
+                              type={c.segredo ? "password" : "text"}
+                              placeholder="cole aqui" dica={c.dica} {...campo(c.chave)} />
+                          ))}
+
+                          <Campo rotulo="Apelido (opcional)" placeholder="Conta principal" {...campo("label")} />
+
+                          {/*
+                            Nenhuma plataforma avisa que o token venceu. O sintoma
+                            é mudo — a sincronização simplesmente para, e o painel
+                            mostra gasto zero como se a campanha tivesse parado.
+                            Quem sabe a data é quem gerou o token.
+                          */}
+                          <Campo rotulo="Vence em (opcional)" type="date"
+                            dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
+                            {...campo("expiraEm")} />
+
+                          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                            <Botao disabled={salvando} onClick={() => salvar({
+                              tipo: "conta_anuncio", plataforma: p.id,
+                              externalId: form.externalId, label: form.label,
+                              expiraEm: form.expiraEm,
+                              ...Object.fromEntries((CREDENCIAIS[p.id] ?? []).map((c) => [c.chave, form[c.chave]])),
+                            })}>{salvando ? "salvando…" : "Salvar"}</Botao>
+                            <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
+                            {conta && (
+                              <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
+                                marginLeft: "auto", background: "none", border: "none",
+                                color: "var(--negativo)", fontSize: 11.5,
+                              }}>desconectar</button>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
