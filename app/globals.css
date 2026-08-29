@@ -53,7 +53,17 @@ a:hover { color: #7BD8E1; }
 
 button { font-family: inherit; font-size: inherit; cursor: pointer; }
 
-input, select, textarea {
+/*
+ * Campo de texto ocupa a linha inteira. Caixa de seleção e botão de opção,
+ * não — e a exceção precisa estar aqui, não em cada tela.
+ *
+ * Sem ela, `width: 100%` valia para todo `input`, e uma caixa de seleção
+ * esticava até empurrar o texto ao lado para uma coluna de poucos pixels. O
+ * resultado era uma lista ilegível, com cada palavra numa linha, e nada no
+ * console dizendo por quê. Já tinha acontecido duas vezes em telas
+ * diferentes, cada uma remendada no lugar com `width: auto`.
+ */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   font-family: inherit;
   font-size: 13px;
   color: var(--ink);
@@ -62,6 +72,12 @@ input, select, textarea {
   border-radius: 5px;
   padding: 9px 11px;
   width: 100%;
+}
+
+/* A cor de acento nas caixas, para não nascerem cinza do sistema. */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--acento);
+  cursor: pointer;
 }
 
 input:focus, select:focus, textarea:focus {

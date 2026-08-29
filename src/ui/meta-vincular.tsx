@@ -4,12 +4,17 @@
  * A tela de escolha do login com o Facebook.
  *
  * Ela existe para uma decisão que só a pessoa consegue tomar: entre as contas
- * de anúncio e os pixels que o perfil dela enxerga, quais pertencem a ESTA
- * loja. O perfil de quem gerencia várias marcas costuma ver dezenas, e vincular
- * tudo encheria o painel de contas que nunca vão gastar.
+ * de anúncio que o perfil dela enxerga, quais pertencem a ESTA loja. O perfil
+ * de quem gerencia várias marcas costuma ver dezenas, e vincular tudo encheria
+ * o painel de contas que nunca vão gastar.
  *
  * Por padrão nada vem marcado. Marcar tudo pareceria gentileza e viraria uma
  * chamada de sincronização por hora para cada conta morta, para sempre.
+ *
+ * SÓ CONTAS DE ANÚNCIO. Pixel se configura na aba Pixel, com id e token de
+ * conversão — o token do CAPI nem sempre é o do perfil que fez este login, e
+ * misturar as duas coisas fazia esta tela desligar em silêncio um pixel que
+ * ela nunca deveria ter tocado.
  */
 
 import { useEffect, useState } from "react";
@@ -105,7 +110,6 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
   const [dados, setDados] = useState<Recursos | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [contasSel, setContasSel] = useState<string[]>([]);
-  const [pixelsSel, setPixelsSel] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -120,7 +124,6 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
          * salvar desligaria em silêncio tudo que ela não remarcou.
          */
         setContasSel(j.vinculados?.contas ?? []);
-        setPixelsSel(j.vinculados?.pixels ?? []);
       })
       .catch(() => setErro("sem conexão com o servidor"));
   }, []);
@@ -141,8 +144,11 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
         tenantId: dados.loja.id,
         contas: dados.contas.filter((c) => contasSel.includes(c.id))
           .map((c) => ({ id: c.id, label: c.nome })),
-        pixels: dados.pixels.filter((p) => pixelsSel.includes(p.id))
-          .map((p) => ({ id: p.id, label: p.nome })),
+        /*
+         * `pixels` NÃO vai no corpo, e a ausência é intencional: a rota
+         * entende "não mencionado" como "não mexe". Mandar lista vazia
+         * desativaria o pixel cadastrado na tela de Pixel, com token e tudo.
+         */
       }),
     }).catch(() => null);
 
@@ -227,31 +233,6 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
           </>}
       </Cartao>
 
-      <Cartao
-        titulo="Pixels"
-        descricao="Para onde as conversões são enviadas pelo servidor."
-      >
-        {dados.pixels.length === 0
-          ? <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: 0 }}>
-              Nenhum pixel encontrado nas contas deste perfil.
-            </p>
-          : <>
-            <Todos
-              total={dados.pixels.length}
-              marcados={pixelsSel.length}
-              alternar={(ligar) => setPixelsSel(ligar ? dados.pixels.map((p) => p.id) : [])}
-            />
-            {dados.pixels.map((p) => (
-              <Linha
-                key={p.id}
-                marcado={pixelsSel.includes(p.id)}
-                alternar={() => alternar(pixelsSel, setPixelsSel, p.id)}
-                titulo={p.nome}
-                detalhe={`${p.id}${p.origem ? " · via " + p.origem : ""}`}
-              />
-            ))}
-          </>}
-      </Cartao>
 
       {erro && (
         <div style={{ fontSize: 12, color: "var(--negativo, #d66)" }}>{erro}</div>

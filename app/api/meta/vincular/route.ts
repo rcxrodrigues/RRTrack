@@ -127,7 +127,22 @@ export async function POST(req: Request): Promise<Response> {
   if (ctx.erro) return ctx.erro;
 
   const contas = escolhas(corpo.contas);
-  const pixels = escolhas(corpo.pixels);
+
+  /*
+   * Pixel é assunto de outra tela, e a diferença entre "nenhum" e "não
+   * mencionado" aqui vale o pixel inteiro do lojista.
+   *
+   * O vínculo com a Meta serve para as CONTAS DE ANÚNCIO, que é de onde vem o
+   * gasto. O pixel é configurado à parte, com id e token de conversão, porque
+   * é lá que se decide para onde a conversão vai — e o token do CAPI nem
+   * sempre é o mesmo do perfil que fez o login.
+   *
+   * `undefined` significa "não mexe nos pixels". Uma lista vazia continua
+   * significando "desliga todos", que é o que a tela antiga mandava sem
+   * querer: sem esta distinção, salvar aqui desativaria em silêncio o pixel
+   * que a pessoa cadastrou na outra tela, com token e tudo.
+   */
+  const pixels = corpo.pixels === undefined ? null : escolhas(corpo.pixels);
 
   const tenantId = ctx.loja.id;
   const cifrado = { accessToken: await encryptValue(ctx.perfil.token) };
@@ -157,7 +172,7 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  for (const p of pixels) {
+  for (const p of pixels ?? []) {
     const [existente] = await db.select({ id: destinations.id }).from(destinations)
       .where(and(
         eq(destinations.tenantId, tenantId),
@@ -210,7 +225,7 @@ export async function POST(req: Request): Promise<Response> {
     ));
 
   for (const atual of pixelsAtuais) {
-    if (!pixels.some((p) => p.id === atual.externalId)) {
+    if (pixels && !pixels.some((p) => p.id === atual.externalId)) {
       await db.update(destinations).set({ active: false }).where(eq(destinations.id, atual.id));
       desligados.pixels++;
     }
@@ -219,7 +234,7 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({
     ok: true,
     contas: contas.length,
-    pixels: pixels.length,
+    pixels: pixels?.length ?? 0,
     desligados,
   });
 }
