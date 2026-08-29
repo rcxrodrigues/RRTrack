@@ -218,11 +218,15 @@ async function credenciais(tenantId: string): Promise<Verificacao> {
   const linhas = await linhasDe(db.execute<{
     nome: string; dias: number;
   }>(sql`
-    SELECT label AS nome,
-           (credentials_expire_at::date - now()::date)::int AS dias
-    FROM gateway_connections
-    WHERE tenant_id = ${tenantId} AND active AND credentials_expire_at IS NOT NULL
-    UNION ALL
+    /*
+     * So contas de anuncio. A data de vencimento de gateway saiu da tela — o
+     * lojista nao ia preencher, e campo que ninguem preenche produz um aviso
+     * que nunca dispara, o que e pior que nao ter aviso: da a impressao de que
+     * alguem esta vigiando.
+     *
+     * Aqui a data continua valendo porque o vinculo da Meta a preenche
+     * sozinho: o token do OAuth vence em 60 dias e a plataforma nao avisa.
+     */
     SELECT label AS nome,
            (credentials_expire_at::date - now()::date)::int AS dias
     FROM ad_accounts

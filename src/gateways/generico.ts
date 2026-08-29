@@ -416,3 +416,19 @@ export const webhookGenericoAdapter: GatewayAdapter = {
   label: "+ Cadastrar nova plataforma",
   especie: "plataforma",
 };
+
+/*
+ * O mesmo coringa, do lado dos gateways de pagamento.
+ *
+ * Sao dois e nao um porque o menu separa plataforma de gateway, e quem
+ * procura onde ligar a Kiwify nao olha em "Gateways de pagamento" — nem quem
+ * procura onde ligar um adquirente olha em "Plataformas de venda". A unica
+ * diferenca entre os dois e o grupo em que aparecem e o texto do rotulo: o
+ * leitor, a rota e o tratamento sao os mesmos.
+ */
+export const gatewayGenericoAdapter: GatewayAdapter = {
+  ...genericoAdapter,
+  id: "gateway",
+  label: "+ Cadastrar novo gateway",
+  especie: "gateway",
+};

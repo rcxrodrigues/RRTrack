@@ -44,8 +44,9 @@ for (const [id, label] of [
   ["appmax", "Appmax"],
   ["millions", "MillionsPay"],
   ["shopify", "Shopify"],
-  /* O coringa de webhook: plataforma sem adaptador proprio. */
+  /* Os coringas: plataforma e gateway sem adaptador proprio. */
   ["webhook", "Outra plataforma"],
+  ["gateway", "Outro gateway"],
   /* Coringa: a venda empurrada por quem não tem adaptador. */
   ["api", "Entrada por API"],
 ]) {

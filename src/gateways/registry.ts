@@ -3,13 +3,13 @@ import { pagouAdapter } from "./pagou";
 import { appmaxAdapter } from "./appmax";
 import { millionsAdapter } from "./millions";
 import { shopifyAdapter } from "./shopify";
-import { genericoAdapter, webhookGenericoAdapter } from "./generico";
+import { gatewayGenericoAdapter, genericoAdapter, webhookGenericoAdapter } from "./generico";
 
 /* Plugar um gateway novo é escrever o adaptador e acrescentar uma linha aqui. */
 const adapters: GatewayAdapter[] = [
   pagouAdapter, appmaxAdapter, millionsAdapter, shopifyAdapter,
   /* Últimos de propósito: são os coringas, não a primeira escolha. */
-  webhookGenericoAdapter,
+  webhookGenericoAdapter, gatewayGenericoAdapter,
   genericoAdapter,
 ];
 

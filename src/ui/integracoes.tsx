@@ -1040,15 +1040,6 @@ export function Integracoes({
                       </>
                     );
                   })()}
-                  {/*
-                    A chave da pagou.ai vence em 180 dias e ninguém avisa: os
-                    webhooks continuam chegando, mas a confirmação por API passa
-                    a falhar e a venda entra sem comprador. Erro nenhum, só a
-                    qualidade do envio caindo.
-                  */}
-                  <Campo rotulo="Chave vence em (opcional)" type="date"
-                    dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
-                    {...campo("expiraEm")} />
                   <div style={{ display: "flex", gap: 8 }}>
                     {(() => {
                       const esc = gatewaysDisponiveis.find((g) => g.id === form.gateway);
@@ -1060,7 +1051,6 @@ export function Integracoes({
                         <Botao disabled={salvando || !form.gateway || falta} onClick={() => salvar({
                           tipo: "gateway", gateway: form.gateway,
                           label: form.label?.trim() || undefined,
-                          expiraEm: form.expiraEm,
                           ...Object.fromEntries(
                             (esc?.credenciais ?? []).map((cr) => [cr.chave, form[cr.chave]]),
                           ),

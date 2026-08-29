@@ -476,6 +476,17 @@ const [entregaO] = await sql`SELECT verified FROM webhook_deliveries
   ORDER BY received_at DESC LIMIT 1`;
 check("entra marcada como nao verificada", entregaO?.verified === false, String(entregaO?.verified));
 
+/* O coringa do lado dos gateways e o mesmo leitor, e precisa funcionar igual. */
+const clickG = await novaSessao();
+const pedidoG = "GW-" + Date.now();
+const rG = await enviar("gateway", JSON.stringify({
+  pedido_id: pedidoG, status: "pago", valor: 49.90, metodo: "pix", click_id: clickG,
+}));
+check("gateway sem adaptador tambem entrega", rG.status === 200, "status " + rG.status);
+const [vG] = await sql`SELECT gross_cents, attribution_method FROM orders WHERE gateway_order_id = ${pedidoG}`;
+check("com o valor certo", Number(vG?.gross_cents) === 4990, String(vG?.gross_cents));
+check("e atribuida", vG?.attribution_method === "click_id", vG?.attribution_method);
+
 
 console.log("\nISOLAMENTO");
 
@@ -487,7 +498,7 @@ check("segredo do pagou não abre o appmax", rCruzado.status === 404, `status ${
 
 const [{ count: nVendas }] = await sql`
   SELECT count(*)::int FROM orders WHERE tenant_id = ${seed.tenantId}`;
-check("cinco vendas, uma por integracao", nVendas === 5, String(nVendas));
+check("seis vendas, uma por integracao", nVendas === 6, String(nVendas));
 
 console.log("\n" + (falhas === 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)") + "\n");
 process.exit(falhas === 0 ? 0 : 1);
