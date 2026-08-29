@@ -100,6 +100,68 @@ export async function registrarPedido(
     } catch { /* comprador ilegível: segue com o que o gateway deu */ }
   }
 
+  /*
+   * ENRIQUECIMENTO: este payload completa uma venda que já entrou por outro
+   * gateway, e não cria linha nenhuma.
+   *
+   * É o arranjo Shopify + Pagou: a Pagou cobra e cria o pedido na Shopify, e a
+   * mesma venda chega duas vezes. Contar as duas dobrou o faturamento numa
+   * loja real — R$ 10,00 para um pagamento de R$ 5,00.
+   *
+   * Ignorar a segunda também seria perda: a Shopify tem endereço e CPF, que a
+   * pagou.ai não devolve em lugar nenhum. Quatro chaves de correspondência a
+   * mais no CAPI, e o CPF vira `external_id`, que é das mais fortes.
+   *
+   * Só COMPLETA campo vazio. O gateway que processou o pagamento tem a palavra
+   * final sobre valor, taxa e estado — quem espelha o pedido não sabe da taxa
+   * e pode nem saber que foi pago.
+   */
+  if (pedido.enriquece) {
+    const [alvo] = await db
+      .select()
+      .from(orders)
+      .innerJoin(gatewayConnections, eq(gatewayConnections.id, orders.gatewayConnectionId))
+      .where(and(
+        eq(orders.tenantId, ctx.tenantId),
+        eq(gatewayConnections.gateway, pedido.enriquece.gateway),
+        eq(orders.gatewayOrderId, pedido.enriquece.gatewayOrderId),
+      ))
+      .limit(1);
+
+    /*
+     * Sem o pedido apontado, não inventa nada. Pode ser ordem de chegada — o
+     * espelho antes da cobrança — e nesse caso a próxima entrega do mesmo
+     * pedido completa. Criar uma venda aqui seria justamente a duplicata que
+     * este caminho existe para impedir.
+     */
+    if (!alvo) {
+      return {
+        orderId: null, status: pedido.status, atribuicao,
+        disparos: [], ignorado: true,
+      };
+    }
+
+    const jaTem = alvo.orders.customer
+      ? await decryptRecord(alvo.orders.customer).catch(() => ({} as Record<string, string>))
+      : {};
+
+    const completo: Record<string, string> = { ...jaTem };
+    for (const [k, v] of Object.entries(pedido.customer ?? {})) {
+      if (typeof v === "string" && v.trim() && !completo[k]) completo[k] = v;
+    }
+
+    if (Object.keys(completo).length > Object.keys(jaTem).length) {
+      await db.update(orders)
+        .set({ customer: await encryptRecord(completo), updatedAt: new Date() })
+        .where(eq(orders.id, alvo.orders.id));
+    }
+
+    return {
+      orderId: alvo.orders.id, status: alvo.orders.status,
+      atribuicao, disparos: [], ignorado: true,
+    };
+  }
+
   const [existente] = await db
     .select()
     .from(orders)

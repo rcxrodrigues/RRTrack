@@ -169,6 +169,25 @@ export interface CanonicalOrder {
 
   occurredAt: Date;
 
+  /*
+   * Este payload não é uma venda nova: é o COMPLEMENTO de uma que já entrou
+   * por outro gateway.
+   *
+   * Existe por causa do arranjo Shopify + Pagou, que é comum: a Pagou cobra e
+   * cria o pedido na Shopify, então a mesma venda chega duas vezes. Contar as
+   * duas dobra o faturamento; ignorar a segunda joga fora justamente o que
+   * falta na primeira — a Shopify tem endereço e CPF, e a Pagou não devolve
+   * nenhum dos dois.
+   *
+   * Quando vem preenchido, o pedido apontado é COMPLETADO com os campos que
+   * lhe faltam, e nenhuma linha nova é criada. O adaptador só preenche isto
+   * quando o próprio payload aponta para a outra transação — a Shopify escreve
+   * `TXN-<id>` nas tags do pedido. Sem essa referência explícita, o palpite
+   * seria casar por valor e horário, e casar venda errada é pior que não
+   * casar.
+   */
+  enriquece?: { gateway: string; gatewayOrderId: string };
+
   /** Payload original, para depurar e para reprocessar quando o adaptador mudar. */
   raw: unknown;
 }

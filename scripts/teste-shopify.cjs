@@ -271,6 +271,31 @@ const pedido = (extra = {}) => ({
   eq("assinatura em formato errado não derruba, só recusa",
     (await verificar("nao-e-base64-valido-!!!", { webhookSecret: segredo })).ok, false);
 
+  console.log("\n== pedido espelho de outra cobranca ==");
+
+  /*
+   * O app da Pagou cria o pedido na Shopify e escreve a referencia nas tags.
+   * Sem reconhecer isso, a mesma venda entra duas vezes — foi o que dobrou o
+   * faturamento numa loja real: R$ 10,00 para um pagamento de R$ 5,00.
+   */
+  const espelho = await ler(pedido({
+    tags: "Pagou, PIX, TXN-01a04f12-e394-732c-9d61-cabd80d286ec",
+    note: "Pagamento via Pagou — transacao #01a04f12-e394-732c-9d61-cabd80d286ec\nCPF: 08455633603",
+    shipping_address: { city: "Betim", province_code: "MG", zip: "32600-000", country_code: "BR" },
+  }));
+  eq("aponta para a transacao da pagou",
+    espelho.enriquece, { gateway: "pagou", gatewayOrderId: "01a04f12-e394-732c-9d61-cabd80d286ec" });
+  /* O CPF so existe na observacao: a Shopify nao tem campo para ele, e a
+     pagou.ai nao devolve em consulta nenhuma. */
+  eq("le o CPF da observacao", espelho.customer.document, "08455633603");
+  eq("e traz o endereco junto", espelho.customer.zip, "32600-000");
+
+  /* Pedido normal nao pode virar enriquecimento por acidente. */
+  eq("pedido sem referencia nao enriquece nada", (await ler(pedido())).enriquece, undefined);
+  eq("tag de outra coisa tambem nao",
+    (await ler(pedido({ tags: "promocao, TXN-123" }))).enriquece, undefined);
+
+
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
   process.exit(f === 0 ? 0 : 1);
 })();

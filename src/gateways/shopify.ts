@@ -295,6 +295,50 @@ function parseCliente(pedido: unknown): CanonicalOrder["customer"] {
   return Object.values(c).some((v) => v !== undefined) ? c : undefined;
 }
 
+/*
+ * A transação de outro gateway que ESTE pedido representa, quando há uma.
+ *
+ * O app da Pagou dentro da Shopify cria o pedido lá e deixa a referência
+ * escrita: `TXN-<id>` nas tags, e "transação #<id>" na observação. Sem isso a
+ * mesma venda entraria duas vezes — uma por cada webhook — e o faturamento
+ * dobraria.
+ *
+ * Só a referência EXPLÍCITA vale. A alternativa seria casar por valor e
+ * horário, e casar venda errada é pior que não casar: juntaria o endereço de
+ * um comprador ao pedido de outro, e mandaria isso para a Meta.
+ */
+function transacaoDeOutro(pedido: unknown): { gateway: string; gatewayOrderId: string } | undefined {
+  const texto = [
+    str(pick(pedido, "tags")),
+    str(pick(pedido, "note")),
+  ].filter(Boolean).join(" ");
+  if (!texto) return undefined;
+
+  const m = /TXN-([0-9a-fA-F][0-9a-fA-F-]{30,40})/.exec(texto)
+    ?? /transa[cç][aã]o\s*#\s*([0-9a-fA-F][0-9a-fA-F-]{30,40})/i.exec(texto);
+  if (!m?.[1]) return undefined;
+
+  /* Hoje só a pagou.ai escreve deste jeito. Outro app, outra regra. */
+  if (!/pagou/i.test(texto)) return undefined;
+
+  return { gateway: "pagou", gatewayOrderId: m[1] };
+}
+
+/*
+ * O CPF, que a Shopify não tem campo para guardar.
+ *
+ * O app da Pagou escreve na observação do pedido, porque é o único lugar
+ * livre. É chave de correspondência forte — vira `external_id` no CAPI — e é
+ * justamente uma das que a pagou.ai não devolve na consulta dela.
+ */
+function documentoDaObservacao(pedido: unknown): string | undefined {
+  const nota = str(pick(pedido, "note"));
+  if (!nota) return undefined;
+  const m = /(?:CPF|CNPJ|documento)\s*:?\s*([\d.\-\/]{11,18})/i.exec(nota);
+  const so = m?.[1]?.replace(/\D/g, "");
+  return so && (so.length === 11 || so.length === 14) ? so : undefined;
+}
+
 /** Compara dois bytes a byte, sem sair no primeiro que difere. */
 function igualEmTempoConstante(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -478,9 +522,15 @@ export const shopifyAdapter: GatewayAdapter = {
       discountCents: dinheiroDe(body, "total_discounts_set", "total_discounts", moeda),
       paymentMethod: metodoDe(nomes),
       items,
-      customer: parseCliente(body),
+      customer: (() => {
+        const c = parseCliente(body);
+        const doc = documentoDaObservacao(body);
+        return doc ? { ...(c ?? {}), document: doc } : c;
+      })(),
       attribution: parseAtribuicao(body),
       passthrough: parsePassthrough(body),
+      /* Se este pedido é espelho de uma cobrança de outro gateway, diz qual. */
+      enriquece: transacaoDeOutro(body),
       occurredAt: Number.isNaN(d.getTime()) ? new Date() : d,
       raw: body,
     };
