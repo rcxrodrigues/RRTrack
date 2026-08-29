@@ -194,11 +194,32 @@ export async function POST(req: Request): Promise<Response> {
      * ("MG"); a cidade vem com escape de URL quando tem acento, então é
      * decodificada antes de gravar.
      */
-    country: req.headers.get("x-vercel-ip-country"),
-    region: req.headers.get("x-vercel-ip-country-region"),
+    /*
+     * A CLOUDFLARE VEM PRIMEIRO, pelo mesmo motivo do IP logo acima.
+     *
+     * Os cabeçalhos `x-vercel-ip-*` são calculados a partir do IP que a VERCEL
+     * enxerga — e com a Cloudflare na frente, esse IP é o da borda do proxy.
+     * O resultado foi uma pessoa em Belo Horizonte aparecendo em São Paulo e
+     * no Rio: são as cidades dos pontos de presença, não a dela.
+     *
+     * Corrigir o IP gravado não bastou: a cidade vinha por outro caminho, e
+     * continuou errada. Aqui a Cloudflare resolve a localização a partir do
+     * visitante de verdade, antes de encaminhar.
+     *
+     * `cf-ipcountry` a Cloudflare manda sempre. Cidade e região dependem de
+     * "Add visitor location headers" estar ligado nas Managed Transforms —
+     * sem isso estes dois voltam vazios e caímos na Vercel, que é o
+     * comportamento antigo, errado do mesmo jeito. Por isso a tela de Saúde
+     * precisa poder dizer que está assim.
+     */
+    country: req.headers.get("cf-ipcountry")
+      ?? req.headers.get("x-vercel-ip-country"),
+    region: req.headers.get("cf-region-code")
+      ?? req.headers.get("x-vercel-ip-country-region"),
     city: (() => {
-      const c = req.headers.get("x-vercel-ip-city");
+      const c = req.headers.get("cf-ipcity") ?? req.headers.get("x-vercel-ip-city");
       if (!c) return null;
+      /* Vem com escape de URL quando tem acento. */
       try { return decodeURIComponent(c); } catch { return c; }
     })(),
     landingUrl: str(attr.landing_url) ?? str(body.page_url),
