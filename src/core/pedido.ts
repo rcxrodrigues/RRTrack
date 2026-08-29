@@ -136,11 +136,28 @@ export async function registrarPedido(
    * em memória, vindo do webhook, e não relê esta coluna. O que se grava aqui
    * serve para conferência e reprocessamento, não para o CAPI.
    */
+  /*
+   * "null" e "undefined" ESCRITOS COMO TEXTO são ausência, não valor.
+   *
+   * A pagou.ai mandou `"phone": "null"` — a palavra, quatro letras, não o
+   * nulo do JSON. Guardamos o texto e ele virou um telefone de zero dígitos.
+   * Neste caso a normalização recusou e a chave `ph` só não foi enviada; num
+   * campo sem validação de formato, como o nome, teria virado hash de "null"
+   * e ido para a Meta como se fosse gente — uma chave que nunca casa com
+   * ninguém e que ainda por cima baixa a qualidade média do evento.
+   *
+   * A limpeza fica aqui, e não em cada adaptador, porque o defeito é do lado
+   * de lá: qualquer gateway pode serializar nulo errado, e um lugar só é o
+   * que garante que todos passem pela mesma peneira.
+   */
+  const VAZIOS = new Set(["", "null", "undefined", "nil", "none", "n/a", "-"]);
+
   const comprador = pedido.customer
     ? await encryptRecord(
         Object.fromEntries(
           Object.entries(pedido.customer).filter(
-            (e): e is [string, string] => typeof e[1] === "string" && e[1] !== "",
+            (e): e is [string, string] =>
+              typeof e[1] === "string" && !VAZIOS.has(e[1].trim().toLowerCase()),
           ),
         ),
       )
