@@ -608,44 +608,27 @@ export function Integracoes({
    * que o outro nao tem.
    */
   const listaDeConexoes = (especies: readonly string[]) => {
-            const ORDEM = ["plataforma", "gateway", "api"] as const;
-            const TITULO: Record<string, string> = {
-              plataforma: "Plataformas de venda",
-              gateway: "Gateways de pagamento",
-              api: "Entrada direta",
-            };
+            /*
+             * Sem subtitulo por especie dentro da lista.
+             *
+             * Eu tinha posto "PLATAFORMAS DE VENDA" e "GATEWAYS DE PAGAMENTO"
+             * separando as linhas. E invencao minha: o lojista le esta tela
+             * num vocabulario que ja conhece de outra ferramenta, e taxonomia
+             * nova aqui so obriga a traduzir. A distincao ficou onde serve
+             * para escolher — no menu de adicionar.
+             */
             const especieDe = (gw: string) =>
               gatewaysDisponiveis.find((x) => x.id === gw)?.especie ?? "gateway";
 
-            const ativas = [...conexoes.filter(
+            const ativas = conexoes.filter(
               (c) => c.ativo && especies.includes(especieDe(c.gateway)),
-            )].sort(
-              (a, b) => ORDEM.indexOf(especieDe(a.gateway)) - ORDEM.indexOf(especieDe(b.gateway)),
             );
 
-            /*
-             * O subtitulo so aparece quando ha mais de uma especie na lista.
-             * Num cartao que so tem uma, ele repetiria o titulo do proprio
-             * cartao — ruido que faz a pessoa procurar uma distincao que nao
-             * existe ali.
-             */
-            const separa = new Set(ativas.map((c) => especieDe(c.gateway))).size > 1;
-
-            let anterior: string | null = null;
             return ativas.map((c) => {
             const g = gatewaysDisponiveis.find((x) => x.id === c.gateway);
             const esp = especieDe(c.gateway);
-            const cabecalho = separa && esp !== anterior ? TITULO[esp] : null;
-            anterior = esp;
             return (
               <Fragment key={c.id}>
-              {cabecalho && (
-                <div style={{
-                  fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
-                  color: "var(--ink-tenue)", fontWeight: 600,
-                  margin: "14px 0 8px",
-                }}>{cabecalho}</div>
-              )}
               <div style={{
                 border: "1px solid var(--linha-forte)", borderRadius: 6,
                 padding: 14, marginBottom: 10,
@@ -679,7 +662,10 @@ export function Integracoes({
                     background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
                   }}>remover</button>
                 </div>
-                {c.gateway === "api" ? (
+                {/* Pela espécie, e não pelo id: hoje há dois leitores genéricos
+                    — a credencial de API e o webhook de plataforma nova — e
+                    comparar com "api" mandaria o segundo para o cartão errado. */}
+                {esp === "api" ? (
                   <>
                     {/*
                       Endereço e token separados, e o token num campo próprio.
@@ -970,7 +956,7 @@ export function Integracoes({
               era consertar metade do problema.
             */}
             <Cartao titulo="Webhooks"
-              descricao="Adicione webhooks para se conectar com as plataformas de venda e gateways. Cada um recebe uma URL própria.">
+              descricao="Adicione webhooks para se conectar com as plataformas de venda:">
               {/*
                 Agrupado por espécie, e não numa lista só.
                 
@@ -1073,12 +1059,12 @@ export function Integracoes({
                   </div>
                 </div>
               ) : (
-                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar webhook</Botao>
+                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar Webhook</Botao>
               )}
             </Cartao>
 
             <Cartao titulo="Credenciais de API"
-              descricao="Para integrar por API: seu servidor manda a venda direto, sem webhook.">
+              descricao="Adicione credenciais de API para integrar com outras ferramentas:">
               {listaDeConexoes(["api"])}
 
               {/*
@@ -1093,7 +1079,7 @@ export function Integracoes({
                 if (editando !== "api:novo") {
                   return (
                     <Botao onClick={() => { setEditando("api:novo"); setForm({}); }}>
-                      Adicionar credencial
+                      Adicionar Credencial
                     </Botao>
                   );
                 }
@@ -1108,13 +1094,16 @@ export function Integracoes({
                       essa altura ninguem lembra qual entregou pra quem, e
                       revogar vira adivinhacao.
                     */}
+                    <div style={{
+                      fontSize: 12.5, fontWeight: 600, marginBottom: 12,
+                    }}>Criar Credencial de API</div>
                     <Campo rotulo="Nome"
                       dica="Para saber de quem é esta credencial — o ERP, o checkout próprio, um parceiro."
                       {...campo("label")} />
                     <div style={{ display: "flex", gap: 8 }}>
                       <Botao disabled={salvando || !form.label?.trim()} onClick={() => salvar({
                         tipo: "gateway", gateway: adaptador.id, label: form.label?.trim(),
-                      })}>{salvando ? "criando…" : "Criar credencial"}</Botao>
+                      })}>{salvando ? "criando…" : "Criar Credencial"}</Botao>
                       <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                     </div>
                   </div>

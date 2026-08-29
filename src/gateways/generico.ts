@@ -293,3 +293,29 @@ export const genericoAdapter: GatewayAdapter = {
     };
   },
 };
+
+/*
+ * O MESMO leitor, servido como webhook de plataforma.
+ *
+ * Existe porque a lista de integracoes prontas nunca vai estar completa: hoje
+ * sao quatro, e a loja pode usar Kiwify, Hotmart, Braip, Cartpanda ou um
+ * checkout que ninguem aqui conhece. Sem isto, ligar qualquer uma delas
+ * dependia de alguem escrever um adaptador — e ate la a venda simplesmente
+ * nao entrava.
+ *
+ * A diferenca para `genericoAdapter` e so onde a coisa mora: aquele e uma
+ * credencial que o servidor da loja usa; este e uma URL que a plataforma
+ * chama. Mesmo payload, mesmo tratamento, cartoes diferentes na tela.
+ *
+ * Nao verifica assinatura porque nao ha como: cada plataforma assina de um
+ * jeito, e um leitor generico nao sabe qual. A venda entra marcada como nao
+ * verificada, e o segredo da URL e a barreira — o mesmo trato dos gateways
+ * que nao assinam. Quando uma delas virar integracao propria, com assinatura
+ * de verdade, e so escrever o adaptador.
+ */
+export const webhookGenericoAdapter: GatewayAdapter = {
+  ...genericoAdapter,
+  id: "webhook",
+  label: "Outra plataforma",
+  especie: "plataforma",
+};

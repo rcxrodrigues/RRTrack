@@ -439,6 +439,44 @@ const rSFalso = await enviar("shopify", corpoShopify, {
 check("assinatura invalida e recusada", rSFalso.status === 401, "status " + rSFalso.status);
 
 
+/* ================================= PLATAFORMA SEM ADAPTADOR ============== */
+console.log("\nOUTRA PLATAFORMA — o coringa de webhook");
+
+/*
+ * A lista de integracoes prontas nunca esta completa. Sem este caminho, ligar
+ * uma Kiwify, uma Hotmart ou um checkout que ninguem aqui conhece dependia de
+ * alguem escrever um adaptador — e ate la a venda nao entrava de jeito nenhum.
+ */
+const clickOutra = await novaSessao();
+const pedidoOutra = "OUTRA-" + Date.now();
+
+const rO = await enviar("webhook", JSON.stringify({
+  pedido_id: pedidoOutra,
+  status: "pago",
+  valor: 89.90,
+  metodo: "pix",
+  click_id: clickOutra,
+  cliente: { nome: "Joana Lima", email: "joana@exemplo.com.br" },
+  itens: [{ sku: "K1", nome: "Kit", quantidade: 1, preco: 89.90 }],
+}));
+check("plataforma sem adaptador entrega pelo webhook", rO.status === 200, "status " + rO.status);
+
+const [vO] = await sql`SELECT * FROM orders WHERE gateway_order_id = ${pedidoOutra}`;
+check("venda registrada", !!vO);
+check("valor em decimal virou centavo", Number(vO?.gross_cents) === 8990, String(vO?.gross_cents));
+check("casou com a sessao pelo click_id", vO?.attribution_method === "click_id", vO?.attribution_method);
+
+/*
+ * Nao assina, entao entra NAO VERIFICADA. E o mesmo trato dos gateways que nao
+ * assinam: o segredo da URL e a barreira, e a tela precisa poder separar o que
+ * esta provado do que esta so plausivel.
+ */
+const [entregaO] = await sql`SELECT verified FROM webhook_deliveries
+  WHERE gateway_connection_id = ${seed.gateways.webhook.connectionId}
+  ORDER BY received_at DESC LIMIT 1`;
+check("entra marcada como nao verificada", entregaO?.verified === false, String(entregaO?.verified));
+
+
 console.log("\nISOLAMENTO");
 
 const rCruzado = await fetch(
@@ -449,7 +487,7 @@ check("segredo do pagou não abre o appmax", rCruzado.status === 404, `status ${
 
 const [{ count: nVendas }] = await sql`
   SELECT count(*)::int FROM orders WHERE tenant_id = ${seed.tenantId}`;
-check("quatro vendas, uma por gateway", nVendas === 4, String(nVendas));
+check("cinco vendas, uma por integracao", nVendas === 5, String(nVendas));
 
 console.log("\n" + (falhas === 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)") + "\n");
 process.exit(falhas === 0 ? 0 : 1);
