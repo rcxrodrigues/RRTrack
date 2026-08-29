@@ -1,12 +1,13 @@
 /*
  * RRTrack — coletor de primeira parte.
  *
- * Substitui o container do GTM e o pixel da Meta no navegador. Responsabilidades:
+ * Substitui o container do GTM e o código do pixel da Meta no <head> da loja.
+ * Responsabilidades:
  *
  *   1. capturar a origem do visitante na chegada e mantê-la por 90 dias
  *   2. gerar e manter clickId, external_id, _fbp e _fbc
  *   3. carimbar o clickId nos links de checkout, para ele voltar no webhook
- *   4. mandar eventos para o coletor
+ *   4. mandar eventos para o coletor E para o pixel, com o MESMO event_id
  *
  * Servido do mesmo domínio do site (primeira parte). Isso importa por dois
  * motivos: bloqueadores de anúncio derrubam requisição para domínio de
@@ -117,8 +118,10 @@
   setCookie("_rr_eid", state.external_id, COOKIE_DAYS);
 
   /*
-   * _fbp — sem pixel da Meta, somos nós que criamos. O formato é exigência da
-   * Meta: fb.<subdominio>.<criado_em_ms>.<aleatorio>. Valor fora do formato é
+   * _fbp — criado aqui, antes de o fbevents.js chegar. Quando o pixel carrega
+   * ele encontra o cookie pronto e o reaproveita, então os dois lados falam do
+   * mesmo navegador. O formato é exigência da Meta:
+   * fb.<subdominio>.<criado_em_ms>.<aleatorio>. Valor fora do formato é
    * descartado pelo CAPI sem erro, e a correspondência simplesmente não sobe.
    */
   var fbp = getCookie("_fbp");
@@ -144,15 +147,111 @@
 
   save(state);
 
+  /* ------------------------------------------------------- pixel da Meta */
+
+  /*
+   * O pixel do navegador é disparado AQUI, e não por código na página.
+   *
+   * Enquanto existirem dois lugares gerando `event_id` — um no pixel colado no
+   * <head> e outro aqui — sempre haverá uma configuração em que eles divergem,
+   * e a Meta conta a mesma conversão duas vezes sem acusar erro em lugar
+   * nenhum. Com um gerador só, a deduplicação deixa de ser algo que se
+   * configura e passa a ser algo que não tem como quebrar.
+   *
+   * Os dois lados continuam existindo, e isso não é redundância: o navegador
+   * carrega sinais que o servidor não tem, e o servidor entrega os 20% a 30%
+   * que bloqueador e ITP matam. O `event_id` compartilhado é o que faz a Meta
+   * unir os dois em uma conversão só.
+   */
+
+  var META = {
+    page_view: "PageView",
+    view_content: "ViewContent",
+    add_to_cart: "AddToCart",
+    begin_checkout: "InitiateCheckout",
+    purchase: "Purchase",
+    lead: "Lead"
+  };
+
+  var pixels = Array.isArray(cfg.pixels) ? cfg.pixels : (cfg.pixel ? [cfg.pixel] : []);
+
+  if (pixels.length && !window.fbq) {
+    /* Stub oficial da Meta: enfileira chamadas até o fbevents.js chegar. */
+    var n = window.fbq = function () {
+      n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+    };
+    if (!window._fbq) window._fbq = n;
+    n.push = n; n.loaded = true; n.version = "2.0"; n.queue = [];
+
+    var t = document.createElement("script");
+    t.async = true;
+    t.src = "https://connect.facebook.net/en_US/fbevents.js";
+    var primeiro = document.getElementsByTagName("script")[0];
+    primeiro.parentNode.insertBefore(t, primeiro);
+  }
+
+  /*
+   * O external_id vai na inicialização, como correspondência avançada.
+   *
+   * É a única chave de identidade que existe antes de a pessoa se identificar,
+   * e mandá-la aqui faz o evento do navegador chegar com a MESMA chave que o
+   * servidor manda — o que ajuda a Meta a costurar as duas metades mesmo
+   * quando a deduplicação por event_id falha.
+   */
+  pixels.forEach(function (id) {
+    try { window.fbq("init", String(id), { external_id: state.external_id }); } catch (e) {}
+  });
+
+  function paraMeta(params_) {
+    var p = params_ || {};
+    var itens = p.items || [];
+    var saida = {};
+
+    if (itens.length) {
+      saida.content_ids = itens.map(function (i) { return String(i.item_id); });
+      saida.content_type = "product";
+      saida.contents = itens.map(function (i) {
+        return { id: String(i.item_id), quantity: i.quantity || 1, item_price: i.price };
+      });
+      if (itens[0].item_name) saida.content_name = itens[0].item_name;
+      saida.num_items = itens.reduce(function (t2, i) { return t2 + (i.quantity || 1); }, 0);
+    }
+    if (typeof p.value === "number") saida.value = p.value;
+    if (p.currency) saida.currency = p.currency;
+    if (p.transaction_id) saida.order_id = String(p.transaction_id);
+
+    return saida;
+  }
+
+  function aoPixel(name, params_, eventId) {
+    if (!pixels.length || !window.fbq) return;
+    var nome = META[name];
+    try {
+      /*
+       * Evento fora da lista padrão da Meta vai como personalizado. Mandá-lo
+       * como padrão faria a Meta descartar em silêncio — e o lojista veria
+       * um evento a menos sem nada explicando o sumiço.
+       */
+      window.fbq(nome ? "track" : "trackCustom", nome || name, paraMeta(params_), { eventID: eventId });
+    } catch (e) {}
+  }
+
   /* ---------------------------------------------------------------- envio */
 
   function send(name, params_, eventId) {
+    /*
+     * O id nasce aqui e serve aos dois lados. Era este o ponto: um gerador só.
+     */
+    var id = eventId || (name + "." + state.click_id + "." + Date.now());
+
+    aoPixel(name, params_, id);
+
     var body = {
       site_key: siteKey,
       click_id: state.click_id,
       external_id: state.external_id,
       event: name,
-      event_id: eventId || (name + "." + state.click_id + "." + Date.now()),
+      event_id: id,
       attribution: state.attribution,
       fbp: state.fbp,
       fbc: state.fbc,
