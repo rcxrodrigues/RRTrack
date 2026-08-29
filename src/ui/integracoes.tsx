@@ -1540,8 +1540,14 @@ export function ProdutoDaPagina({ site, tenantId }: {
           <path d="M7 4l6 6-6 6" />
         </svg>
         Produto da página
-        <span style={{ color: configurado ? "var(--positivo)" : "var(--alerta)" }}>
-          {configurado ? "configurado" : "não configurado"}
+        {/*
+          Deixou de ser alerta: o script lê o produto da própria página quando
+          ela publica um (Shopify, JSON-LD, Open Graph). Loja com catálogo não
+          tem o que preencher aqui — e o "não configurado" em vermelho mandava
+          preencher uma coisa por página, que ninguém faz.
+        */}
+        <span style={{ color: configurado ? "var(--positivo)" : "var(--ink-tenue)" }}>
+          {configurado ? "fixo neste script" : "lido da página"}
         </span>
       </button>
 
@@ -1549,8 +1555,9 @@ export function ProdutoDaPagina({ site, tenantId }: {
         <div style={{
           fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 7, lineHeight: 1.55,
         }}>
-          Sem isto, a etapa <b>Viu o produto</b> do funil fica em zero e os eventos
-          chegam à Meta sem valor.
+          O script lê o produto da própria página — serve para loja com catálogo,
+          onde cada página tem um. Preencha aqui só numa oferta de página única,
+          se a página não publicar o produto sozinha.
         </div>
       )}
 
@@ -1569,12 +1576,26 @@ export function ProdutoDaPagina({ site, tenantId }: {
             <span>
               A página que o visitante abre <b>já é</b> a página do produto.
               <span style={{ display: "block", fontSize: 11, color: "var(--ink-tenue)", marginTop: 3 }}>
-                Marque em oferta de página única. Aí &quot;viu o produto&quot; passa a
-                valer o mesmo que &quot;visitou o site&quot;, que é a verdade — e o
-                ViewContent começa a chegar na Meta.
+                Marque em oferta de página única, onde &quot;viu o produto&quot; e
+                &quot;visitou o site&quot; são a mesma coisa. Em loja com catálogo
+                deixe desmarcado: o ViewContent dispara sozinho nas páginas que
+                publicam um produto, e não na home nem nas coleções.
               </span>
             </span>
           </label>
+
+          {/*
+            Os três campos abaixo são para oferta de página única. Numa loja com
+            catálogo ficam vazios, e o script lê cada página.
+          */}
+          <div style={{
+            fontSize: 11.5, color: "var(--ink-tenue)", marginBottom: 12, lineHeight: 1.55,
+          }}>
+            Só preencha em oferta de <b>uma página só</b>. Numa loja com catálogo,
+            deixe vazio — o script lê o produto de cada página pela Shopify, por
+            JSON-LD ou por Open Graph, e usa o mesmo identificador que o pedido vai
+            usar depois, para a Meta casar quem viu com quem comprou.
+          </div>
 
           <Campo rotulo="Identificador do produto" placeholder="carimbo-delineador"
             value={id} onChange={(e) => setId(e.target.value)}

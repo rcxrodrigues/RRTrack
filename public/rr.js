@@ -384,8 +384,165 @@
    */
   var produtoAtual = cfg.product && cfg.product.id ? cfg.product : null;
 
+  /*
+   * ---------------------------------------------- produto lido da PÁGINA --
+   *
+   * A configuração no <head> resolve loja de oferta única: um produto, um
+   * preço, escritos uma vez. Numa loja com catálogo ela não serve — são
+   * dezenas de páginas, e ninguém vai gerar um script por produto.
+   *
+   * Então quando a configuração não diz qual é o produto, o script lê a
+   * própria página. Três fontes, da mais confiável para a menos:
+   *
+   *   1. `ShopifyAnalytics.meta` — a Shopify publica o produto e a variante
+   *      escolhida num objeto próprio. É o dado exato que a loja tem.
+   *   2. JSON-LD `@type: Product` — padrão de mercado, e a maioria dos temas
+   *      e plataformas emite.
+   *   3. Open Graph — o mínimo, mas quase todo site tem.
+   *
+   * O IDENTIFICADOR SEGUE A MESMA ORDEM DO LADO DO PEDIDO: sku, depois id da
+   * variante, depois id do produto — igual a gateways/shopify.ts. Não é
+   * detalhe: a Meta casa ViewContent com Purchase pelo `content_id`, e se o
+   * navegador mandar o id da variante enquanto o webhook manda o SKU, os dois
+   * eventos falam de produtos diferentes para ela. Ninguém vê erro: só o
+   * remarketing de carrinho abandonado não encontra ninguém.
+   */
+
+  function texto(v) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && isFinite(v)) return String(v);
+    return undefined;
+  }
+
+  function numero(v) {
+    if (typeof v === "number") return isFinite(v) ? v : undefined;
+    if (typeof v === "string") {
+      /* "1.234,56" e "1234.56" chegam os dois; a vírgula denuncia o decimal. */
+      var t = v.indexOf(",") !== -1
+        ? v.replace(/\./g, "").replace(",", ".")
+        : v;
+      var n = parseFloat(t.replace(/[^\d.-]/g, ""));
+      return isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  }
+
+  function varianteEscolhida() {
+    try {
+      var m = /[?&]variant=(\d+)/.exec(location.search);
+      return m ? m[1] : null;
+    } catch (e) { return null; }
+  }
+
+  function doShopify() {
+    var m = window.ShopifyAnalytics && window.ShopifyAnalytics.meta;
+    var p = m && m.product;
+    if (!p) return null;
+
+    var escolhida = varianteEscolhida();
+    var v = null;
+    if (p.variants && p.variants.length) {
+      for (var i = 0; i < p.variants.length; i++) {
+        if (escolhida && String(p.variants[i].id) === escolhida) { v = p.variants[i]; break; }
+      }
+      if (!v) v = p.variants[0];
+    }
+
+    var id = texto(v && v.sku) || texto(v && v.id) || texto(p.id);
+    if (!id) return null;
+
+    /*
+     * O PREÇO DA SHOPIFY VEM EM CENTAVOS neste objeto — 8990 é R$ 89,90.
+     * Mandar 8990 como valor faria a Meta otimizar para um retorno cem vezes
+     * maior que o real, e o número é plausível o bastante para passar.
+     */
+    var preco = typeof (v && v.price) === "number" ? v.price / 100 : undefined;
+
+    return {
+      id: id,
+      name: texto(v && v.name) || texto(p.title) || texto(p.name),
+      price: preco,
+      currency: (window.Shopify && window.Shopify.currency
+        && window.Shopify.currency.active) || m.currency || undefined
+    };
+  }
+
+  function doJsonLd() {
+    var nos = document.querySelectorAll('script[type="application/ld+json"]');
+    for (var i = 0; i < nos.length; i++) {
+      var dados;
+      try { dados = JSON.parse(nos[i].textContent); } catch (e) { continue; }
+
+      /* Pode vir solto, em lista, ou dentro de @graph. */
+      var fila = [].concat(dados, (dados && dados["@graph"]) || []);
+      for (var j = 0; j < fila.length; j++) {
+        var o = fila[j];
+        if (!o || typeof o !== "object") continue;
+        var tipo = o["@type"];
+        var ehProduto = tipo === "Product"
+          || (Array.isArray(tipo) && tipo.indexOf("Product") !== -1);
+        if (!ehProduto) continue;
+
+        var oferta = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+        var id = texto(o.sku) || texto(o.productID) || texto(o.mpn)
+          || texto(oferta && oferta.sku);
+        if (!id) continue;
+
+        return {
+          id: id,
+          name: texto(o.name),
+          /* Aqui o preço é DECIMAL, ao contrário do objeto da Shopify. */
+          price: numero(oferta && oferta.price),
+          currency: texto(oferta && oferta.priceCurrency)
+        };
+      }
+    }
+    return null;
+  }
+
+  function meta(nome) {
+    var el = document.querySelector('meta[property="' + nome + '"]')
+      || document.querySelector('meta[name="' + nome + '"]');
+    return el ? texto(el.getAttribute("content")) : undefined;
+  }
+
+  function doOpenGraph() {
+    var id = meta("product:retailer_item_id") || meta("og:product_id");
+    var nome = meta("og:title");
+    if (!id && !nome) return null;
+    return {
+      id: id || nome,
+      name: nome,
+      price: numero(meta("product:price:amount") || meta("og:price:amount")),
+      currency: meta("product:price:currency") || meta("og:price:currency")
+    };
+  }
+
+  /* O que a página está mostrando agora, e a variante escolhida agora. */
+  var lidoDaPagina = null;
+  var varianteLida = null;
+
+  function detectar() {
+    var v = varianteEscolhida();
+    /*
+     * Relê quando a variante muda. O tema troca `?variant=` na URL sem
+     * recarregar a página, e sem isto o `add_to_cart` sairia com o preço e o
+     * SKU de Preto numa compra de Marrom.
+     */
+    if (lidoDaPagina && varianteLida === v) return lidoDaPagina;
+    varianteLida = v;
+    try {
+      lidoDaPagina = doShopify() || doJsonLd() || doOpenGraph();
+    } catch (e) { lidoDaPagina = null; }
+    return lidoDaPagina;
+  }
+
   function produtoPadrao() {
-    return produtoAtual;
+    /*
+     * A configuração e o `setProduct` vencem a página: quem escreveu ali foi
+     * explícito, e a leitura automática é o que sobra quando ninguém disse.
+     */
+    return produtoAtual || detectar();
   }
 
   function paramsDe(produto) {
@@ -435,7 +592,16 @@
       }
     }
 
-    if (cfg.viewContentOnLoad) {
+    /*
+     * Terceiro caminho, e o que faz loja com catálogo funcionar sem configurar
+     * nada: a própria página se identificou como página de produto.
+     *
+     * `detectar()` só devolve algo quando a página publica um produto — pela
+     * Shopify, por JSON-LD ou por Open Graph. Página de coleção, home e
+     * carrinho não publicam, então não disparam. É exatamente a distinção que
+     * o `data-rr-view` pedia à mão, feita sozinha.
+     */
+    if (cfg.viewContentOnLoad || detectar()) {
       jaViu = true;
       send("view_content", paramsDe(null));
     }
@@ -508,8 +674,16 @@
         : (cfg.product && cfg.product.id ? cfg.product : null);
       return produtoAtual;
     },
-    /* O que os eventos estão levando agora — útil para conferir no console. */
-    product: function () { return produtoAtual; },
+    /*
+     * O que os eventos estão levando agora — útil para conferir no console.
+     *
+     * `produtoPadrao()`, e não `produtoAtual`: desde que o script lê o produto
+     * da própria página, o que os eventos levam pode não ter vindo da
+     * configuração. Devolver só o configurado fazia `rr('product')` dizer
+     * `null` numa página que estava mandando produto certinho — e quem for
+     * conferir no console concluiria que está quebrado.
+     */
+    product: function () { return produtoPadrao(); },
     /* Exposto para quem precisa montar a URL do checkout na mão. */
     decorate: decorate,
     clickId: function () { return state.click_id; },

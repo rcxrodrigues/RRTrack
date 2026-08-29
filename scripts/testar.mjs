@@ -31,7 +31,7 @@ const COMPILAR = [
 const UNITARIOS = [
   "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
   "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
-  "shopify",
+  "shopify", "produto-pagina",
   "robos",
 ];
 
