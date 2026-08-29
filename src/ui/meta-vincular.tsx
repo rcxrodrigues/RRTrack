@@ -37,6 +37,34 @@ interface Recursos {
   pixels: Pixel[];
 }
 
+/*
+ * Marcar tudo de uma vez.
+ *
+ * Um perfil que administra várias marcas lista dezenas de contas, e marcar uma
+ * a uma é onde a pessoa desiste no meio e vincula pela metade. Continua sendo
+ * um clique DELA: o padrão segue sendo nada marcado, porque vincular conta que
+ * não vai gastar cria sincronização por hora para sempre.
+ */
+function Todos({ total, marcados, alternar }: {
+  total: number; marcados: number; alternar: (ligar: boolean) => void;
+}) {
+  if (total < 2) return null;
+  const tudo = marcados === total;
+
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      marginBottom: 9, fontSize: 11.5, color: "var(--ink-tenue)",
+    }}>
+      <span>{marcados} de {total} marcados</span>
+      <button onClick={() => alternar(!tudo)} style={{
+        background: "none", border: "none", padding: 0,
+        fontSize: 11.5, fontWeight: 600, color: "var(--acento)",
+      }}>{tudo ? "desmarcar todas" : "marcar todas"}</button>
+    </div>
+  );
+}
+
 function Linha({ marcado, alternar, titulo, detalhe, aviso }: {
   marcado: boolean;
   alternar: () => void;
@@ -156,7 +184,13 @@ export function MetaVincular() {
           ? <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: 0 }}>
               Este perfil não administra nenhuma conta de anúncio.
             </p>
-          : dados.contas.map((c) => (
+          : <>
+            <Todos
+              total={dados.contas.length}
+              marcados={contasSel.length}
+              alternar={(ligar) => setContasSel(ligar ? dados.contas.map((c) => c.id) : [])}
+            />
+            {dados.contas.map((c) => (
               <Linha
                 key={c.id}
                 marcado={contasSel.includes(c.id)}
@@ -166,6 +200,7 @@ export function MetaVincular() {
                 aviso={c.ativa ? undefined : "inativa na Meta"}
               />
             ))}
+          </>}
       </Cartao>
 
       <Cartao
@@ -176,7 +211,13 @@ export function MetaVincular() {
           ? <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: 0 }}>
               Nenhum pixel encontrado nas contas deste perfil.
             </p>
-          : dados.pixels.map((p) => (
+          : <>
+            <Todos
+              total={dados.pixels.length}
+              marcados={pixelsSel.length}
+              alternar={(ligar) => setPixelsSel(ligar ? dados.pixels.map((p) => p.id) : [])}
+            />
+            {dados.pixels.map((p) => (
               <Linha
                 key={p.id}
                 marcado={pixelsSel.includes(p.id)}
@@ -185,6 +226,7 @@ export function MetaVincular() {
                 detalhe={`${p.id}${p.origem ? " · via " + p.origem : ""}`}
               />
             ))}
+          </>}
       </Cartao>
 
       {erro && (
