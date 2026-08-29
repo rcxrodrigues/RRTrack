@@ -696,6 +696,26 @@
     var link = ev.target && ev.target.closest ? ev.target.closest(sel) : null;
     if (link && link.getAttribute("data-rr-ic") !== "1") {
       link.setAttribute("data-rr-ic", "1");
+
+      /*
+       * Carimba AGORA, no clique, e não só na varredura periódica.
+       *
+       * O link do checkout externo costuma ser montado por JavaScript no
+       * instante do clique — quando a varredura passou, ele não existia. Numa
+       * loja real o `utm_source` chegou ao checkout.pagou.ai e o `sck` não:
+       * o link nasceu depois do carimbo, e a venda voltou sem o identificador
+       * do clique. Ela entra assim mesmo, atribuída por UTM, que é um palpite
+       * bom em vez de uma certeza.
+       *
+       * Este é o último instante em que dá para escrever na URL.
+       */
+      try {
+        if (link.href && link.getAttribute("data-rr-done") !== "1") {
+          link.href = decorate(link.href);
+          link.setAttribute("data-rr-done", "1");
+        }
+      } catch (e) { /* link sem href utilizável: segue sem carimbo */ }
+
       send("begin_checkout", paramsDe(lerProduto(link, "data-rr-product")));
     }
   }, true);
@@ -828,6 +848,44 @@
   } catch (e) { /* sem isto, só perde a navegação por JavaScript */ }
 
   window.addEventListener("popstate", trocouDePagina);
+
+  /*
+   * ------------------------------------------- o clickId dentro do carrinho
+   *
+   * Numa Shopify, o que o carrinho carrega chega ao pedido: `cart.attributes`
+   * vira `note_attributes` no webhook. É o único campo que sobrevive à
+   * travessia do checkout, inclusive quando o checkout é de outro domínio.
+   *
+   * Isto existe porque numa loja real o `note_attributes` chegou VAZIO e a
+   * venda entrou sem origem. A solução até então era um trecho colado no
+   * tema — que depende de alguém mexer no tema, e enquanto não mexe a venda
+   * entra órfã sem nada acusando.
+   *
+   * Roda uma vez por aba, e só quando há carrinho de Shopify de verdade. O
+   * `sessionStorage` evita repetir a chamada a cada página; `keepalive` faz a
+   * gravação sobreviver se a pessoa clicar em comprar no mesmo instante.
+   */
+  (function carimbarCarrinho() {
+    if (!window.Shopify) return;
+    try {
+      if (sessionStorage.getItem("_rr_cart") === state.click_id) return;
+    } catch (e) { /* aba anônima sem storage: manda de novo, não custa */ }
+
+    var atributos = {};
+    atributos[cfg.cartAttribute || "rr_click_id"] = state.click_id;
+
+    try {
+      fetch("/cart/update.js", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attributes: atributos }),
+        keepalive: true,
+        credentials: "same-origin"
+      }).then(function () {
+        try { sessionStorage.setItem("_rr_cart", state.click_id); } catch (e) {}
+      }).catch(function () { /* loja sem esta rota: segue sem */ });
+    } catch (e) { /* navegador sem fetch: segue sem */ }
+  })();
 
   /* ------------------------------------------------- quem ainda está aqui */
 

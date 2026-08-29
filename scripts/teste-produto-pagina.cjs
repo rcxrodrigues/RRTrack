@@ -91,7 +91,16 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
     /* Nao dispara de verdade: so precisa existir para o script terminar de carregar. */
     setInterval: () => 0, clearInterval: () => {},
     URL, URLSearchParams, JSON, Math, Date, parseFloat, parseInt, isFinite, String, Number,
-    fetch: async () => ({ ok: true }),
+    /* Registra o que o script postou, para o teste do carrinho conferir. */
+    fetch: async (url, opcoes) => {
+      janela.__posts.push({ url, corpo: opcoes && opcoes.body });
+      return { ok: true };
+    },
+    sessionStorage: {
+      _d: {},
+      getItem(k) { return this._d[k] ?? null; },
+      setItem(k, v) { this._d[k] = String(v); },
+    },
     crypto: { getRandomValues: (a) => a.fill(7) },
     /* O que um navegador tem e o vm nao: o script le os dois ao montar evento. */
     screen: { width: 390, height: 844 },
@@ -100,6 +109,7 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
     RRTrackConfig: { siteKey: "pk_teste", endpoint: "https://x/rr/collect" },
     ...globais,
   };
+  janela.__posts = [];
   janela.window = janela;
   janela.self = janela;
 
@@ -113,7 +123,7 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
    * resto — o que importa aqui e quantas vezes cada navegacao dispara, nao o
    * conteudo, que os outros blocos ja cobrem.
    */
-  return { rr: janela.rr, enviados, janela, loc, hist, ouvintes };
+  return { rr: janela.rr, enviados, janela, loc, hist, ouvintes, posts: janela.__posts };
 }
 
 (async () => {
@@ -289,6 +299,33 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
            <meta property="product:price:amount" content="19.90">`,
   });
   eq("preco declarado tambem vale", ogPreco.rr("product")?.price, 19.90);
+
+
+  console.log("\n== o clickId entra no carrinho da Shopify sozinho ==");
+
+  /*
+   * Numa venda real o `note_attributes` chegou VAZIO e a venda entrou sem
+   * origem. O que sobrevive a travessia do checkout — inclusive para outro
+   * dominio — e o atributo do carrinho, e ele pode ser gravado sem ninguem
+   * mexer no tema.
+   */
+  const comShopify = carregar({
+    url: "https://loja.exemplo.com/products/x",
+    globais: { Shopify: { currency: { active: "BRL" } } },
+  });
+  await new Promise((r) => setTimeout(r, 30));
+
+  const carrinho2 = comShopify.posts.find((p) => String(p.url).includes("/cart/update.js"));
+  eq("grava no carrinho", !!carrinho2, true);
+  const corpo = carrinho2 ? JSON.parse(carrinho2.corpo) : {};
+  eq("com o clickId da sessao",
+    corpo.attributes?.rr_click_id, comShopify.rr("clickId"));
+
+  /* Loja que nao e Shopify nao deve levar uma chamada a toa. */
+  const semShopify = carregar({ url: "https://outra.exemplo.com/" });
+  await new Promise((r) => setTimeout(r, 30));
+  eq("fora da Shopify nao chama nada",
+    semShopify.posts.some((p) => String(p.url).includes("/cart/update.js")), false);
 
 
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
