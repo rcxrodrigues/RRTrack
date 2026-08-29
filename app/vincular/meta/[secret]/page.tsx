@@ -1,5 +1,6 @@
 import { urlAutorizacao } from "@/ads/meta-oauth";
 import { acharPeloSegredo, appDaMeta, urlDeRetorno } from "@/ads/meta-vinculo";
+import { LogoMeta } from "@/ui/logos";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +17,14 @@ export const dynamic = "force-dynamic";
  *
  * Antes daqui, a página respondia 307 direto para o facebook.com. Funcionava
  * em navegador comum e falhava exatamente onde precisava funcionar: no
- * antidetect, que é o motivo de o link existir. Esses navegadores passam a
- * navegação por uma camada de proxy e barram salto automático entre domínios
- * — ainda mais para o facebook.com. Clique de gente passa; redirecionamento
- * de servidor, não.
+ * antidetect, que é o motivo de o link existir. Clique de gente atravessa a
+ * camada de proxy desses navegadores; redirecionamento de servidor, não.
  *
- * Foi comparando com a Utmify que ficou claro: o link dela também é uma
- * página própria com um botão, e é por isso que abre onde o nosso não abria.
+ * O RESTO DA PÁGINA TAMBÉM NÃO É ENFEITE. Quem abre isto está prestes a
+ * entregar acesso à conta de anúncio dele — página crua, sem marca e sem
+ * explicação, é exatamente o que um phishing pareceria. Marca no topo, o
+ * logo da plataforma que vai pedir a permissão, e o que acontece ao clicar,
+ * dito antes do clique.
  */
 export default async function PaginaLinkMeta({
   params,
@@ -44,13 +46,10 @@ export default async function PaginaLinkMeta({
   if (!app) {
     return (
       <Moldura>
-        <h1 style={{ fontSize: 18, margin: "0 0 10px", fontWeight: 600 }}>
-          Vínculo com a Meta não está configurado
-        </h1>
-        <p style={{ fontSize: 13.5, color: "#9aa4ad", margin: 0, lineHeight: 1.6 }}>
-          Não é o seu link — é o servidor, que está sem as credenciais do
-          aplicativo da Meta. Gerar outro link não resolve.
-        </p>
+        <Aviso
+          titulo="Vínculo com a Meta não está configurado"
+          texto="Não é o seu link — é o servidor, que está sem as credenciais do aplicativo da Meta. Gerar outro link não resolve."
+        />
       </Moldura>
     );
   }
@@ -58,73 +57,107 @@ export default async function PaginaLinkMeta({
   if (!vinculo) {
     return (
       <Moldura>
-        <h1 style={{ fontSize: 18, margin: "0 0 10px", fontWeight: 600 }}>
-          Este link não vale mais
-        </h1>
-        <p style={{ fontSize: 13.5, color: "#9aa4ad", margin: 0, lineHeight: 1.6 }}>
-          Links de vínculo duram trinta minutos. Gere outro no painel, em
-          Integrações → Anúncios.
-        </p>
+        <Aviso
+          titulo="Este link não vale mais"
+          texto="Links de vínculo duram trinta minutos. Gere outro no painel, em Integrações → Anúncios."
+        />
       </Moldura>
     );
   }
 
-  const destino = urlAutorizacao(app, urlDeRetorno(), vinculo.secret);
-
   return (
     <Moldura>
-      <h1 style={{ fontSize: 19, margin: "0 0 18px", fontWeight: 600 }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
+        <LogoMeta tamanho={62} />
+      </div>
+
+      <h1 style={{
+        fontSize: 23, fontWeight: 700, margin: "0 0 26px",
+        textAlign: "center", letterSpacing: "-.3px",
+      }}>
         Conectar Meta Ads
       </h1>
 
       <div style={{
-        background: "#121C22", border: "1px solid #1B2830", borderRadius: 8,
-        padding: "16px 18px", textAlign: "left", marginBottom: 22,
+        background: "#121C22", border: "1px solid #1B2830", borderRadius: 10,
+        padding: "18px 20px", textAlign: "left", marginBottom: 26,
       }}>
         <div style={{
-          fontSize: 13, fontWeight: 600, color: "#45C4D0", marginBottom: 9,
-        }}>Autorização pelo Facebook</div>
-        <p style={{ fontSize: 13, color: "#9aa4ad", margin: "0 0 10px", lineHeight: 1.6 }}>
-          Ao continuar, o Facebook vai pedir sua permissão para o RRTrack ler
-          suas contas de anúncio. A senha não passa por nós.
+          fontSize: 14.5, fontWeight: 600, color: "#45C4D0", marginBottom: 12,
+        }}>
+          Autorização pelo Facebook
+        </div>
+        <p style={{ fontSize: 13.5, color: "#9aa4ad", margin: "0 0 12px", lineHeight: 1.65 }}>
+          Ao clicar em &quot;Continuar com Meta Ads&quot;, o Facebook vai pedir
+          sua permissão para o RRTrack ler suas contas de anúncio.
         </p>
-        <p style={{ fontSize: 13, color: "#9aa4ad", margin: 0, lineHeight: 1.6 }}>
-          Este link vale por <b style={{ color: "#c9d4db" }}>30 minutos</b> e
-          serve a esta loja apenas.
+        <p style={{ fontSize: 13.5, color: "#9aa4ad", margin: "0 0 12px", lineHeight: 1.65 }}>
+          A autorização acontece no site do Facebook. Sua senha não passa por
+          nós em momento nenhum.
+        </p>
+        <p style={{ fontSize: 13.5, color: "#c9d4db", margin: 0, lineHeight: 1.65, fontWeight: 500 }}>
+          Este link fica disponível por 30 minutos.
         </p>
       </div>
+
+      <p style={{
+        fontSize: 13.5, color: "#9aa4ad", textAlign: "center",
+        margin: "0 0 8px", lineHeight: 1.6,
+      }}>
+        Você está prestes a conectar sua conta Meta Ads.
+      </p>
+      <p style={{
+        fontSize: 13.5, color: "#9aa4ad", textAlign: "center",
+        margin: "0 0 22px", lineHeight: 1.6,
+      }}>
+        Clique no botão abaixo para continuar.
+      </p>
 
       {/*
         Um <a> de verdade, e não um script que navega sozinho: o que faz isto
         atravessar o navegador antidetect é o clique ser da pessoa.
       */}
       <a
-        href={destino}
+        href={urlAutorizacao(app, urlDeRetorno(), vinculo.secret)}
         style={{
           display: "block", background: "#1877F2", color: "#fff",
-          textDecoration: "none", borderRadius: 8, padding: "13px 20px",
+          textDecoration: "none", borderRadius: 8, padding: "14px 24px",
           fontSize: 15, fontWeight: 600, textAlign: "center",
+          maxWidth: 280, margin: "0 auto",
         }}
       >
         Continuar com Meta Ads
       </a>
 
       <p style={{
-        fontSize: 11.5, color: "#566871", margin: "16px 0 0", lineHeight: 1.55,
+        fontSize: 12, color: "#566871", textAlign: "center",
+        margin: "22px 0 0", lineHeight: 1.6,
       }}>
-        Você pode fazer isto em qualquer navegador, inclusive num perfil
-        separado. O vínculo fica guardado no servidor.
+        Pode ser feito em qualquer navegador, inclusive num perfil separado.
+        O vínculo fica guardado no servidor.
       </p>
     </Moldura>
+  );
+}
+
+function Aviso({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <div style={{ textAlign: "center", padding: "10px 0 6px" }}>
+      <h1 style={{ fontSize: 19, margin: "0 0 12px", fontWeight: 600 }}>{titulo}</h1>
+      <p style={{ fontSize: 13.5, color: "#9aa4ad", margin: 0, lineHeight: 1.65 }}>
+        {texto}
+      </p>
+    </div>
   );
 }
 
 /*
  * Moldura própria, sem os estilos do painel.
  *
- * Quem abre isto está prestes a autorizar acesso à conta de anúncio dele. Uma
- * página crua, sem nome nem contexto, é exatamente o que um phishing pareceria
- * — então ela diz de quem é e o que vai acontecer antes de pedir o clique.
+ * As cores são escritas na mão em vez de virem das variáveis do tema porque
+ * esta página não carrega o CSS do painel — ela precisa se sustentar sozinha,
+ * inclusive se alguém abrir com o cache limpo num navegador que nunca viu o
+ * sistema.
  */
 function Moldura({ children }: { children: React.ReactNode }) {
   return (
@@ -134,22 +167,26 @@ function Moldura({ children }: { children: React.ReactNode }) {
       padding: 20, fontFamily: "system-ui, -apple-system, sans-serif",
     }}>
       <div style={{
-        width: "100%", maxWidth: 420, background: "#0F171C",
-        border: "1px solid #1B2830", borderRadius: 12, padding: 28,
-        textAlign: "center",
+        width: "100%", maxWidth: 520, background: "#0F171C",
+        border: "1px solid #1B2830", borderRadius: 14, overflow: "hidden",
       }}>
+        {/*
+          A faixa do topo com a marca. Separada por uma linha porque é o que
+          diz "isto é um site, e é este aqui" antes de qualquer outra coisa —
+          a diferença entre uma página de autorização e uma tela de golpe.
+        */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          gap: 8, marginBottom: 24,
+          padding: "20px 28px", borderBottom: "1px solid #1B2830",
+          display: "flex", justifyContent: "center",
         }}>
-          <span style={{
-            width: 9, height: 9, borderRadius: "50%", background: "#45C4D0",
-          }} />
-          <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.2px" }}>
-            RRTrack
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/marca/completa.png" alt="RRTrack" height={26}
+            style={{ display: "block", width: "auto" }} />
         </div>
-        {children}
+
+        <div style={{ padding: "30px 28px 28px" }}>
+          {children}
+        </div>
       </div>
     </div>
   );
