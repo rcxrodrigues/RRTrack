@@ -211,9 +211,9 @@ export const appmaxAdapter: GatewayAdapter = {
    * entra sem comprador nenhum — a Appmax nao manda comprador no webhook.
    */
   credenciais: [
-    { chave: "clientId", rotulo: "Client ID", obrigatoria: true,
-      dica: "Sem ele a venda entra sem comprador: a Appmax não manda comprador no webhook." },
-    { chave: "clientSecret", rotulo: "Client Secret", obrigatoria: true },
+    { chave: "clientId", rotulo: "Client ID",
+      dica: "Opcional, mas vale muito: sem ele a venda entra SEM COMPRADOR, porque a Appmax não manda comprador no webhook. São 5 chaves de correspondência em vez de 9." },
+    { chave: "clientSecret", rotulo: "Client Secret" },
   ],
   passthroughFields: PASSTHROUGH,
 

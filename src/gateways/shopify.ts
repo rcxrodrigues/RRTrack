@@ -309,8 +309,8 @@ export const shopifyAdapter: GatewayAdapter = {
   /* A loja inteira, nao so o pagamento — e e dai que vem o endereco. */
   especie: "plataforma",
   credenciais: [
-    { chave: "signingSecret", rotulo: "Segredo de assinatura do webhook", obrigatoria: true,
-      dica: "Configurações → Notificações → Webhooks, no rodapé da página. É o que prova que o POST veio da loja." },
+    { chave: "signingSecret", rotulo: "Segredo de assinatura do webhook",
+      dica: "Opcional. Configurações → Notificações → Webhooks, no rodapé da página. Sem ele a venda entra igual, só sem prova de que o POST veio da sua loja." },
     /*
      * Os dois de baixo servem so a reconciliacao — buscar na Admin API um
      * pedido cujo webhook se perdeu. O webhook em si nao precisa deles.

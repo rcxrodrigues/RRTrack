@@ -461,53 +461,44 @@ function ExemploApi() {
  * cadastrado, a venda entra sem verificação — funciona, mas o painel não tem
  * como distinguir o que está provado do que está só plausível.
  */
-const ASSINAM_WEBHOOK: Record<string, { rotulo: string; dica: string }> = {
-  millions: {
-    rotulo: "Segredo de assinatura do webhook (opcional)",
-    dica: "Não fica na tela de chaves de API — a MillionsPay mostra ao CRIAR o endpoint de webhook, uma vez só. Em branco, a venda entra normalmente, apenas sem verificação de origem.",
-  },
-};
-
 function ChaveDeApi({
-  conexao, aberto, abrir, fechar, valor, mudou, salvando, gravar,
-  assinatura, mudouAssinatura,
+  conexao, campos, aberto, abrir, fechar, campo, temValor, salvando, gravar,
 }: {
   conexao: Conexao;
+  /* O que ESTA integração aceita — declarado pelo adaptador, ver gateways/types.ts. */
+  campos: Array<{ chave: string; rotulo: string; dica?: string }>;
   aberto: boolean;
   abrir: () => void;
   fechar: () => void;
-  valor: string;
-  mudou: (v: string) => void;
+  /* O mesmo binder que o resto da tela usa — ver `campo` no componente pai. */
+  campo: (k: string) => {
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  };
+  temValor: (k: string) => boolean;
   salvando: boolean;
   gravar: () => void;
-  assinatura: string;
-  mudouAssinatura: (v: string) => void;
 }) {
-  const assina = ASSINAM_WEBHOOK[conexao.gateway];
-
+  /*
+   * Os campos vêm do adaptador, e não de uma tabela por marca aqui dentro.
+   *
+   * Antes eram dois fixos — "chave de API" e, só para a MillionsPay, um
+   * segredo de assinatura. A Appmax precisa de client_id E client_secret, e o
+   * formulário só oferecia um: quem conectasse por aqui não tinha como
+   * completar, e a venda continuava entrando sem comprador.
+   */
   if (aberto) {
     return (
       <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--linha)" }}>
-        <Campo
-          rotulo={conexao.temCredencial ? "Trocar a chave de API" : "Chave de API"}
-          type="password"
-          placeholder="cole a chave do painel do gateway"
-          dica="Use a chave SECRETA, não a pública — o RRTrack chama a API pelo servidor. Fica cifrada em repouso e nunca volta para a tela."
-          value={valor}
-          onChange={(e) => mudou(e.target.value)}
-        />
-        {assina && (
-          <Campo
-            rotulo={assina.rotulo}
-            type="password"
-            placeholder="cole o segredo do endpoint"
-            dica={assina.dica}
-            value={assinatura}
-            onChange={(e) => mudouAssinatura(e.target.value)}
-          />
-        )}
+        {campos.map((c) => (
+          <Campo key={c.chave} type="password"
+            rotulo={c.rotulo}
+            placeholder="cole aqui"
+            dica={c.dica}
+            {...campo(c.chave)} />
+        ))}
         <div style={{ display: "flex", gap: 8 }}>
-          <Botao disabled={salvando || (!valor && !assinatura)} onClick={gravar}>
+          <Botao disabled={salvando || !campos.some((c) => temValor(c.chave))} onClick={gravar}>
             {salvando ? "salvando…" : "Salvar"}
           </Botao>
           <Botao tipo="secundario" onClick={fechar}>Cancelar</Botao>
@@ -515,6 +506,9 @@ function ChaveDeApi({
       </div>
     );
   }
+
+  /* Integração que não pede credencial nenhuma não mostra linha de credencial. */
+  if (!campos.length) return null;
 
   return (
     <div style={{
@@ -722,20 +716,22 @@ export function Integracoes({
                     </div>
                     <ChaveDeApi
                       conexao={c}
-                      aberto={editando === `chave:${c.gateway}`}
-                      abrir={() => { setEditando(`chave:${c.gateway}`); setForm({}); }}
+                      campos={g?.credenciais ?? []}
+                      /* Pela conexão e não pelo gateway: com duas da mesma
+                         marca, abrir uma abria as duas. */
+                      aberto={editando === `chave:${c.id}`}
+                      abrir={() => { setEditando(`chave:${c.id}`); setForm({}); }}
                       fechar={() => setEditando(null)}
-                      valor={form.apiKey ?? ""}
-                      mudou={(v) => setForm((f) => ({ ...f, apiKey: v }))}
-                      assinatura={form.signingSecret ?? ""}
-                      mudouAssinatura={(v) => setForm((f) => ({ ...f, signingSecret: v }))}
+                      campo={campo}
+                      temValor={(k) => !!form[k]?.trim()}
                       salvando={salvando}
                       gravar={() => salvar({
                         /* Pelo id: com duas do mesmo gateway, gravar por marca
                            escreveria na conexão errada. */
                         tipo: "gateway", id: c.id, gateway: c.gateway,
-                        apiKey: form.apiKey, clientId: form.apiKey,
-                        signingSecret: form.signingSecret,
+                        ...Object.fromEntries(
+                          (g?.credenciais ?? []).map((cr) => [cr.chave, form[cr.chave]]),
+                        ),
                       })}
                     />
                     <TaxasDoGateway
@@ -1016,47 +1012,30 @@ export function Integracoes({
                   </label>
 
                   {/*
-                    Nome e campos vêm depois da escolha, porque só aí se sabe o
-                    que pedir. Cada integração declara o que precisa no próprio
-                    adaptador — a tela não tem uma cadeia de `if` por marca.
+                    Criar pede SÓ O NOME.
+                    
+                    Antes pedia as credenciais junto, e uma delas era
+                    obrigatória — o que travava a criação por nada: nenhuma
+                    credencial é necessária para o webhook funcionar. Sem o
+                    segredo de assinatura a venda entra igual, só marcada como
+                    não verificada; sem a chave da Appmax ela entra sem
+                    comprador. São coisas que se acrescenta depois, olhando o
+                    que cada uma rende, e não barreiras para conseguir a URL.
+                    
+                    Pedir tudo de uma vez também obriga a pessoa a ter os
+                    valores em mãos antes de ver a URL — e ela precisa da URL
+                    primeiro, para criar o webhook do outro lado.
                   */}
-                  {form.gateway && (() => {
-                    const esc = gatewaysDisponiveis.find((g) => g.id === form.gateway);
-                    if (!esc) return null;
-                    return (
-                      <>
-                        {/*
-                          O nome existe porque pode haver duas da mesma marca.
-                          Duas linhas escritas "Shopify" nao dizem qual e a loja
-                          de fora, e na hora de remover uma vira adivinhacao.
-                        */}
-                        <Campo rotulo="Nome"
-                          dica="Para diferenciar, se um dia houver mais de uma desta mesma plataforma."
-                          {...campo("label")} />
-                        {esc.credenciais.map((cr) => (
-                          <Campo key={cr.chave} rotulo={cr.rotulo} type="password"
-                            dica={cr.dica} {...campo(cr.chave)} />
-                        ))}
-                      </>
-                    );
-                  })()}
+                  {form.gateway && (
+                    <Campo rotulo="Nome"
+                      dica="Como esta integração vai aparecer na lista. As credenciais, se houver, entram depois."
+                      {...campo("label")} />
+                  )}
                   <div style={{ display: "flex", gap: 8 }}>
-                    {(() => {
-                      const esc = gatewaysDisponiveis.find((g) => g.id === form.gateway);
-                      /* Campo obrigatorio vazio bloqueia aqui, e nao no servidor:
-                         a integracao entraria e falharia calada depois. */
-                      const falta = (esc?.credenciais ?? [])
-                        .some((cr) => cr.obrigatoria && !form[cr.chave]?.trim());
-                      return (
-                        <Botao disabled={salvando || !form.gateway || falta} onClick={() => salvar({
-                          tipo: "gateway", gateway: form.gateway,
-                          label: form.label?.trim() || undefined,
-                          ...Object.fromEntries(
-                            (esc?.credenciais ?? []).map((cr) => [cr.chave, form[cr.chave]]),
-                          ),
-                        })}>{salvando ? "salvando…" : "Adicionar"}</Botao>
-                      );
-                    })()}
+                    <Botao disabled={salvando || !form.gateway} onClick={() => salvar({
+                      tipo: "gateway", gateway: form.gateway,
+                      label: form.label?.trim() || undefined,
+                    })}>{salvando ? "salvando…" : "Continuar"}</Botao>
                     <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                   </div>
                 </div>
@@ -1524,6 +1503,21 @@ export function ProdutoDaPagina({ site, tenantId }: {
     }
     setSalvando(false);
   }
+
+  /*
+   * SÓ APARECE PARA QUEM JÁ TEM UM PRODUTO FIXO.
+   *
+   * Desde que o script lê o produto da própria página, este bloco não tem o
+   * que fazer numa loja com catálogo — e três campos pedindo identificador,
+   * nome e preço, numa loja com dezenas de produtos, não são só inúteis: são
+   * uma pergunta sem resposta. Quem abre o painel pela primeira vez conclui
+   * que falta configurar alguma coisa, e não falta.
+   *
+   * Continua existindo para a oferta de página única que não publica produto
+   * nenhum no HTML — lá o valor tem de ser escrito à mão, e quem já escreveu
+   * precisa poder corrigir. Quem nunca escreveu não vê nada disto.
+   */
+  if (!configurado && !aberto) return null;
 
   return (
     <div style={{ marginTop: 12, borderTop: "1px solid var(--linha)", paddingTop: 12 }}>
