@@ -736,6 +736,8 @@ export function Integracoes({
                     />
                     <TaxasDoGateway
                       taxas={c.taxas}
+                      especie={esp}
+                      marca={g?.label}
                       aberto={editando === `taxas:${c.gateway}`}
                       abrir={() => setEditando(`taxas:${c.gateway}`)}
                       fechar={() => setEditando(null)}

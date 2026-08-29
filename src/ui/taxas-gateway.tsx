@@ -3,16 +3,29 @@
 import { useState } from "react";
 
 /*
- * Quanto o gateway fica de cada venda.
+ * Quanto fica retido de cada venda.
  *
  * Só entra em cena quando o webhook não informa a taxa — o que é o caso da
- * Appmax e da MillionsPay. Sem a tabela, o painel mostra R$ 0,00 de taxa e
- * declara um lucro que não existe: numa operação com 4% de taxa e 20% de
- * margem, ignorar a taxa erra o lucro em um quinto.
+ * Appmax, da MillionsPay e de TODA plataforma de venda. Sem a tabela, o
+ * painel mostra R$ 0,00 de taxa e declara um lucro que não existe: numa
+ * operação com 4% de taxa e 20% de margem, ignorar a taxa erra o lucro em um
+ * quinto.
  *
  * O gateway que informa a taxa continua mandando. Isto é estimativa do
  * lojista; o webhook é o que saiu da conta, com promoção e antecipação já
  * dentro.
+ *
+ * NUMA PLATAFORMA, QUEM COBRA NÃO É ELA.
+ *
+ * O webhook de pedido da Shopify não traz taxa nenhuma — quem retém é quem
+ * processou o pagamento: o Shopify Payments, ou o app de gateway instalado
+ * na loja. A taxa existe e sai do dinheiro do lojista de todo jeito; ela só
+ * não vem no mesmo lugar que a venda.
+ *
+ * Por isso a tabela mora na conexão que RECEBE a venda, e não numa conexão do
+ * processador: é a única que o painel tem para descontar. Se um dia o
+ * processador também mandar webhook direto para cá, aí sim a venda entraria
+ * duas vezes — e o problema seria bem maior que a taxa.
  */
 
 export interface Faixa {
@@ -46,7 +59,7 @@ const SUGERIDO: Required<Pick<Tabela, "pix" | "credit_card">> = {
 };
 
 export function TaxasDoGateway({
-  taxas, aberto, abrir, fechar, salvando, gravar,
+  taxas, aberto, abrir, fechar, salvando, gravar, especie, marca,
 }: {
   taxas: Record<string, unknown>;
   aberto: boolean;
@@ -54,6 +67,13 @@ export function TaxasDoGateway({
   fechar: () => void;
   salvando: boolean;
   gravar: (t: Tabela) => void;
+  /*
+   * Muda só o TEXTO, e o texto importa: numa plataforma, "taxas do gateway"
+   * faz a pessoa perguntar por que a Shopify cobraria taxa de cartão — e a
+   * pergunta é justa, porque não é ela que cobra.
+   */
+  especie?: "plataforma" | "gateway" | "api";
+  marca?: string;
 }) {
   const atual = taxas as Tabela;
   const configurado = !!(atual?.pix || atual?.credit_card?.length);
@@ -128,7 +148,16 @@ export function TaxasDoGateway({
             </>
           ) : (
             <span style={{ color: "var(--alerta)" }}>
-              Sem taxas cadastradas — o lucro aparece maior do que é
+              {especie === "plataforma"
+                /*
+                 * Quem cobra é o processador — Shopify Payments, ou o app de
+                 * gateway instalado na loja. A plataforma não informa o valor
+                 * no webhook de pedido, venha de quem vier, então a tabela é a
+                 * única fonte que temos.
+                 */
+                ? <>Sem taxas cadastradas — {marca ?? "a plataforma"} não informa quanto o
+                    processador cobrou, então o lucro aparece maior do que é</>
+                : <>Sem taxas cadastradas — o lucro aparece maior do que é</>}
             </span>
           )}
         </span>
