@@ -11,7 +11,7 @@
  * dado errado para sempre.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db/index";
 import { adAccounts, adSpendDaily } from "../db/schema";
 import { getAdSpend } from "../ads/registry";
@@ -205,4 +205,61 @@ export async function sincronizarGasto(
   }
 
   return resumos;
+}
+
+/* ------------------------------------------------------- vale buscar? -- */
+
+/*
+ * Decide se a visita a uma tela deve mandar buscar gasto na plataforma.
+ *
+ * Mora aqui, e não em cada tela, porque a resposta tem DOIS motivos e esquecer
+ * um deles produz número errado sem produzir erro:
+ *
+ *   1. o gasto está velho — a sincronização por obsolescência de sempre;
+ *   2. a janela que a pessoa escolheu é maior do que a que já foi buscada.
+ *
+ * O segundo é o que passou despercebido por mais tempo. A consulta respeitava
+ * o filtro de data, a busca era fixa em sete dias, e escolher "30 dias" mostrava
+ * faturamento de trinta contra gasto de sete — ROAS quatro vezes maior, e
+ * plausível o bastante para alguém decidir em cima.
+ *
+ * Devolve quantos dias buscar, ou `null` quando não há o que fazer.
+ */
+export async function precisaBuscarGasto(
+  tenantId: string,
+  janela: { de: string; dias: number; plataforma?: string },
+): Promise<number | null> {
+  const OBSOLETO_MIN = 10;
+
+  const contas = await db.select({ sincronizadoEm: adAccounts.lastSyncedAt })
+    .from(adAccounts)
+    .where(and(
+      eq(adAccounts.tenantId, tenantId),
+      eq(adAccounts.active, true),
+      ...(janela.plataforma ? [eq(adAccounts.platform, janela.plataforma)] : []),
+    ));
+
+  /* Sem conta conectada não há o que buscar, e insistir só gasta consulta. */
+  if (contas.length === 0) return null;
+
+  const velha = contas.some((c) =>
+    !c.sincronizadoEm || Date.now() - c.sincronizadoEm.getTime() > OBSOLETO_MIN * 60_000);
+
+  const [maisAntigo] = await db
+    .select({ dia: adSpendDaily.date })
+    .from(adSpendDaily)
+    .where(and(
+      eq(adSpendDaily.tenantId, tenantId),
+      ...(janela.plataforma ? [eq(adSpendDaily.platform, janela.plataforma)] : []),
+    ))
+    .orderBy(asc(adSpendDaily.date))
+    .limit(1);
+
+  /*
+   * Descoberto não é "velho": quem troca de 7 para 30 dias logo depois de
+   * sincronizar tem o gasto fresco e a janela nova vazia do mesmo jeito.
+   */
+  const descoberto = !maisAntigo || maisAntigo.dia > janela.de;
+
+  return velha || descoberto ? janela.dias : null;
 }

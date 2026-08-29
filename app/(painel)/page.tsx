@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { db } from "@/db/index";
 import { adAccounts } from "@/db/schema";
@@ -7,6 +8,7 @@ import { lojaAtual } from "@/core/loja-atual";
 import { janelaDe, um, PERIODO_PADRAO } from "@/core/janela";
 import { indicadores, funil, porHorario, porOrigem, porPagamento, porRegiao } from "@/core/resumo";
 import { aoVivo } from "@/core/aovivo";
+import { precisaBuscarGasto, sincronizarGasto } from "@/core/sincronizar-gasto";
 import { Resumo } from "@/ui/resumo";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,30 @@ export default async function Pagina({ searchParams }: {
     db.select({ id: adAccounts.id }).from(adAccounts)
       .where(and(eq(adAccounts.tenantId, loja.id), eq(adAccounts.active, true))),
   ]);
+
+  /*
+   * O Resumo também mantém o gasto fresco.
+   *
+   * Antes ele só LIA `ad_spend_daily` e dependia de alguém abrir uma tela de
+   * plataforma para o dado existir. Quem entra direto aqui — que é a maioria,
+   * é a tela inicial — via lucro e ROAS calculados sobre gasto velho ou
+   * ausente, sem nada dizendo que faltava buscar.
+   *
+   * Sem filtro de plataforma: aqui o número é o total, então todas contam.
+   */
+  const diasDaJanela = Math.max(
+    1,
+    Math.round((new Date(ate + "T12:00:00Z").getTime()
+      - new Date(de + "T12:00:00Z").getTime()) / 86400_000) + 1,
+  );
+  const buscar = await precisaBuscarGasto(loja.id, { de, dias: diasDaJanela });
+  if (buscar) {
+    after(async () => {
+      try {
+        await sincronizarGasto(loja.id, { dias: buscar });
+      } catch { /* falha de sincronização não pode derrubar a tela */ }
+    });
+  }
 
   return (
     <Resumo

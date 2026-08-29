@@ -7,7 +7,7 @@ import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
 import { metricas, totalizar, type Nivel } from "@/core/metricas";
 import { PERIODO_PADRAO } from "@/core/janela";
-import { sincronizarGasto } from "@/core/sincronizar-gasto";
+import { precisaBuscarGasto, sincronizarGasto } from "@/core/sincronizar-gasto";
 import { Plataforma } from "./plataforma";
 
 /*
@@ -18,14 +18,16 @@ import { Plataforma } from "./plataforma";
 const NIVEIS = ["conta", "campanha", "conjunto", "anuncio"] as const;
 
 /** Converte o período escolhido em datas, no fuso da loja. */
-function janela(periodo: string, timezone: string): { de: string; ate: string } {
+function janela(periodo: string, timezone: string): { de: string; ate: string; dias: number } {
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone });
   const hoje = fmt.format(new Date());
   const dias = periodo === "hoje" ? 0
     : periodo === "14d" ? 13
     : periodo === "30d" ? 29 : 6;
   const de = fmt.format(new Date(Date.now() - dias * 86400_000));
-  return { de, ate: hoje };
+  /* `dias` volta junto porque quem busca o gasto na Meta precisa saber o
+     tamanho da janela que a pessoa está olhando — ver abaixo. */
+  return { de, ate: hoje, dias: dias + 1 };
 }
 
 export async function CarregarPlataforma({
@@ -49,7 +51,7 @@ export async function CarregarPlataforma({
   const periodo = um(busca.periodo) || PERIODO_PADRAO;
   const nome = um(busca.nome);
 
-  const { de, ate } = janela(periodo, loja.timezone);
+  const { de, ate, dias } = janela(periodo, loja.timezone);
 
   const contas = await db.select({
     id: adAccounts.id, sincronizadoEm: adAccounts.lastSyncedAt,
@@ -72,14 +74,15 @@ export async function CarregarPlataforma({
    * Não custa nada quando ninguém está olhando, e está sempre fresco quando
    * alguém está — que é exatamente quando importa.
    */
-  const OBSOLETO_MIN = 10;
-  const velha = contas.find((c) =>
-    !c.sincronizadoEm || Date.now() - c.sincronizadoEm.getTime() > OBSOLETO_MIN * 60_000);
-
-  if (velha) {
+  /*
+   * A janela que se busca é a que a pessoa está olhando. A decisão mora em
+   * core/sincronizar-gasto.ts, para esta tela e o Resumo não divergirem.
+   */
+  const buscar = await precisaBuscarGasto(loja.id, { de, dias, plataforma });
+  if (buscar) {
     after(async () => {
       try {
-        await sincronizarGasto(loja.id, { plataforma, dias: 7 });
+        await sincronizarGasto(loja.id, { plataforma, dias: buscar });
       } catch { /* falha de sincronização não pode derrubar a tela */ }
     });
   }
