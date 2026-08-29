@@ -158,8 +158,13 @@ export async function sincronizarGasto(
           adsetName: l.adsetName ?? null,
           adId: l.adId,
           adName: l.adName ?? null,
-          /* A moeda em que ESTA conta reporta — ver o comentario na coluna. */
-          currency: r.moeda,
+          /*
+           * Maiuscula sempre. A moeda do Google e do TikTok vem de `cred.moeda`,
+           * que e credencial DIGITADA A MAO: alguem escreve "usd" e a linha
+           * deixa de casar com a moeda da loja na hora de somar. O gasto some
+           * do total sem erro nenhum — ver a nota na coluna `currency`.
+           */
+          currency: (r.moeda || "BRL").toUpperCase(),
           spendCents: l.gastoCents,
           impressions: l.impressoes ?? null,
           clicks: l.cliques ?? null,
@@ -172,7 +177,7 @@ export async function sincronizarGasto(
              e a última leitura é a boa. */
           set: {
             /* A conta pode ter trocado de moeda; a ultima leitura e a boa. */
-            currency: r.moeda,
+            currency: (r.moeda || "BRL").toUpperCase(),
             spendCents: l.gastoCents,
             impressions: l.impressoes ?? null,
             clicks: l.cliques ?? null,
@@ -201,7 +206,7 @@ export async function sincronizarGasto(
         linhas: r.linhas.length,
         gastoTotalCents: r.linhas.reduce((s, l) => s + l.gastoCents, 0),
         moeda: r.moeda,
-        avisos: r.moeda !== moedaDaLoja
+        avisos: r.moeda.toUpperCase() !== moedaDaLoja.toUpperCase()
           ? [...r.avisos,
              `esta conta reporta em ${r.moeda} e a loja e em ${moedaDaLoja}: ` +
              `o gasto fica gravado na moeda original e NAO entra nos totais`]

@@ -115,8 +115,19 @@ export async function POST(req: Request): Promise<Response> {
           return Response.json({ erro: "gateway desconhecido" }, { status: 400 });
         }
 
+        /*
+         * Lista fechada de propósito: o corpo vem do navegador, e gravar
+         * qualquer chave que chegasse deixaria o cliente escolher o que entra
+         * cifrado no banco.
+         *
+         * `shopDomain`, `accessToken` e `apiVersion` sao da Shopify, e servem
+         * so a reconciliacao — o webhook dela nao precisa de nenhum dos tres,
+         * porque a Shopify assina e o `signingSecret` ja cobre isso. Nao ha
+         * campo na tela para eles ainda; entram por esta rota.
+         */
         const cred: Record<string, string> = {};
-        for (const chave of ["apiKey", "apiSecret", "clientId", "clientSecret", "publicKey", "secretKey", "signingSecret"]) {
+        for (const chave of ["apiKey", "apiSecret", "clientId", "clientSecret", "publicKey", "secretKey", "signingSecret",
+          "shopDomain", "accessToken", "apiVersion"]) {
           const v = texto(corpo[chave]);
           if (v) cred[chave] = await encryptValue(v);
         }

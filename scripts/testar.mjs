@@ -21,6 +21,7 @@ const COMPILAR = [
   "src/core/metricas.ts", "src/core/reconciliacao.ts", "src/core/dispatch.ts",
   "src/core/sincronizar-gasto.ts",
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
+  "src/gateways/shopify.ts",
   "src/core/robos.ts", "src/core/redes.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
@@ -30,6 +31,7 @@ const COMPILAR = [
 const UNITARIOS = [
   "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
   "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
+  "shopify",
   "robos",
 ];
 

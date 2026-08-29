@@ -159,6 +159,24 @@ const totalMisto = totalizar(mistas);
 eq("o total tambem avisa", totalMisto.moedasIgnoradas.join(","), "USD");
 eq("e o total nao soma o dolar", totalMisto.gastoCents, 30000 + 20000 + 80000 + 50000);
 
+/*
+ * Moeda gravada em caixa baixa.
+ *
+ * Nao e hipotese: a moeda do Google e do TikTok sai de `cred.moeda`, que e
+ * credencial digitada a mao. Alguem escreve "brl" e, com comparacao sensivel
+ * a caixa, aquele gasto deixa de casar com a moeda da loja e some do total —
+ * o painel mostra a campanha gastando menos do que gastou, e o ROAS sobe.
+ */
+console.log("\n== a caixa da moeda nao pode decidir se o gasto conta ==");
+await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date, campaign_id, campaign_name, ad_id, ad_name, spend_cents, currency)
+  VALUES (${t.id}, ${conta.id}, 'meta', ${hoje}, 'CAMP4', 'Minuscula', 'AD12', 'A12', 70000, 'brl')`;
+
+const caixa = await metricas({ ...janela, nivel: "campanha" });
+const minuscula = caixa.find((l) => l.id === "CAMP4");
+eq("'brl' conta como BRL", minuscula.gastoCents, 70000);
+eq("e nao vira aviso de moeda estranha", minuscula.moedasIgnoradas.length, 0);
+
+
 console.log("\n== não vaza entre lojas ==");
 const [outra] = await sql`SELECT id FROM tenants WHERE slug != 'metricas-teste' LIMIT 1`;
 const deOutra = await metricas({ tenantId: outra.id, plataforma: "meta", de: hoje, ate: hoje,

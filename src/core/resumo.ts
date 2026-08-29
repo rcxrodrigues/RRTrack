@@ -98,9 +98,10 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
    */
   const [g] = await linhasDe(db.execute<{ gasto: number; ignoradas: string | null }>(sql`
     SELECT
-      coalesce(sum(spend_cents) filter (where currency = ${p.moeda}), 0)::bigint AS gasto,
-      string_agg(DISTINCT currency, ',')
-        filter (where currency <> ${p.moeda} AND spend_cents > 0) AS ignoradas
+      coalesce(sum(spend_cents)
+        filter (where upper(currency) = upper(${p.moeda})), 0)::bigint AS gasto,
+      string_agg(DISTINCT upper(currency), ',')
+        filter (where upper(currency) <> upper(${p.moeda}) AND spend_cents > 0) AS ignoradas
     FROM ad_spend_daily
     WHERE tenant_id = ${p.tenantId} AND date BETWEEN ${p.de} AND ${p.ate}
   `));

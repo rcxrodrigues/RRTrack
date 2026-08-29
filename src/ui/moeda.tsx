@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext } from "react";
 
+import { casasDecimais } from "@/core/moeda";
+
 /*
  * Dinheiro na tela, na moeda da loja.
  *
@@ -61,22 +63,17 @@ function localDe(moeda: string): string {
 }
 
 /*
- * Quantas casas decimais a moeda tem.
+ * Quantas casas a moeda tem — a regra mora em core/moeda.ts, e não aqui.
  *
  * Não são sempre duas: iene e guarani não têm centavo nenhum. Guardamos tudo
  * na menor unidade, então dividir por 100 estaria errado nesses casos — o
  * valor apareceria cem vezes menor.
+ *
+ * É a MESMA conta que o adaptador da Shopify usa para ler "129.95" e virar
+ * 12995. Duas cópias dessa regra divergiriam, e o número entraria por uma
+ * porta e sairia diferente pela outra sem erro nenhum acusando.
  */
-function casas(moeda: string): number {
-  try {
-    return new Intl.NumberFormat(localDe(moeda), {
-      style: "currency",
-      currency: moeda,
-    }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
-  }
-}
+const casas = casasDecimais;
 
 function formatar(cents: number, moeda: string): string {
   const m = (moeda || "BRL").toUpperCase();

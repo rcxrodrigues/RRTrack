@@ -2,11 +2,12 @@ import type { GatewayAdapter } from "./types";
 import { pagouAdapter } from "./pagou";
 import { appmaxAdapter } from "./appmax";
 import { millionsAdapter } from "./millions";
+import { shopifyAdapter } from "./shopify";
 import { genericoAdapter } from "./generico";
 
 /* Plugar um gateway novo é escrever o adaptador e acrescentar uma linha aqui. */
 const adapters: GatewayAdapter[] = [
-  pagouAdapter, appmaxAdapter, millionsAdapter,
+  pagouAdapter, appmaxAdapter, millionsAdapter, shopifyAdapter,
   /* Último de propósito: é o coringa, não a primeira escolha. */
   genericoAdapter,
 ];

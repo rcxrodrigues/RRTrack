@@ -173,7 +173,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
        * entre moedas diferentes.
        */
       gasto: sql<number>`coalesce(sum(${adSpendDaily.spendCents})
-        FILTER (WHERE ${adSpendDaily.currency} = ${f.moeda}), 0)::int`,
+        FILTER (WHERE upper(${adSpendDaily.currency}) = upper(${f.moeda})), 0)::int`,
       /*
        * O que ficou de fora, para a tela poder dizer. Deixar sumir em silencio
        * so trocaria um numero errado por um numero incompleto — igualmente
@@ -182,8 +182,9 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
        * `string_agg` e nao `array_agg` porque volta texto simples, sem depender
        * de como o driver decodifica array do Postgres.
        */
-      ignoradas: sql<string | null>`string_agg(DISTINCT ${adSpendDaily.currency}, ',')
-        FILTER (WHERE ${adSpendDaily.currency} <> ${f.moeda} AND ${adSpendDaily.spendCents} > 0)`,
+      ignoradas: sql<string | null>`string_agg(DISTINCT upper(${adSpendDaily.currency}), ',')
+        FILTER (WHERE upper(${adSpendDaily.currency}) <> upper(${f.moeda})
+                AND ${adSpendDaily.spendCents} > 0)`,
       impressoes: sql<number>`coalesce(sum(${adSpendDaily.impressions}), 0)::int`,
       cliques: sql<number>`coalesce(sum(${adSpendDaily.clicks}), 0)::int`,
       atualizadoEm: sql<string | null>`max(${adSpendDaily.syncedAt})`,
