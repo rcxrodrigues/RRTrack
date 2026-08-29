@@ -205,6 +205,19 @@ export async function POST(req: Request): Promise<Response> {
           tenantId, gateway,
           label: texto(corpo.label) ?? gateway,
           credentials: cred, webhookSecret: segredo, active: true,
+          /*
+           * Já nasce com a tabela de taxas do gateway, quando ele publica uma.
+           *
+           * Vazia significa "não sei", e o painel então mostra taxa R$ 0,00 e
+           * declara um lucro que não existe. Quem abre uma loja nova não
+           * deveria ter que redigitar a mesma tabela que já preencheu na
+           * outra — e enquanto não preenche, o lucro na tela está errado para
+           * cima, que é o erro que menos levanta suspeita.
+           *
+           * Continua sendo estimativa, e continua perdendo para a taxa que o
+           * webhook informar.
+           */
+          fees: (adaptador.taxasPadrao ?? {}) as Record<string, unknown>,
           credentialsExpireAt: vencimento(corpo.expiraEm) ?? null,
         }).returning({ id: gatewayConnections.id });
 

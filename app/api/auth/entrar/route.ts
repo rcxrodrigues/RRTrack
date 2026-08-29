@@ -30,7 +30,12 @@ export async function POST(req: Request): Promise<Response> {
   if (!u?.passwordHash) return generico;
   if (!(await conferirSenha(senha, u.passwordHash))) return generico;
 
-  const fwd = req.headers.get("x-forwarded-for");
+  /* Mesma ordem do coletor: com Cloudflare na frente, o x-forwarded-for traz
+     a borda do proxy. Aqui o IP serve para reconhecer sessão suspeita, e o do
+     data center não reconhece nada. Ver app/api/collect/route.ts. */
+  const fwd = req.headers.get("cf-connecting-ip")
+    ?? req.headers.get("true-client-ip")
+    ?? req.headers.get("x-forwarded-for");
   const { token, expiraEm } = await criarSessao(u.id, {
     userAgent: req.headers.get("user-agent") ?? undefined,
     ip: fwd?.split(",")[0]?.trim() ?? undefined,

@@ -43,7 +43,30 @@ export async function OPTIONS(req: Request): Promise<Response> {
 }
 
 function clientIp(req: Request): string | undefined {
-  /* Atrás de proxy, o IP real é o primeiro da cadeia do x-forwarded-for. */
+  /*
+   * `cf-connecting-ip` VEM PRIMEIRO, e isso não é preferência de estilo.
+   *
+   * Com a Cloudflare na frente, o `x-forwarded-for` que chega aqui traz o IP
+   * da BORDA DA CLOUDFLARE, não o do visitante — a Vercel reescreve o
+   * cabeçalho com o IP de quem falou com ela, e quem falou com ela foi o
+   * proxy. O sintoma foi uma loja de Belo Horizonte aparecendo como São Paulo
+   * e Rio de Janeiro, que é onde ficam os pontos de presença.
+   *
+   * O estrago não para no mapa. Este IP vai para a Meta como chave de
+   * correspondência: mandar o IP de um data center é pior que não mandar
+   * nada, porque associa a compra a um lugar onde ninguém mora.
+   *
+   * A Cloudflare põe o IP verdadeiro em `cf-connecting-ip`, e ela mesma
+   * sobrescreve esse cabeçalho na entrada — então não dá para forjar de fora.
+   */
+  const daCloudflare = req.headers.get("cf-connecting-ip");
+  if (daCloudflare?.trim()) return daCloudflare.trim();
+
+  /* Outros proxies usam este nome para a mesma coisa. */
+  const verdadeiro = req.headers.get("true-client-ip");
+  if (verdadeiro?.trim()) return verdadeiro.trim();
+
+  /* Sem proxy conhecido, o primeiro da cadeia é o cliente. */
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) {
     const first = fwd.split(",")[0]?.trim();

@@ -206,6 +206,24 @@ export const appmaxAdapter: GatewayAdapter = {
   id: "appmax",
   label: "Appmax",
   especie: "gateway",
+  /* Tabela publicada; a conta negociada pode ser outra. Ver types.ts. */
+  taxasPadrao: {
+    pix: { percentual: 1.49, fixoCents: 99 },
+    credit_card: [
+      { ateParcelas: 1, percentual: 2.99, fixoCents: 99 },
+      { ateParcelas: 2, percentual: 4.79, fixoCents: 99 },
+      { ateParcelas: 3, percentual: 5.39, fixoCents: 99 },
+      { ateParcelas: 4, percentual: 5.89, fixoCents: 99 },
+      { ateParcelas: 5, percentual: 6.29, fixoCents: 99 },
+      { ateParcelas: 6, percentual: 6.99, fixoCents: 99 },
+      { ateParcelas: 7, percentual: 7.89, fixoCents: 99 },
+      { ateParcelas: 8, percentual: 8.69, fixoCents: 99 },
+      { ateParcelas: 9, percentual: 9.54, fixoCents: 99 },
+      { ateParcelas: 10, percentual: 10.1, fixoCents: 99 },
+      { ateParcelas: 11, percentual: 11.68, fixoCents: 99 },
+      { ateParcelas: 12, percentual: 12.9, fixoCents: 99 },
+    ],
+  },
   /*
    * Os dois, e os dois obrigatorios: sem eles o `enrich` nao roda e a venda
    * entra sem comprador nenhum — a Appmax nao manda comprador no webhook.

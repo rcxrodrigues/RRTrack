@@ -152,6 +152,24 @@ export const pagouAdapter: GatewayAdapter = {
   id: "pagou",
   label: "Pagou.ai",
   especie: "gateway",
+  /* Tabela publicada; a conta negociada pode ser outra. Ver types.ts. */
+  taxasPadrao: {
+    pix: { percentual: 7.99, fixoCents: 249 },
+    credit_card: [
+      { ateParcelas: 1, percentual: 6.99, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 2, percentual: 11.89, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 3, percentual: 13.29, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 4, percentual: 14.74, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 5, percentual: 15.97, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 6, percentual: 16.65, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 7, percentual: 16.99, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 8, percentual: 17.01, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 9, percentual: 17.99, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 10, percentual: 18.01, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 11, percentual: 18.99, fixoCents: 599, reservaPercentual: 25 },
+      { ateParcelas: 12, percentual: 23.99, fixoCents: 599, reservaPercentual: 25 },
+    ],
+  },
   /*
    * Opcional de proposito: sem a chave as vendas continuam entrando, so que
    * marcadas como nao verificadas — a pagou.ai nao assina o webhook, entao a

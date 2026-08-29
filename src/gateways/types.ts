@@ -59,6 +59,21 @@ export interface GatewayAdapter {
    * no banco. Assim declarar o campo e aceitá-lo são a mesma coisa, em vez de
    * duas listas que divergem em silêncio.
    */
+  /*
+   * As taxas que este gateway pratica, para a conexão nova já nascer com elas.
+   *
+   * Existe porque conexão nova nascia com a tabela vazia, e tabela vazia
+   * significa "não sei" — o painel mostra taxa R$ 0,00 e declara um lucro que
+   * não existe. Numa operação com 7% de taxa isso erra o lucro em um terço, e
+   * o número continua parecendo razoável.
+   *
+   * São as taxas que o lojista já preencheu à mão numa loja e teria que
+   * digitar de novo em cada nova. Continuam sendo ESTIMATIVA: cada conta
+   * negocia a sua, o gateway muda tabela sem avisar, e o valor que o webhook
+   * informa sempre vence este aqui — ver core/taxas.ts.
+   */
+  taxasPadrao?: Record<string, unknown>;
+
   credenciais?: ReadonlyArray<{
     /** Nome no objeto de credenciais — é como o adaptador vai lê-lo. */
     chave: string;

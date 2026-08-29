@@ -96,6 +96,25 @@ export const millionsAdapter: GatewayAdapter = {
   id: "millions",
   label: "MillionsPay",
   especie: "gateway",
+  /* Tabela publicada; a conta negociada pode ser outra. Ver types.ts. */
+  taxasPadrao: {
+    pix: { percentual: 2.99, fixoCents: 310, reservaPercentual: 10 },
+    boleto: { percentual: 2.99, fixoCents: 345 },
+    credit_card: [
+      { ateParcelas: 1, percentual: 6.92, fixoCents: 499 },
+      { ateParcelas: 2, percentual: 8.98, fixoCents: 499 },
+      { ateParcelas: 3, percentual: 10.19, fixoCents: 499 },
+      { ateParcelas: 4, percentual: 11.49, fixoCents: 499 },
+      { ateParcelas: 5, percentual: 12.79, fixoCents: 499 },
+      { ateParcelas: 6, percentual: 14.09, fixoCents: 499 },
+      { ateParcelas: 7, percentual: 15.39, fixoCents: 499 },
+      { ateParcelas: 8, percentual: 16.69, fixoCents: 499 },
+      { ateParcelas: 9, percentual: 18.19, fixoCents: 499 },
+      { ateParcelas: 10, percentual: 20.53, fixoCents: 499 },
+      { ateParcelas: 11, percentual: 22.1, fixoCents: 499 },
+      { ateParcelas: 12, percentual: 23.6, fixoCents: 499 },
+    ],
+  },
   credenciais: [
     { chave: "signingSecret", rotulo: "Segredo de assinatura",
       dica: "Opcional. A MillionsPay mostra ao CRIAR o endpoint, uma vez só. Em branco a venda entra igual, sem verificação de origem." },
