@@ -7,7 +7,7 @@
  * de dentro do antidetect, o que na prática significa duplicar a sessão do
  * RRTrack em um ambiente que existe para NÃO compartilhar sessão.
  *
- * O link expira em quinze minutos e só serve para entregar um token. O que
+ * O link expira em trinta minutos e só serve para entregar um token. O que
  * fazer com o token continua sendo decidido no painel, com sessão.
  */
 

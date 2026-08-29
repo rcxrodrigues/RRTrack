@@ -639,7 +639,7 @@ export const metaLinks = pgTable("meta_links", {
  * O perfil do Facebook conectado a uma loja.
  *
  * Separado de `meta_links` porque são coisas de duração diferente: o link é um
- * bilhete de quinze minutos para atravessar navegadores, o perfil é o vínculo
+ * bilhete de trinta minutos para atravessar navegadores, o perfil é o vínculo
  * que fica. Sem esta tabela, ligar mais uma conta de anúncio no mês seguinte
  * exigiria refazer o login inteiro — que foi exatamente a queixa.
  *

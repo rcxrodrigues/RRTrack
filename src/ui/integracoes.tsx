@@ -278,7 +278,7 @@ function PerfisDaMeta({ tenantId, perfil }: {
                   wordBreak: "break-all", color: "var(--ink-fraco)",
                 }}>{link}</div>
                 <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 5 }}>
-                  {copiado ? "Copiado. " : ""}Vale 15 minutos e serve uma vez só.
+                  {copiado ? "Copiado. " : ""}Vale 30 minutos. Abre em qualquer navegador.
                 </div>
               </div>
             )}

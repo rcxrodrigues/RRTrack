@@ -18,8 +18,15 @@ import { metaLinks, metaProfiles } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
 import type { AppMeta } from "./meta-oauth";
 
-/* Quinze minutos: dá tempo de trocar de navegador, não dá tempo de esquecer. */
-const VALIDADE_MINUTOS = 15;
+/*
+ * Trinta minutos.
+ *
+ * Eram quinze, e apertava: quem gera o link no painel, copia, abre o
+ * navegador antidetect, escolhe o perfil certo e cola, gasta boa parte disso
+ * antes de clicar. A Utmify usa trinta, e é a folga certa — dá tempo de
+ * atravessar a troca de navegador sem dar tempo de esquecer que gerou.
+ */
+const VALIDADE_MINUTOS = 30;
 
 /*
  * A URL de retorno tem de ser IDÊNTICA em dois lugares: aqui e na lista de
