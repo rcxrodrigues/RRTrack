@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/index";
-import { adAccounts, destinations, gatewayConnections, sites } from "@/db/schema";
+import { adAccounts, destinations, gatewayConnections, metaProfiles, sites } from "@/db/schema";
 import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
 import { listGateways } from "@/gateways/registry";
@@ -28,11 +28,14 @@ export default async function PaginaIntegracoes() {
    * decifradas aqui: a tela mostra que existe token, nunca o token. Uma vez
    * gravado, um segredo não precisa voltar para o navegador nunca mais.
    */
-  const [contas, conexoes, pixels, site] = await Promise.all([
+  const [contas, conexoes, pixels, site, perfil] = await Promise.all([
     db.select().from(adAccounts).where(eq(adAccounts.tenantId, loja.id)),
     db.select().from(gatewayConnections).where(eq(gatewayConnections.tenantId, loja.id)),
     db.select().from(destinations).where(eq(destinations.tenantId, loja.id)),
     db.select().from(sites).where(and(eq(sites.tenantId, loja.id), eq(sites.active, true))).limit(1),
+    /* Só o nome e o prazo: o token nunca sai do servidor. */
+    db.select({ nome: metaProfiles.name, expiraEm: metaProfiles.tokenExpiresAt })
+      .from(metaProfiles).where(eq(metaProfiles.tenantId, loja.id)).limit(1),
   ]);
 
   const base = process.env.RR_BASE ?? "https://rr-track.vercel.app";
@@ -67,6 +70,9 @@ export default async function PaginaIntegracoes() {
         repasse: g.passthroughFields.join(", "),
       }))}
       modelosUtm={MODELOS}
+      perfilMeta={perfil[0]
+        ? { nome: perfil[0].nome, expiraEm: perfil[0].expiraEm?.toISOString() ?? null }
+        : null}
     />
   );
 }

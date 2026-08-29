@@ -634,3 +634,27 @@ export const metaLinks = pgTable("meta_links", {
   uniqueIndex("meta_links_secret").on(t.secret),
   index("meta_links_tenant_user").on(t.tenantId, t.userId),
 ]);
+
+/*
+ * O perfil do Facebook conectado a uma loja.
+ *
+ * Separado de `meta_links` porque são coisas de duração diferente: o link é um
+ * bilhete de quinze minutos para atravessar navegadores, o perfil é o vínculo
+ * que fica. Sem esta tabela, ligar mais uma conta de anúncio no mês seguinte
+ * exigiria refazer o login inteiro — que foi exatamente a queixa.
+ *
+ * O token vive aqui, cifrado. As linhas de `ad_accounts` e `destinations`
+ * continuam carregando a própria cópia, porque é o formato que o resto do
+ * sistema espera; esta é a fonte de onde essas cópias saem, e é o que permite
+ * renovar todas de uma vez quando os 60 dias vencerem.
+ */
+export const metaProfiles = pgTable("meta_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /* O id do usuário no Facebook — é o que identifica o perfil entre reconexões. */
+  fbUserId: text("fb_user_id").notNull(),
+  name: text("name").notNull(),
+  token: text("token").notNull(),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("meta_profiles_tenant_fb").on(t.tenantId, t.fbUserId)]);

@@ -14,7 +14,7 @@
 
 import { and, eq, gt, isNotNull } from "drizzle-orm";
 import { db } from "@/db/index";
-import { metaLinks } from "@/db/schema";
+import { metaLinks, metaProfiles } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
 import type { AppMeta } from "./meta-oauth";
 
@@ -138,4 +138,58 @@ export async function guardarToken(
  */
 export async function fecharVinculo(id: string): Promise<void> {
   await db.delete(metaLinks).where(eq(metaLinks.id, id));
+}
+
+/* ------------------------------------------------------------- perfil -- */
+
+export interface Perfil {
+  id: string;
+  fbUserId: string;
+  nome: string;
+  token: string;
+  expiraEm: Date | null;
+}
+
+/*
+ * Guarda — ou renova — o perfil conectado.
+ *
+ * Reconectar tem de cair na MESMA linha, e é por isso que a chave é o par
+ * (loja, id do Facebook). Se cada login criasse um perfil novo, o painel
+ * acumularia entradas idênticas e ninguém saberia qual token está valendo.
+ */
+export async function salvarPerfil(
+  tenantId: string,
+  fbUserId: string,
+  nome: string,
+  token: string,
+  expiraEm: Date | null,
+): Promise<void> {
+  const cifrado = await encryptValue(token);
+
+  await db.insert(metaProfiles)
+    .values({ tenantId, fbUserId, name: nome, token: cifrado, tokenExpiresAt: expiraEm })
+    .onConflictDoUpdate({
+      target: [metaProfiles.tenantId, metaProfiles.fbUserId],
+      set: { name: nome, token: cifrado, tokenExpiresAt: expiraEm, connectedAt: new Date() },
+    });
+}
+
+export async function perfilDaLoja(tenantId: string): Promise<Perfil | null> {
+  const [linha] = await db.select().from(metaProfiles)
+    .where(eq(metaProfiles.tenantId, tenantId))
+    .limit(1);
+
+  if (!linha) return null;
+
+  return {
+    id: linha.id,
+    fbUserId: linha.fbUserId,
+    nome: linha.name,
+    token: await decryptValue(linha.token),
+    expiraEm: linha.tokenExpiresAt,
+  };
+}
+
+export async function esquecerPerfil(tenantId: string): Promise<void> {
+  await db.delete(metaProfiles).where(eq(metaProfiles.tenantId, tenantId));
 }

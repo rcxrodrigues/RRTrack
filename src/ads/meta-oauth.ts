@@ -237,3 +237,14 @@ export async function contasEPixels(
 
   return { contas, pixels: [...pixels.values()] };
 }
+
+/** Quem é o dono deste token. O nome é só para a pessoa se reconhecer na tela. */
+export async function perfil(
+  app: AppMeta,
+  token: string,
+): Promise<{ id: string; nome: string }> {
+  const r = await pedir<{ id?: string; name?: string }>(
+    "/me", { fields: "id,name" }, app, token,
+  );
+  return { id: r.id ?? "", nome: r.name ?? "Perfil do Facebook" };
+}

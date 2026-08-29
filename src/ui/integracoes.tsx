@@ -154,7 +154,10 @@ function Campo({ rotulo, dica, ...resto }: {
  * usuário de sistema do Business Manager tem um token que não vence, e obrigar
  * essa pessoa a refazer o login a cada 60 dias seria uma piora.
  */
-function ConectarFacebook({ tenantId }: { tenantId: string }) {
+function ConectarFacebook({ tenantId, perfil }: {
+  tenantId: string;
+  perfil: { nome: string; expiraEm: string | null } | null;
+}) {
   const erro = useSearchParams().get("meta_erro");
   const [link, setLink] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
@@ -184,9 +187,19 @@ function ConectarFacebook({ tenantId }: { tenantId: string }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <div style={{ flexGrow: 1, minWidth: 220 }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Conectar com o Facebook</div>
+          <div style={{ fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+            {perfil ? perfil.nome : "Conectar com o Facebook"}
+            {perfil && <Selo ok>perfil conectado</Selo>}
+          </div>
           <div style={{ fontSize: 11.5, color: "var(--ink-tenue)", marginTop: 3 }}>
-            Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão.
+            {perfil
+              ? <>
+                  <a href="/integracoes/meta" style={{ color: "var(--acento)" }}>
+                    Escolher contas de anúncio e pixels
+                  </a>
+                  {perfil.expiraEm && ` · autorização vale até ${new Date(perfil.expiraEm).toLocaleDateString("pt-BR")}`}
+                </>
+              : "Traz as contas de anúncio e os pixels do seu perfil, sem copiar token à mão."}
           </div>
           {erro && (
             <div style={{ fontSize: 11.5, color: "var(--negativo)", marginTop: 6 }}>{erro}</div>
@@ -197,7 +210,7 @@ function ConectarFacebook({ tenantId }: { tenantId: string }) {
           padding: "9px 16px", borderRadius: 5, textDecoration: "none",
           fontWeight: 600, fontSize: 12.5,
           background: "#1877F2", color: "#fff", whiteSpace: "nowrap",
-        }}>Entrar com o Facebook</a>
+        }}>{perfil ? "Reconectar" : "Entrar com o Facebook"}</a>
       </div>
 
       {/*
@@ -470,8 +483,9 @@ function ChaveDeApi({
 }
 
 export function Integracoes({
-  loja, base, site, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm,
+  loja, base, site, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm, perfilMeta,
 }: {
+  perfilMeta: { nome: string; expiraEm: string | null } | null;
   loja: LojaDoUsuario;
   base: string;
   site: {
@@ -624,7 +638,7 @@ export function Integracoes({
               Sem elas o painel tem faturamento e lucro, mas não tem ROAS — não há com o que dividir.
             </p>
 
-            <ConectarFacebook tenantId={loja.id} />
+            <ConectarFacebook tenantId={loja.id} perfil={perfilMeta} />
 
             {PLATAFORMAS.map((p) => {
               const conta = contas.find((c) => c.plataforma === p.id && c.ativo);
@@ -659,9 +673,16 @@ export function Integracoes({
 
                     {conta && <Selo ok>conectada</Selo>}
 
+                    {/*
+                      * Quando o perfil do Facebook está conectado, o cadastro
+                      * manual vira caminho secundário — mas continua existindo.
+                      * Token de usuário de sistema não vence, e quem usa um
+                      * desses ficaria pior sendo obrigado a refazer login a
+                      * cada 60 dias.
+                      */}
                     <Botao pequeno tipo="secundario"
                       onClick={() => { setEditando(aberto ? null : `conta:${p.id}`); setForm({}); }}>
-                      {conta ? "editar" : "conectar"}
+                      {conta ? "editar" : (p.id === "meta" && perfilMeta) ? "token manual" : "conectar"}
                     </Botao>
                   </div>
 

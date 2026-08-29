@@ -15,8 +15,8 @@
 import { redirect } from "next/navigation";
 import { COOKIE } from "@/core/auth";
 import { cookies } from "next/headers";
-import { alongarToken, escoposFaltando, inspecionar, trocarCodigo } from "@/ads/meta-oauth";
-import { acharPeloSegredo, appDaMeta, guardarToken, urlDeRetorno } from "@/ads/meta-vinculo";
+import { alongarToken, escoposFaltando, inspecionar, perfil, trocarCodigo } from "@/ads/meta-oauth";
+import { acharPeloSegredo, appDaMeta, fecharVinculo, salvarPerfil, urlDeRetorno } from "@/ads/meta-vinculo";
 
 export const runtime = "nodejs";
 
@@ -59,7 +59,22 @@ export async function GET(req: Request): Promise<Response> {
        */
       const faltando = escoposFaltando(info.escopos);
       if (faltando.length > 0) problema = `faltou autorizar: ${faltando.join(", ")}`;
-      else await guardarToken(vinculo.id, info.token, info.expiraEm);
+      else {
+        /*
+         * O token vai para o PERFIL, que fica. O link era só o bilhete para
+         * atravessar navegadores, e some agora — deixá-lo vivo manteria uma
+         * segunda cópia de um token de 60 dias num lugar que ninguém consulta.
+         */
+        const quem = await perfil(app, info.token);
+        await salvarPerfil(
+          vinculo.tenantId,
+          quem.id || info.usuarioId,
+          quem.nome,
+          info.token,
+          info.expiraEm,
+        );
+        await fecharVinculo(vinculo.id);
+      }
     } catch (e) {
       problema = e instanceof Error ? e.message : "falha ao falar com a Meta";
     }

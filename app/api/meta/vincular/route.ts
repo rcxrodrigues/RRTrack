@@ -1,75 +1,52 @@
 /*
- * Passo 3 de 3: lista o que o perfil autorizado enxerga, e grava o escolhido.
+ * O que do perfil conectado pertence a esta loja.
  *
- * GET  devolve contas de anúncio e pixels — nunca o token.
- * POST grava as escolhas e apaga o vínculo, com o token dentro dele.
+ * GET  lista contas e pixels que o perfil enxerga, marcando o que já está
+ *      vinculado. Nunca devolve o token.
+ * POST aplica a escolha: liga o que foi marcado, desliga o que foi desmarcado.
  *
- * O mesmo token vai para as duas tabelas, `ad_accounts` e `destinations`,
- * porque é o mesmo perfil que lê o gasto e envia a conversão. Duplicar parece
- * desperdício, mas é o formato que o resto do sistema já espera: cada linha
- * carrega a própria credencial, e desvincular uma conta não pode derrubar o
- * envio de evento de outra.
+ * Esta tela é revisitável de propósito. O login com o Facebook acontece uma
+ * vez e fica guardado em `meta_profiles`; ligar uma conta nova no mês seguinte
+ * não pode exigir refazer o consentimento inteiro. Enquanto o token valer, a
+ * lista está a um clique.
+ *
+ * O token é copiado para cada linha de `ad_accounts` e `destinations` porque é
+ * o formato que o resto do sistema espera — cada linha carrega a própria
+ * credencial, e desvincular uma conta não derruba o envio de outra.
  */
 
-import { and, eq, gt, isNotNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/index";
-import { adAccounts, destinations, metaLinks } from "@/db/schema";
-import { exigirSessao } from "@/core/sessao";
+import { adAccounts, destinations } from "@/db/schema";
+import { contexto } from "@/core/sessao";
+import { lojaAtual } from "@/core/loja-atual";
 import { acessoALoja } from "@/core/auth";
 import { encryptValue } from "@/core/crypto";
 import { contasEPixels } from "@/ads/meta-oauth";
-import { appDaMeta, fecharVinculo, vinculoPronto } from "@/ads/meta-vinculo";
+import { appDaMeta, perfilDaLoja } from "@/ads/meta-vinculo";
 
 export const runtime = "nodejs";
 
-/*
- * Qual loja consultar quando o pedido não diz.
- *
- * O GET da tela de escolha não sabe o tenantId — ela acabou de chegar de um
- * redirecionamento. Então procuramos entre as lojas da pessoa a que tem um
- * vínculo pronto esperando.
- */
-async function lojaDoPedido(userId: string, pedido?: string): Promise<string | null> {
-  if (pedido) return pedido;
-
-  const [pendente] = await db.select({ tenantId: metaLinks.tenantId })
-    .from(metaLinks)
-    .where(and(
-      eq(metaLinks.userId, userId),
-      isNotNull(metaLinks.token),
-      gt(metaLinks.expiresAt, new Date()),
-    ))
-    .limit(1);
-
-  return pendente?.tenantId ?? null;
-}
-
-/*
- * Confere as três coisas que precisam valer juntas: há sessão, há um vínculo
- * em andamento, e a loja do vínculo é uma que esta pessoa acessa. A terceira é
- * a que importa — sem ela, quem tem uma sessão qualquer poderia gravar o token
- * numa loja alheia trocando o tenantId do corpo.
- */
-async function contextoDoVinculo(tenantIdPedido?: string) {
-  const sessao = await exigirSessao();
-  if (!sessao.ok) return { erro: sessao.resposta };
+async function contextoDaLoja(tenantIdPedido?: string) {
+  const ctx = await contexto();
+  if (!ctx) return { erro: Response.json({ erro: "não autenticado" }, { status: 401 }) };
 
   /*
-   * A loja vem da sessão, não do pedido: o vínculo pronto é procurado pelo par
-   * (loja atual, pessoa logada). Aceitar um tenantId do corpo como origem da
-   * verdade deixaria alguém com sessão apontar o token para loja alheia.
+   * Sem tenantId no pedido, vale a loja que o painel está mostrando. Com
+   * tenantId, ele ainda passa por `acessoALoja` — o corpo do pedido é palpite
+   * do navegador, nunca prova de acesso.
    */
-  const alvo = await lojaDoPedido(sessao.ctx.usuario.userId, tenantIdPedido);
-  if (!alvo) return { erro: Response.json({ erro: "falta a loja" }, { status: 400 }) };
+  const loja = tenantIdPedido
+    ? await acessoALoja(ctx.usuario.userId, tenantIdPedido)
+    : await lojaAtual(ctx);
 
-  const loja = await acessoALoja(sessao.ctx.usuario.userId, alvo);
   if (!loja) return { erro: Response.json({ erro: "não encontrado" }, { status: 404 }) };
 
-  const vinculo = await vinculoPronto(alvo, sessao.ctx.usuario.userId);
-  if (!vinculo) {
+  const perfil = await perfilDaLoja(loja.id);
+  if (!perfil) {
     return {
       erro: Response.json(
-        { erro: "nenhuma conexão em andamento — conecte com o Facebook de novo" },
+        { erro: "nenhum perfil do Facebook conectado a esta loja" },
         { status: 409 },
       ),
     };
@@ -80,20 +57,44 @@ async function contextoDoVinculo(tenantIdPedido?: string) {
     return { erro: Response.json({ erro: "app da Meta não configurado" }, { status: 503 }) };
   }
 
-  return { vinculo, app, loja };
+  return { loja, perfil, app };
 }
 
 export async function GET(): Promise<Response> {
-  const ctx = await contextoDoVinculo();
+  const ctx = await contextoDaLoja();
   if (ctx.erro) return ctx.erro;
 
   try {
-    const { contas, pixels } = await contasEPixels(ctx.app, ctx.vinculo.token!);
+    const { contas, pixels } = await contasEPixels(ctx.app, ctx.perfil.token);
+
+    /* O que já está ligado vem marcado, para a tela mostrar o estado atual. */
+    const [jaContas, jaPixels] = await Promise.all([
+      db.select({ externalId: adAccounts.externalId })
+        .from(adAccounts)
+        .where(and(
+          eq(adAccounts.tenantId, ctx.loja.id),
+          eq(adAccounts.platform, "meta"),
+          eq(adAccounts.active, true),
+        )),
+      db.select({ externalId: destinations.externalId })
+        .from(destinations)
+        .where(and(
+          eq(destinations.tenantId, ctx.loja.id),
+          eq(destinations.platform, "meta"),
+          eq(destinations.active, true),
+        )),
+    ]);
+
     return Response.json({
       loja: { id: ctx.loja.id, nome: ctx.loja.nome },
-      expiraEm: ctx.vinculo.tokenExpiresAt ? ctx.vinculo.tokenExpiresAt.toISOString() : null,
+      perfil: { nome: ctx.perfil.nome },
+      expiraEm: ctx.perfil.expiraEm ? ctx.perfil.expiraEm.toISOString() : null,
       contas,
       pixels,
+      vinculados: {
+        contas: jaContas.map((c) => c.externalId),
+        pixels: jaPixels.map((p) => p.externalId),
+      },
     });
   } catch (e) {
     return Response.json(
@@ -120,7 +121,7 @@ function escolhas(v: unknown): Escolha[] {
 export async function POST(req: Request): Promise<Response> {
   const corpo = await req.json().catch(() => ({}));
 
-  const ctx = await contextoDoVinculo(
+  const ctx = await contextoDaLoja(
     typeof corpo.tenantId === "string" ? corpo.tenantId : undefined,
   );
   if (ctx.erro) return ctx.erro;
@@ -128,13 +129,9 @@ export async function POST(req: Request): Promise<Response> {
   const contas = escolhas(corpo.contas);
   const pixels = escolhas(corpo.pixels);
 
-  if (contas.length === 0 && pixels.length === 0) {
-    return Response.json({ erro: "escolha ao menos uma conta ou um pixel" }, { status: 400 });
-  }
-
-  const tenantId = ctx.vinculo.tenantId;
-  const cifrado = { accessToken: await encryptValue(ctx.vinculo.token!) };
-  const vence = ctx.vinculo.tokenExpiresAt;
+  const tenantId = ctx.loja.id;
+  const cifrado = { accessToken: await encryptValue(ctx.perfil.token) };
+  const vence = ctx.perfil.expiraEm;
 
   for (const c of contas) {
     const [existente] = await db.select({ id: adAccounts.id }).from(adAccounts)
@@ -180,7 +177,49 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  await fecharVinculo(ctx.vinculo.id);
+  /*
+   * Desmarcar tem de desligar, senão a tela mente: a pessoa tira o visto,
+   * salva, e a conta continua sincronizando.
+   *
+   * Desativa, não apaga. O histórico de gasto e de disparos aponta para estas
+   * linhas, e apagá-las levaria o histórico junto.
+   */
+  const desligados = { contas: 0, pixels: 0 };
 
-  return Response.json({ ok: true, contas: contas.length, pixels: pixels.length });
+  const contasAtuais = await db.select({ id: adAccounts.id, externalId: adAccounts.externalId })
+    .from(adAccounts)
+    .where(and(
+      eq(adAccounts.tenantId, tenantId),
+      eq(adAccounts.platform, "meta"),
+      eq(adAccounts.active, true),
+    ));
+
+  for (const atual of contasAtuais) {
+    if (!contas.some((c) => c.id === atual.externalId)) {
+      await db.update(adAccounts).set({ active: false }).where(eq(adAccounts.id, atual.id));
+      desligados.contas++;
+    }
+  }
+
+  const pixelsAtuais = await db.select({ id: destinations.id, externalId: destinations.externalId })
+    .from(destinations)
+    .where(and(
+      eq(destinations.tenantId, tenantId),
+      eq(destinations.platform, "meta"),
+      eq(destinations.active, true),
+    ));
+
+  for (const atual of pixelsAtuais) {
+    if (!pixels.some((p) => p.id === atual.externalId)) {
+      await db.update(destinations).set({ active: false }).where(eq(destinations.id, atual.id));
+      desligados.pixels++;
+    }
+  }
+
+  return Response.json({
+    ok: true,
+    contas: contas.length,
+    pixels: pixels.length,
+    desligados,
+  });
 }

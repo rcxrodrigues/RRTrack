@@ -32,9 +32,12 @@ interface Pixel {
 
 interface Recursos {
   loja: { id: string; nome: string };
+  perfil: { nome: string };
   expiraEm: string | null;
   contas: Conta[];
   pixels: Pixel[];
+  /* O que já está ligado hoje — a tela abre refletindo o estado real. */
+  vinculados: { contas: string[]; pixels: string[] };
 }
 
 /*
@@ -111,6 +114,13 @@ export function MetaVincular() {
         const j = await r.json();
         if (!r.ok) { setErro(j.erro ?? "falha ao listar"); return; }
         setDados(j);
+        /*
+         * Abrir com o que já vale marcado é o que torna a tela revisitável: a
+         * pessoa vem ligar mais uma conta, não recomeçar do zero. Sem isso,
+         * salvar desligaria em silêncio tudo que ela não remarcou.
+         */
+        setContasSel(j.vinculados?.contas ?? []);
+        setPixelsSel(j.vinculados?.pixels ?? []);
       })
       .catch(() => setErro("sem conexão com o servidor"));
   }, []);
@@ -163,8 +173,6 @@ export function MetaVincular() {
     return <div style={{ padding: 28, fontSize: 12.5, color: "var(--ink-tenue)" }}>lendo o que o perfil enxerga…</div>;
   }
 
-  const nada = contasSel.length === 0 && pixelsSel.length === 0;
-
   return (
     <div style={{ padding: 28, maxWidth: 720, display: "flex", flexDirection: "column", gap: 18 }}>
       <div>
@@ -172,7 +180,8 @@ export function MetaVincular() {
           O que pertence a {dados.loja.nome}?
         </h1>
         <p style={{ fontSize: 12, color: "var(--ink-tenue)", margin: "4px 0 0" }}>
-          Marque só o que for desta loja. Dá para vincular mais depois, sem refazer o login.
+          Conectado pelo perfil <strong style={{ color: "var(--ink-medio)" }}>{dados.perfil.nome}</strong>.
+          Marque só o que for desta loja — desmarcar desliga, e dá para voltar aqui quando quiser.
         </p>
       </div>
 
@@ -234,13 +243,12 @@ export function MetaVincular() {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <button onClick={vincular} disabled={nada || salvando} style={{
+        <button onClick={vincular} disabled={salvando} style={{
           padding: "9px 16px", borderRadius: 5, border: "none",
           fontWeight: 600, fontSize: 12.5,
-          background: nada ? "var(--linha)" : "var(--acento)",
-          color: nada ? "var(--ink-tenue)" : "#062026",
+          background: "var(--acento)", color: "#062026",
         }}>
-          {salvando ? "vinculando…" : "Vincular à loja"}
+          {salvando ? "salvando…" : "Salvar"}
         </button>
         <a href="/integracoes" style={{ fontSize: 12.5, color: "var(--ink-tenue)" }}>cancelar</a>
       </div>
@@ -256,7 +264,8 @@ export function MetaVincular() {
           <strong style={{ color: "var(--ink-medio)" }}>
             {new Date(dados.expiraEm).toLocaleDateString("pt-BR")}
           </strong>
-          . Perto da data o painel avisa para reconectar — são os mesmos dois cliques.
+          . Perto da data o painel avisa para reconectar — são os mesmos dois cliques, e as
+          contas já escolhidas continuam onde estão.
         </p>
       )}
     </div>
