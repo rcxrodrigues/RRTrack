@@ -113,14 +113,25 @@ export function Navegacao({
       height: "100vh", position: "sticky", top: 0,
     }}>
 
+      {/*
+        A marca troca com o estado do menu: recolhido mostra só o símbolo,
+        expandido mostra a marca inteira. Não é enfeite — em 52px de largura a
+        palavra "RRTrack" não caberia, e cortá-la fica pior que escondê-la.
+
+        Os dois arquivos são PNG e não SVG porque a logo nasceu de imagem, não
+        de vetor. Foram gerados a três vezes o tamanho de exibição, que é o que
+        os mantém nítidos em tela retina — e ainda assim somam 26 KB.
+      */}
       <div className="rr-lateral-topo" style={{ padding: "16px 14px 12px", display: "flex", alignItems: "center", gap: 9 }}>
-        <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="var(--acento)" strokeWidth="1.6">
-          <circle cx="9" cy="9" r="1.8" fill="var(--acento)" stroke="none" />
-          <path d="M4.2 4.2a6.8 6.8 0 0 0 0 9.6M13.8 4.2a6.8 6.8 0 0 1 0 9.6" />
-        </svg>
-        {!recolhido && (
+        {recolhido ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src="/marca/icone.png" alt="RRTrack" width={24} height={24}
+            style={{ display: "block", margin: "0 auto" }} />
+        ) : (
           <>
-            <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-.2px" }}>RRTrack</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/marca/completa.png" alt="RRTrack" height={22}
+              style={{ display: "block", width: "auto" }} />
             <button onClick={alternar} title="Recolher menu" aria-label="Recolher menu"
               style={{ ...botaoRecolher, marginLeft: "auto" }}>
               <IconeRecolher recolhido={false} />

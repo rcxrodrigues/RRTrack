@@ -47,8 +47,14 @@ export const config = {
    * 307 para /entrar, e quem chamou vê 405 ou uma página de login em vez da
    * resposta. Do lado do gateway isso é venda perdida em silêncio. Rota nova
    * de ingestão entra nesta lista no mesmo commit em que nasce.
+   *
+   * Arquivo estático também fica de fora, e por um motivo que não é óbvio: o
+   * navegador pede o favicon e a logo ANTES de qualquer sessão existir — na
+   * própria tela de login, inclusive. Passando pelo porteiro, eles voltavam
+   * 307 para /entrar e a imagem simplesmente não aparecia, sem erro nenhum
+   * no console que dissesse por quê.
    */
   matcher: [
-    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|api/meta/retorno|vincular/|rr/|rr\.js|_next|favicon).*)",
+    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|api/meta/retorno|vincular/|rr/|rr\.js|marca/|icon\.png|apple-icon|_next|favicon).*)",
   ],
 };
