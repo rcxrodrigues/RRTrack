@@ -111,6 +111,8 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
   const [erro, setErro] = useState<string | null>(null);
   const [contasSel, setContasSel] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
+  /* Confirmação curta: sem ela, salvar não muda nada visível na tela. */
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/meta/vincular")
@@ -157,6 +159,17 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
       setSalvando(false);
       return;
     }
+
+    /*
+     * Desliga o "salvando..." ANTES de atualizar a tela.
+     *
+     * Faltava, e o botão ficava girando para sempre depois de um salvamento
+     * que tinha dado certo. `router.refresh()` recarrega o que veio do
+     * servidor, mas não zera o estado deste componente — quem clicou não tem
+     * como saber que funcionou, e clica de novo.
+     */
+    setSalvando(false);
+    setAviso("Contas vinculadas.");
 
     if (!embutido) router.push("/integracoes");
     router.refresh();
@@ -247,6 +260,9 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
           {salvando ? "salvando…" : "Salvar"}
         </button>
         <a href="/integracoes" style={{ fontSize: 12.5, color: "var(--ink-tenue)" }}>cancelar</a>
+        {aviso && (
+          <span style={{ fontSize: 12.5, color: "var(--positivo)" }}>{aviso}</span>
+        )}
       </div>
 
       {/*
