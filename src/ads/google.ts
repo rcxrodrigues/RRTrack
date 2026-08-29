@@ -105,9 +105,7 @@ export const googleAdsAdapter: AdSpendAdapter = {
       avisos.push("não foi possível ler a moeda da conta");
     }
 
-    if (moeda !== "BRL") {
-      avisos.push(`a conta reporta em ${moeda}; somar com faturamento em real não faria sentido`);
-    }
+    /* Nao se compara moeda aqui — ver a nota longa em ads/meta.ts. */
 
     const query = GAQL.replace("{DE}", janela.de).replace("{ATE}", janela.ate);
     let pageToken: string | undefined;

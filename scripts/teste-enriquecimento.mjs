@@ -145,8 +145,28 @@ check("UF em duas letras", ud?.st?.[0] === await hash("mg"));
 check("data BR virou AAAAMMDD", ud?.db?.[0] === await hash("19880314"));
 check("gênero virou uma letra", ud?.ge?.[0] === await hash("m"));
 check("CPF entre os external_id", ud?.external_id?.includes(await hash("12345678909")));
-check("nenhum dado pessoal em claro", !JSON.stringify(ud).includes("gmail")
-  && !JSON.stringify(ud).includes("30140") && !JSON.stringify(ud).includes("Nogueira"));
+/*
+ * Antes isto varria o JSON inteiro atras das substrings "gmail", "30140" e
+ * "Nogueira". A do CEP falhava sozinha, de vez em quando: "30140" so tem
+ * digitos hexadecimais, e o `external_id` carrega o hash do click_id, que
+ * muda a cada execucao. Uma vez a cada poucos milhares de rodadas um hash
+ * contem essa sequencia por acaso e o teste acusava vazamento inexistente.
+ *
+ * Teste que falha sozinho e pior que teste ausente: ensina a ignorar a suite,
+ * e o dia em que o vazamento for de verdade ninguem vai olhar.
+ *
+ * A verificacao agora e mais forte e nao depende de sorte: todo campo de PII
+ * tem que ser exatamente 64 digitos hexadecimais, o formato de um SHA-256.
+ * Qualquer coisa em claro falha nisso — nao so as tres palavras que alguem
+ * lembrou de procurar. Os campos que a Meta espera SEM hash (ip, user agent,
+ * fbp, fbc) ficam de fora da regra, que e o motivo de a lista ser explicita.
+ */
+const HASH = /^[0-9a-f]{64}$/;
+const PII = ["em", "ph", "fn", "ln", "zp", "ct", "st", "country", "db", "ge", "external_id"];
+const emClaro = PII.flatMap((c) => (ud?.[c] ?? []).map((v) => [c, v]))
+  .filter(([, v]) => !HASH.test(String(v)));
+check("todo campo de PII e um SHA-256, nada em claro", emClaro.length === 0,
+  emClaro.map(([c, v]) => `${c}=${v}`).join(" "));
 
 console.log("\n6. a estrutura do anúncio veio junto");
 const [s] = await sql`SELECT campaign_id, campaign_name FROM click_sessions WHERE click_id = ${clickId}`;

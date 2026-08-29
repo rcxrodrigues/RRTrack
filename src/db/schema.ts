@@ -565,6 +565,19 @@ export const adSpendDaily = pgTable("ad_spend_daily", {
   adId: text("ad_id"),
   adName: text("ad_name"),
 
+  /*
+   * A moeda em que a PLATAFORMA reportou este gasto.
+   *
+   * Não e a mesma coisa que a moeda da loja, e e ai que mora o perigo. O
+   * adaptador ja lia isto e so empurrava um aviso; a linha era gravada sem
+   * moeda nenhuma e virava numero puro na soma. Conta em dolar anunciando
+   * para loja em libra entregava um ROAS que era divisao entre moedas
+   * diferentes: sem erro, sem aviso na tela, e sem significado.
+   *
+   * Guardado aqui, o painel pode recusar somar o que nao e comparavel em vez
+   * de inventar um numero que alguem usaria para decidir quanto investir.
+   */
+  currency: text("currency").notNull().default("BRL"),
   spendCents: bigint("spend_cents", { mode: "number" }).notNull().default(0),
   impressions: bigint("impressions", { mode: "number" }),
   clicks: bigint("clicks", { mode: "number" }),

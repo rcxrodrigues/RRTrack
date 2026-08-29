@@ -150,12 +150,18 @@ export const metaAdsAdapter: AdSpendAdapter = {
       avisos.push("não foi possível ler moeda e fuso da conta");
     }
 
-    if (moeda !== "BRL") {
-      avisos.push(
-        `a conta reporta em ${moeda}, não em BRL — o gasto entra na moeda original ` +
-        `e somar com faturamento em real daria número sem sentido`,
-      );
-    }
+    /*
+     * Aqui nao se compara moeda nenhuma, de proposito.
+     *
+     * Antes havia um `if (moeda !== "BRL")` com o aviso escrito na mao — o
+     * que so fazia sentido enquanto toda loja fosse brasileira. Para uma loja
+     * em libra, uma conta em libra disparava o alerta e uma conta em real
+     * passava calada: exatamente ao contrario.
+     *
+     * O adaptador so relata em que moeda a conta reporta, no `moeda` do
+     * retorno. Quem sabe a moeda da loja e a sincronizacao, e e la que a
+     * comparacao mora.
+     */
 
     const params = new URLSearchParams({
       level: "ad",

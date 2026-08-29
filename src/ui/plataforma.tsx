@@ -1,5 +1,7 @@
 "use client";
 
+import { useDinheiro } from "./moeda";
+
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { LinhaMetrica, Nivel } from "@/core/metricas";
@@ -34,9 +36,6 @@ const PERIODOS = [
 
 /* -------------------------------------------------------- formatação -- */
 
-const brl = (c: number) =>
-  "R$ " + (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 const numero = (n: number) => n.toLocaleString("pt-BR");
 
 /*
@@ -58,7 +57,7 @@ const razao = (v: number | null, casas = 2) =>
 const pctRazao = (v: number | null) =>
   v === null ? "N/A" : (v * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
-const dinheiroOuNa = (c: number | null) => (c === null ? "N/A" : brl(c));
+
 
 /*
  * Idade do dado em texto relativo.
@@ -77,10 +76,21 @@ const quando = (ms: number | null) => {
   return `há ${Math.round(h / 24)} d`;
 };
 
-function formatar(c: Coluna, l: LinhaMetrica): string {
+/*
+ * Recebe o formatador de dinheiro em vez de importar um.
+ *
+ * `formatar` roda fora de componente e não pode chamar hook — e a moeda vem
+ * de contexto. Passar a função resolve os dois: a regra de formatação continua
+ * num lugar só, e esta tabela não precisa saber que moeda é.
+ */
+function formatar(
+  c: Coluna,
+  l: LinhaMetrica,
+  dinheiro: (c: number | null | undefined, curto?: boolean) => string,
+): string {
   const v = c.valor(l);
   switch (c.formato) {
-    case "dinheiro": return dinheiroOuNa(v as number | null);
+    case "dinheiro": return dinheiro(v as number | null);
     case "numero": return numero((v as number) ?? 0);
     case "razao": return razao(v as number | null);
     case "pct": return pctRazao(v as number | null);
@@ -116,6 +126,7 @@ export function Plataforma({
   nome: string;
   temConta: boolean;
 }) {
+  const dinheiro = useDinheiro();
   const router = useRouter();
   const caminho = usePathname();
   const params = useSearchParams();
@@ -193,14 +204,44 @@ export function Plataforma({
 
   const celulas = (l: LinhaMetrica, forte: boolean) => [
     <span key="__nome" style={{
-      fontWeight: forte ? 600 : 500, overflow: "hidden",
-      textOverflow: "ellipsis", whiteSpace: "nowrap",
-    }}>{l.nome}</span>,
+      display: "flex", alignItems: "center", gap: 7,
+      overflow: "hidden", minWidth: 0,
+    }}>
+      <span style={{
+        fontWeight: forte ? 600 : 500, overflow: "hidden",
+        textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>{l.nome}</span>
+      {/*
+        Esta linha gastou em moeda que nao e a da loja, e esse gasto NAO esta
+        somado. Sem a marca, o ROAS ao lado pareceria um numero inteiro e
+        otimista — o operador leria "campanha lucrativa" numa linha cujo custo
+        esta pela metade. A marca fica colada no nome, e nao numa coluna no
+        fim, porque precisa ser vista junto com o numero que ela desmente.
+      */}
+      {l.moedasIgnoradas.length > 0 && (
+        <span
+          title={
+            `Ha gasto em ${l.moedasIgnoradas.join(", ")} que nao entrou nesta conta. ` +
+            `So somamos gasto na moeda da loja — converter por conta propria daria ` +
+            `um numero que depende da cotacao do dia e ninguem saberia qual foi. ` +
+            `ROAS, CPA e lucro desta linha estao calculados sobre o gasto restante.`
+          }
+          style={{
+            flexShrink: 0, fontSize: 10.5, fontWeight: 600, letterSpacing: ".3px",
+            color: "var(--alerta)", background: "var(--alerta-fundo)",
+            border: "1px solid color-mix(in srgb, var(--alerta) 30%, transparent)",
+            borderRadius: 5, padding: "1px 5px", cursor: "help",
+          }}
+        >
+          +{l.moedasIgnoradas.join(" ")}
+        </span>
+      )}
+    </span>,
     ...colunas.map((c) => (
       <span key={c.id} className="num" style={{
         color: corDe(c, l),
         fontWeight: c.realce || c.id === "faturamento" ? 600 : undefined,
-      }}>{formatar(c, l)}</span>
+      }}>{formatar(c, l, dinheiro)}</span>
     )),
   ];
 

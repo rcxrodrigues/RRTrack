@@ -31,6 +31,11 @@ export interface Periodo {
   de: string;   /* AAAA-MM-DD, no fuso da loja */
   ate: string;
   timezone: string;
+  /*
+   * Moeda da loja. Obrigatoria pelo mesmo motivo do fuso: so entra no total o
+   * gasto que esta NESTA moeda — ver a nota na coluna `currency` do schema.
+   */
+  moeda: string;
 }
 
 /* ------------------------------------------------------------ números -- */
@@ -42,6 +47,12 @@ export interface Indicadores {
   reembolsosCents: number;
   custoProdutoCents: number;
   gastoCents: number;
+  /*
+   * Moedas que gastaram no periodo e ficaram de fora de `gastoCents`. Quase
+   * sempre vazio; quando nao esta, o lucro logo abaixo esta calculado sobre
+   * um custo incompleto e a tela precisa dizer isso.
+   */
+  moedasIgnoradas: string[];
   lucroCents: number;
   vendasAprovadas: number;
   vendasPendentes: number;
@@ -54,6 +65,13 @@ export interface Indicadores {
 }
 
 export async function indicadores(p: Periodo): Promise<Indicadores> {
+  /*
+   * Sem moeda, o `filter (where currency = NULL)` nao casa com linha nenhuma
+   * e o gasto sai zero — com o lucro inteiro em cima dele. Zero por engano e
+   * pior que erro, porque parece um periodo sem investimento. O TypeScript ja
+   * exige o campo, mas os testes sao .cjs e nao passam por ele.
+   */
+  if (!p.moeda) throw new Error("resumo: falta a moeda da loja (moeda)");
   const v = valorCru(p.regra ?? REGRA_PADRAO);
   const [linha] = await linhasDe(db.execute<{
     bruto: number; taxas: number; custo: number; aprovadas: number;
@@ -73,8 +91,16 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
       AND (occurred_at AT TIME ZONE ${p.timezone})::date BETWEEN ${p.de}::date AND ${p.ate}::date
   `));
 
-  const [g] = await linhasDe(db.execute<{ gasto: number }>(sql`
-    SELECT coalesce(sum(spend_cents), 0)::bigint AS gasto
+  /*
+   * `filter` pela moeda da loja: gasto em dolar nao se soma a faturamento em
+   * real. Sem isto, o "lucro" do Resumo era faturamento menos um numero em
+   * outra unidade — e era o primeiro numero que alguem via ao abrir o painel.
+   */
+  const [g] = await linhasDe(db.execute<{ gasto: number; ignoradas: string | null }>(sql`
+    SELECT
+      coalesce(sum(spend_cents) filter (where currency = ${p.moeda}), 0)::bigint AS gasto,
+      string_agg(DISTINCT currency, ',')
+        filter (where currency <> ${p.moeda} AND spend_cents > 0) AS ignoradas
     FROM ad_spend_daily
     WHERE tenant_id = ${p.tenantId} AND date BETWEEN ${p.de} AND ${p.ate}
   `));
@@ -100,6 +126,7 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
     reembolsosCents: reembolsos,
     custoProdutoCents: custo,
     gastoCents: gasto,
+    moedasIgnoradas: g?.ignoradas ? g.ignoradas.split(",") : [],
     lucroCents: lucro,
     vendasAprovadas: aprovadas,
     vendasPendentes: Number(linha?.pendentes ?? 0),

@@ -13,7 +13,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { adAccounts, adSpendDaily } from "../db/schema";
+import { adAccounts, adSpendDaily, tenants } from "../db/schema";
 import { getAdSpend } from "../ads/registry";
 import { decryptRecord } from "./crypto";
 
@@ -65,6 +65,18 @@ export async function sincronizarGasto(
     eq(adAccounts.active, true),
     ...(opcoes.plataforma ? [eq(adAccounts.platform, opcoes.plataforma)] : []),
   ));
+
+  /*
+   * A moeda da loja, para comparar com a que cada conta reporta.
+   *
+   * A comparacao vive aqui e nao no adaptador porque o adaptador nao conhece
+   * a loja: ele so sabe dizer em que moeda a conta reporta. Enquanto todas as
+   * lojas eram brasileiras dava para escrever "BRL" na mao la dentro; com uma
+   * loja em libra, aquilo alertava sobre a conta certa e calava sobre a errada.
+   */
+  const [loja] = await db.select({ moeda: tenants.currency })
+    .from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+  const moedaDaLoja = loja?.moeda ?? "BRL";
 
   const resumos: ResumoSync[] = [];
 
@@ -146,6 +158,8 @@ export async function sincronizarGasto(
           adsetName: l.adsetName ?? null,
           adId: l.adId,
           adName: l.adName ?? null,
+          /* A moeda em que ESTA conta reporta — ver o comentario na coluna. */
+          currency: r.moeda,
           spendCents: l.gastoCents,
           impressions: l.impressoes ?? null,
           clicks: l.cliques ?? null,
@@ -157,6 +171,8 @@ export async function sincronizarGasto(
           /* Sobrescreve de propósito: a plataforma revisa números publicados,
              e a última leitura é a boa. */
           set: {
+            /* A conta pode ter trocado de moeda; a ultima leitura e a boa. */
+            currency: r.moeda,
             spendCents: l.gastoCents,
             impressions: l.impressoes ?? null,
             clicks: l.cliques ?? null,
@@ -185,7 +201,11 @@ export async function sincronizarGasto(
         linhas: r.linhas.length,
         gastoTotalCents: r.linhas.reduce((s, l) => s + l.gastoCents, 0),
         moeda: r.moeda,
-        avisos: r.avisos,
+        avisos: r.moeda !== moedaDaLoja
+          ? [...r.avisos,
+             `esta conta reporta em ${r.moeda} e a loja e em ${moedaDaLoja}: ` +
+             `o gasto fica gravado na moeda original e NAO entra nos totais`]
+          : r.avisos,
       });
     } catch (e) {
       /*

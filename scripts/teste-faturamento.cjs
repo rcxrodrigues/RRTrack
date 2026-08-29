@@ -55,8 +55,8 @@ const SEMJ   = { countShipping: true,  countInterest: false };
 const NENHUM = { countShipping: false, countInterest: false };
 
 const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje,
-  timezone: "America/Sao_Paulo", nivel: "anuncio" };
-const per = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo" };
+  timezone: "America/Sao_Paulo", moeda: "BRL", nivel: "anuncio" };
+const per = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo", moeda: "BRL" };
 
 console.log("\n== tela de plataforma ==");
 const a = await metricas({ ...janela, regra: TUDO });

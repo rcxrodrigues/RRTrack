@@ -12,14 +12,15 @@ import { AutoAtualiza } from "./auto-atualiza";
  * sai daí.
  */
 
-export const brl = (c: number) =>
-  "R$ " + (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const brlCurto = (c: number) => {
-  const v = c / 100;
-  if (Math.abs(v) >= 1000) return "R$ " + (v / 1000).toFixed(1).replace(".", ",") + "k";
-  return brl(c);
-};
+/*
+ * Dinheiro NÃO se formata aqui.
+ *
+ * `brl`, `brlCurto` e `brlOuNa` viviam neste arquivo e escreviam "R$" fixo.
+ * Numa loja em libra isso mostrava "R$ 1.234,56" para £1.234,56 — número
+ * errado com cara de certo. Agora vem de `useDinheiro()`, em ./moeda, que lê
+ * a moeda da loja do contexto.
+ */
 
 export const num = (n: number) => n.toLocaleString("pt-BR");
 
@@ -37,7 +38,6 @@ export const pct = (v: number | null, casas = 1) =>
 export const razao = (v: number | null) =>
   v === null ? "N/A" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const brlOuNa = (c: number | null) => (c === null ? "N/A" : brl(c));
 
 export const corValor = (v: number) =>
   v > 0 ? "var(--positivo)" : v < 0 ? "var(--negativo)" : "var(--ink-medio)";

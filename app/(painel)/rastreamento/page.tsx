@@ -20,7 +20,9 @@ export default async function Pagina({ searchParams }: {
   const { de, ate } = janelaDe(periodo, loja.timezone);
   /* O que esta loja conta como faturamento — ver core/faturamento.ts. */
   const regra = { countShipping: loja.countShipping, countInterest: loja.countInterest };
-  const p = { tenantId: loja.id, de, ate, timezone: loja.timezone, regra };
+  const p = { tenantId: loja.id, de, ate, timezone: loja.timezone,
+    /* So entra no gasto o que estiver nesta moeda — ver core/resumo.ts. */
+    moeda: loja.currency, regra };
 
   const [atr, gws, res, ult] = await Promise.all([
     porAtribuicao(p), qualidadePorGateway(p), resumoDisparos(p), ultimosDisparos(p),

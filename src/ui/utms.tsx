@@ -1,7 +1,9 @@
 "use client";
 
+import { useDinheiro } from "./moeda";
+
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Cabecalho, Cartao, Nota, SemDado, brl, num, pct } from "./comum";
+import { Cabecalho, Cartao, Nota, SemDado, num, pct } from "./comum";
 import type { LinhaUtm } from "@/core/rastreio";
 
 /*
@@ -26,6 +28,7 @@ export function Utms({
   agrupar: "fonte" | "campanha" | "conteudo";
   linhas: LinhaUtm[];
 }) {
+  const dinheiro = useDinheiro();
   const router = useRouter();
   const caminho = usePathname();
   const params = useSearchParams();
@@ -117,7 +120,7 @@ export function Utms({
                       </div>
                       <div className="num" style={{ textAlign: "right", color: "var(--ink-fraco)" }}>{num(l.sessoes)}</div>
                       <div className="num" style={{ textAlign: "right" }}>{num(l.vendas)}</div>
-                      <div className="num" style={{ textAlign: "right", fontWeight: 500 }}>{brl(l.faturamentoCents)}</div>
+                      <div className="num" style={{ textAlign: "right", fontWeight: 500 }}>{dinheiro(l.faturamentoCents)}</div>
                       <div className="num" style={{
                         textAlign: "right", fontWeight: 600,
                         color: l.taxaConversao === null ? "var(--ink-tenue)"
@@ -136,7 +139,7 @@ export function Utms({
                     <div />
                     <div className="num" style={{ textAlign: "right" }}>{num(total.sessoes)}</div>
                     <div className="num" style={{ textAlign: "right" }}>{num(total.vendas)}</div>
-                    <div className="num" style={{ textAlign: "right" }}>{brl(total.faturamento)}</div>
+                    <div className="num" style={{ textAlign: "right" }}>{dinheiro(total.faturamento)}</div>
                     <div className="num" style={{ textAlign: "right", color: "var(--acento)" }}>
                       {pct(total.sessoes ? (total.vendas / total.sessoes) * 100 : null, 2)}
                     </div>

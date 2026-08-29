@@ -1,6 +1,8 @@
 "use client";
 
-import { Cabecalho, Cartao, Nota, brl, brlCurto, corValor, num, pct, razao, brlOuNa } from "./comum";
+import { useDinheiro } from "./moeda";
+
+import { Cabecalho, Cartao, Nota, corValor, num, pct, razao } from "./comum";
 import { SecaoAoVivo } from "./ao-vivo";
 import type { AoVivo } from "@/core/aovivo";
 import { nomeDaRegiao, nomeDoPais } from "@/core/aovivo";
@@ -30,36 +32,52 @@ export function Resumo({
   regioes: Regiao[];
   aoVivo: AoVivo;
 }) {
+  const dinheiro = useDinheiro();
   const vazio = ind.vendasAprovadas === 0 && funil[0]!.valor === 0;
 
   const cartoes: Array<{
     rotulo: string; valor: string; cor?: string; nota?: string; destaque?: boolean; ausente?: boolean;
+    /* Nota que e aviso, e nao rodape: sai na cor de alerta em vez de apagada. */
+    notaAlerta?: boolean;
   }> = [
     {
       rotulo: "Lucro",
-      valor: temGasto ? brl(ind.lucroCents) : brl(ind.faturamentoLiquidoCents - ind.custoProdutoCents),
+      valor: temGasto ? dinheiro(ind.lucroCents) : dinheiro(ind.faturamentoLiquidoCents - ind.custoProdutoCents),
       cor: corValor(temGasto ? ind.lucroCents : ind.faturamentoLiquidoCents - ind.custoProdutoCents),
       destaque: true,
       nota: temGasto ? "líquido − custo − anúncio" : "sem o gasto de anúncio ainda",
     },
     { rotulo: "ROAS", valor: razao(ind.roas), ausente: !temGasto, nota: temGasto ? undefined : "precisa do gasto" },
-    { rotulo: "Faturamento líquido", valor: brl(ind.faturamentoLiquidoCents), nota: "já sem taxas e reembolsos" },
-    { rotulo: "Gasto com anúncios", valor: temGasto ? brl(ind.gastoCents) : "N/A", ausente: !temGasto, nota: temGasto ? undefined : "conecte a conta em Integrações" },
+    { rotulo: "Faturamento líquido", valor: dinheiro(ind.faturamentoLiquidoCents), nota: "já sem taxas e reembolsos" },
+    /*
+     * Quando ha gasto em outra moeda, o numero deste cartao esta INCOMPLETO —
+     * e ROAS, CPA e Lucro saem todos dele. A nota nao e detalhe: sem ela, o
+     * lucro aparece maior do que e e ninguem tem como desconfiar.
+     */
+    {
+      rotulo: "Gasto com anúncios",
+      valor: temGasto ? dinheiro(ind.gastoCents) : "N/A",
+      ausente: !temGasto,
+      nota: ind.moedasIgnoradas.length
+        ? `fora: gasto em ${ind.moedasIgnoradas.join(", ")}`
+        : temGasto ? undefined : "conecte a conta em Integrações",
+      notaAlerta: ind.moedasIgnoradas.length > 0,
+    },
 
-    { rotulo: "Faturamento bruto", valor: brl(ind.faturamentoBrutoCents) },
+    { rotulo: "Faturamento bruto", valor: dinheiro(ind.faturamentoBrutoCents) },
     { rotulo: "Vendas aprovadas", valor: num(ind.vendasAprovadas) },
-    { rotulo: "Ticket médio", valor: brlOuNa(ind.ticketMedioCents) },
-    { rotulo: "CPA", valor: brlOuNa(ind.cpaCents), ausente: !temGasto },
+    { rotulo: "Ticket médio", valor: dinheiro(ind.ticketMedioCents) },
+    { rotulo: "CPA", valor: dinheiro(ind.cpaCents), ausente: !temGasto },
 
     {
       rotulo: "Vendas pendentes", valor: num(ind.vendasPendentes),
       cor: ind.vendasPendentes ? "var(--alerta)" : undefined,
-      nota: ind.pendenteCents ? brlCurto(ind.pendenteCents) + " aguardando" : undefined,
+      nota: ind.pendenteCents ? dinheiro(ind.pendenteCents, true) + " aguardando" : undefined,
     },
     { rotulo: "Margem", valor: pct(ind.margem), cor: ind.margem === null ? undefined : corValor(ind.margem) },
-    { rotulo: "Taxas de gateway", valor: brl(ind.taxasCents) },
+    { rotulo: "Taxas de gateway", valor: dinheiro(ind.taxasCents) },
     {
-      rotulo: "Reembolsos", valor: brl(ind.reembolsosCents),
+      rotulo: "Reembolsos", valor: dinheiro(ind.reembolsosCents),
       cor: ind.reembolsosCents ? "var(--negativo)" : undefined,
       nota: ind.reembolsadas ? num(ind.reembolsadas) + " vendas" : undefined,
     },
@@ -119,7 +137,11 @@ export function Resumo({
                 color: c.cor ?? "var(--ink)",
               }}>{c.valor}</div>
               {c.nota && (
-                <div style={{ fontSize: 10.5, color: "var(--ink-tenue)", marginTop: 5 }}>{c.nota}</div>
+                <div style={{
+                  fontSize: 10.5, marginTop: 5,
+                  color: c.notaAlerta ? "var(--alerta)" : "var(--ink-tenue)",
+                  fontWeight: c.notaAlerta ? 600 : undefined,
+                }}>{c.nota}</div>
               )}
             </div>
           ))}
@@ -206,7 +228,7 @@ export function Resumo({
                     const c = mapa.get(`${d}:${h}`);
                     return (
                       <div key={`${d}-${h}`}
-                        title={c ? `${DIAS[d]} ${h}h — ${c.vendas} venda(s), ${brl(c.valorCents)}` : undefined}
+                        title={c ? `${DIAS[d]} ${h}h — ${c.vendas} venda(s), ${dinheiro(c.valorCents)}` : undefined}
                         style={{ height: 16, borderRadius: 2, background: tom(c?.vendas ?? 0) }} />
                     );
                   }))}
@@ -226,7 +248,7 @@ export function Resumo({
                     fontSize: 11.5, color: "var(--ink-medio)", overflow: "hidden",
                     textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150,
                   }}>{o.fonte}</span>
-                  <span className="num" style={{ fontSize: 11.5, fontWeight: 600 }}>{brlCurto(o.faturamentoCents)}</span>
+                  <span className="num" style={{ fontSize: 11.5, fontWeight: 600 }}>{dinheiro(o.faturamentoCents, true)}</span>
                 </div>
                 <div style={{ height: 5, borderRadius: 3, background: "var(--linha)", overflow: "hidden" }}>
                   <div style={{
@@ -319,7 +341,7 @@ export function Resumo({
                       <div className="num" style={{
                         fontSize: 10, color: "var(--positivo)", marginTop: 3,
                       }}>
-                        {num(r.vendas)} venda(s) · {brlCurto(r.faturamentoCents)}
+                        {num(r.vendas)} venda(s) · {dinheiro(r.faturamentoCents, true)}
                       </div>
                     )}
                   </div>
@@ -332,6 +354,14 @@ export function Resumo({
         <Nota>
           O faturamento e o lucro saem das suas vendas; o gasto vem da API de cada plataforma.
           {!temGasto && " Sem conta de anúncio conectada, ROAS e CPA não têm como ser calculados — e ficam em N/A, não em zero."}
+          {ind.moedasIgnoradas.length > 0 && (
+            <>
+              {" "}Há conta de anúncio reportando em {ind.moedasIgnoradas.join(", ")}, e esse gasto
+              ficou de fora do total: só somamos gasto na mesma moeda da loja. Converter aqui daria
+              um número que depende da cotação do dia, e ninguém saberia qual foi usada. O Lucro, o
+              ROAS e o CPA acima estão calculados sobre o gasto restante.
+            </>
+          )}
           {" "}Este painel mede por último clique da UTM; o Gerenciador da Meta mede por 7 dias de
           clique mais 1 de visualização. Os dois números vão divergir sempre, e isso não é defeito.
         </Nota>

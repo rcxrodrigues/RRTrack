@@ -32,6 +32,13 @@ export interface LinhaMetrica {
 
   /* Da plataforma */
   gastoCents: number;
+  /*
+   * Moedas que esta linha gastou e que NAO entraram em `gastoCents`, por nao
+   * serem a moeda da loja. Quase sempre vazio. Quando nao esta, todo numero
+   * derivado desta linha — ROAS, CPA, lucro — esta calculado sobre um gasto
+   * incompleto, e a tela precisa dizer isso em vez de exibir o numero limpo.
+   */
+  moedasIgnoradas: string[];
   impressoes: number;
   cliques: number;
 
@@ -106,6 +113,12 @@ export interface Filtro {
    * reclamava e o número saía errado.
    */
   timezone: string;
+  /*
+   * Moeda da loja, pelo mesmo motivo do fuso: sem ela, gasto em dolar era
+   * somado a faturamento em real como se fosse a mesma unidade. O gasto so
+   * entra na soma se estiver NESTA moeda; o resto e reportado a parte.
+   */
+  moeda: string;
   nivel: Nivel;
   /** Filtra por parte do nome, como o campo de busca da tela. */
   nome?: string;
@@ -124,6 +137,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
    * Falhar aqui custa uma linha e diz o que fazer.
    */
   if (!f.timezone) throw new Error("metricas: falta o fuso da loja (timezone)");
+  if (!f.moeda) throw new Error("metricas: falta a moeda da loja (moeda)");
 
   const colId = COLUNA[f.nivel].id;
   const colNome = COLUNA[f.nivel].nome;
@@ -152,7 +166,24 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     .select({
       id: colId,
       nome: sql<string>`max(${colNome})`,
-      gasto: sql<number>`coalesce(sum(${adSpendDaily.spendCents}), 0)::int`,
+      /*
+       * `FILTER` em vez de somar tudo: o gasto que entra na conta e so o que
+       * esta na moeda da loja. Uma conta de anuncio em dolar servindo uma
+       * loja em libra somava numero cru aqui, e o ROAS saia de uma divisao
+       * entre moedas diferentes.
+       */
+      gasto: sql<number>`coalesce(sum(${adSpendDaily.spendCents})
+        FILTER (WHERE ${adSpendDaily.currency} = ${f.moeda}), 0)::int`,
+      /*
+       * O que ficou de fora, para a tela poder dizer. Deixar sumir em silencio
+       * so trocaria um numero errado por um numero incompleto — igualmente
+       * plausivel, e igualmente capaz de fazer alguem pausar campanha boa.
+       *
+       * `string_agg` e nao `array_agg` porque volta texto simples, sem depender
+       * de como o driver decodifica array do Postgres.
+       */
+      ignoradas: sql<string | null>`string_agg(DISTINCT ${adSpendDaily.currency}, ',')
+        FILTER (WHERE ${adSpendDaily.currency} <> ${f.moeda} AND ${adSpendDaily.spendCents} > 0)`,
       impressoes: sql<number>`coalesce(sum(${adSpendDaily.impressions}), 0)::int`,
       cliques: sql<number>`coalesce(sum(${adSpendDaily.clicks}), 0)::int`,
       atualizadoEm: sql<string | null>`max(${adSpendDaily.syncedAt})`,
@@ -278,6 +309,7 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
       id,
       nome: g.nome ?? id,
       gastoCents: gasto,
+      moedasIgnoradas: g.ignoradas ? g.ignoradas.split(",") : [],
       impressoes: g.impressoes,
       cliques: g.cliques,
       vendas: v?.quantidade ?? 0,
@@ -322,6 +354,13 @@ export function totalizar(linhas: LinhaMetrica[]): LinhaMetrica {
     id: "__total__",
     nome: `${linhas.length} ${linhas.length === 1 ? "item" : "itens"}`,
     gastoCents: gasto,
+    /*
+     * A uniao das moedas de fora, e nao a soma delas: se qualquer linha teve
+     * gasto que ficou de fora, o TOTAL tambem esta incompleto. O total e o
+     * numero que mais se olha, entao e o que menos pode parecer inteiro
+     * quando nao esta.
+     */
+    moedasIgnoradas: [...new Set(linhas.flatMap((l) => l.moedasIgnoradas))],
     impressoes, cliques, vendas,
     faturamentoCents: faturamento,
     custoProdutoCents: custo,

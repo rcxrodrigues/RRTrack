@@ -55,7 +55,7 @@ for (const [ses, n] of [[s1, 4], [s2, 1]]) {
 }
 
 const janela = { tenantId: t.id, plataforma: "meta", de: hoje, ate: hoje,
-  timezone: "America/Sao_Paulo" };
+  timezone: "America/Sao_Paulo", moeda: "BRL" };
 
 console.log("\n== por anúncio ==");
 const ads = await metricas({ ...janela, nivel: "anuncio" });
@@ -134,10 +134,35 @@ const filtrado = await metricas({ ...janela, nivel: "campanha", nome: "queimando
 eq("acha sem diferenciar maiúscula", filtrado.length, 1);
 eq("é a certa", filtrado[0].id, "CAMP2");
 
+/*
+ * Gasto em outra moeda.
+ *
+ * Este e o teste que justifica a coluna `currency`. Antes dela, a linha em
+ * dolar era somada a linha em real como numero puro: o gasto virava 149.999
+ * "centavos" de nada, e o ROAS saia de uma divisao entre unidades diferentes.
+ * Nao dava erro, e o numero tinha cara de certo — que e o que o tornava caro.
+ */
+console.log("\n== gasto em moeda diferente da loja ==");
+await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date, campaign_id, campaign_name, ad_id, ad_name, spend_cents, currency)
+  VALUES (${t.id}, ${conta.id}, 'meta', ${hoje}, 'CAMP3', 'Conta gringa', 'AD10', 'A10', 50000, 'BRL')`;
+await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date, campaign_id, campaign_name, ad_id, ad_name, spend_cents, currency)
+  VALUES (${t.id}, ${conta.id}, 'meta', ${hoje}, 'CAMP3', 'Conta gringa', 'AD11', 'A11', 99999, 'USD')`;
+
+const mistas = await metricas({ ...janela, nivel: "campanha" });
+const gringa = mistas.find((l) => l.id === "CAMP3");
+eq("soma so o que esta na moeda da loja", gringa.gastoCents, 50000);
+eq("diz qual moeda ficou de fora", gringa.moedasIgnoradas.join(","), "USD");
+eq("linha sem moeda estranha nao inventa aviso",
+  mistas.find((l) => l.id === "CAMP1").moedasIgnoradas.length, 0);
+
+const totalMisto = totalizar(mistas);
+eq("o total tambem avisa", totalMisto.moedasIgnoradas.join(","), "USD");
+eq("e o total nao soma o dolar", totalMisto.gastoCents, 30000 + 20000 + 80000 + 50000);
+
 console.log("\n== não vaza entre lojas ==");
 const [outra] = await sql`SELECT id FROM tenants WHERE slug != 'metricas-teste' LIMIT 1`;
 const deOutra = await metricas({ tenantId: outra.id, plataforma: "meta", de: hoje, ate: hoje,
-  timezone: "America/Sao_Paulo", nivel: "campanha" });
+  timezone: "America/Sao_Paulo", moeda: "BRL", nivel: "campanha" });
 eq("outra loja não vê nada disto", deOutra.some((l) => l.id === "CAMP1"), false);
 
 await sql`DELETE FROM tenants WHERE slug = 'metricas-teste'`;

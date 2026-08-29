@@ -1,8 +1,10 @@
 "use client";
 
+import { useDinheiro } from "./moeda";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Cartao, Nota, SemDado, brl, num } from "./comum";
+import { Cartao, Nota, SemDado, num } from "./comum";
 import type { CustoDeSku } from "@/core/custos";
 
 /*
@@ -19,6 +21,7 @@ export function Produtos({
   tenantId: string;
   skus: CustoDeSku[];
 }) {
+  const dinheiro = useDinheiro();
   const router = useRouter();
   const [editando, setEditando] = useState<string | null>(null);
   const [valor, setValor] = useState("");
@@ -79,7 +82,7 @@ export function Produtos({
             <strong style={{ color: "var(--alerta)" }}>
               {semCusto.length} produto(s) sem custo cadastrado.
             </strong>{" "}
-            Eles responderam por <span className="num">{brl(faturamentoSemCusto)}</span> de
+            Eles responderam por <span className="num">{dinheiro(faturamentoSemCusto)}</span> de
             faturamento{faturamentoTotal > 0 && (
               <> — <span className="num">{Math.round((faturamentoSemCusto / faturamentoTotal) * 100)}%</span> do total</>
             )}. Enquanto o custo faltar, o lucro desses pedidos aparece maior do que é.
@@ -129,7 +132,7 @@ export function Produtos({
                 }}>
                   <div className="num" style={{ fontWeight: 500 }}>{s.sku}</div>
                   <div className="num" style={{ textAlign: "right", color: "var(--ink-fraco)" }}>{num(s.vendas)}</div>
-                  <div className="num" style={{ textAlign: "right" }}>{brl(s.faturamentoCents)}</div>
+                  <div className="num" style={{ textAlign: "right" }}>{dinheiro(s.faturamentoCents)}</div>
 
                   <div style={{ textAlign: "right" }}>
                     {emEdicao ? (
@@ -159,7 +162,7 @@ export function Produtos({
                           textDecoration: "underline", textDecorationStyle: "dotted",
                           textUnderlineOffset: 3,
                         }}
-                      >{s.custoCents === null ? "cadastrar" : brl(s.custoCents)}</button>
+                      >{s.custoCents === null ? "cadastrar" : dinheiro(s.custoCents)}</button>
                     )}
                   </div>
 

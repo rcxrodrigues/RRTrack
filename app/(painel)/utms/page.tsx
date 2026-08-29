@@ -24,7 +24,10 @@ export default async function Pagina({ searchParams }: {
     ? (pedido as (typeof NIVEIS)[number]) : "fonte";
 
   const { de, ate } = janelaDe(periodo, loja.timezone);
-  const linhas = await porUtm({ tenantId: loja.id, de, ate, timezone: loja.timezone }, agrupar);
+  const linhas = await porUtm(
+    { tenantId: loja.id, de, ate, timezone: loja.timezone, moeda: loja.currency },
+    agrupar,
+  );
 
   return <Utms periodo={periodo} agrupar={agrupar} linhas={linhas} />;
 }

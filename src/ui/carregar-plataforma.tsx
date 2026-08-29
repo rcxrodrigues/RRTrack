@@ -91,6 +91,8 @@ export async function CarregarPlataforma({
     ? await metricas({
         tenantId: loja.id, plataforma, de, ate, nivel, nome,
         timezone: loja.timezone,
+        /* Gasto so soma se estiver nesta moeda — ver o Filtro em metricas.ts. */
+        moeda: loja.currency,
         /* O que esta loja conta como faturamento — ver core/faturamento.ts. */
         regra: { countShipping: loja.countShipping, countInterest: loja.countInterest },
       })

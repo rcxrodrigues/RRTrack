@@ -86,7 +86,7 @@ const eq = (l, g, w) => {
       VALUES (${t.id}, ${dest.id}, ${oid}, 'purchase', ${"d" + wc.randomUUID()}, ${est}, ${chaves ? chaves.length : null}, ${chaves ? JSON.stringify(chaves) : null}::jsonb)`;
   }
 
-  const p = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo" };
+  const p = { tenantId: t.id, de: hoje, ate: hoje, timezone: "America/Sao_Paulo", moeda: "BRL" };
 
   console.log("\n== indicadores ==");
   const ind = await R.indicadores(p);

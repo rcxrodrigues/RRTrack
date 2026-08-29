@@ -1,6 +1,8 @@
 "use client";
 
-import { Cabecalho, Cartao, Nota, brl } from "./comum";
+import { useDinheiro } from "./moeda";
+
+import { Cabecalho, Cartao, Nota } from "./comum";
 import type { Verificacao, Estado, EventoRecebido, EntregaRecebida } from "@/core/diagnostico";
 
 /*
@@ -63,6 +65,7 @@ export function Testes({
   entregas: EntregaRecebida[];
   temSite: boolean;
 }) {
+  const dinheiro = useDinheiro();
   /*
    * Índice da primeira etapa que não está ok. Tudo depois dela vira
    * consequência, e é mostrado apagado.
@@ -178,7 +181,7 @@ export function Testes({
                       {e.campanha ?? (e.pagina ? new URL(e.pagina).pathname : "—")}
                     </span>
                     <span className="num" style={{ textAlign: "right", color: "var(--ink-fraco)" }}>
-                      {e.valorCents === null ? "" : brl(e.valorCents)}
+                      {e.valorCents === null ? "" : dinheiro(e.valorCents)}
                     </span>
                   </div>
                 ))}

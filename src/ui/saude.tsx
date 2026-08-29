@@ -1,6 +1,8 @@
 "use client";
 
-import { Cabecalho, Cartao, Nota, SemDado, brl, brlCurto, num, pct } from "./comum";
+import { useDinheiro } from "./moeda";
+
+import { Cabecalho, Cartao, Nota, SemDado, num, pct } from "./comum";
 import type { Atribuicao, QualidadeGateway, ResumoDisparos, Disparo } from "@/core/rastreio";
 
 /*
@@ -26,6 +28,7 @@ export function Saude({
   disparos: ResumoDisparos;
   ultimos: Disparo[];
 }) {
+  const dinheiro = useDinheiro();
   const totalVendas = atribuicao.reduce((s, a) => s + a.vendas, 0);
   const totalFat = atribuicao.reduce((s, a) => s + a.faturamentoCents, 0);
   const porChave = atribuicao.filter((a) => a.porChave).reduce((s, a) => s + a.faturamentoCents, 0);
@@ -128,7 +131,7 @@ export function Saude({
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: COR[a.metodo], flexShrink: 0 }} />
                 <span className="num" style={{ fontSize: 11.5, color: "var(--ink-medio)", width: 150 }}>{a.rotulo}</span>
                 <span style={{ fontSize: 11.5, color: "var(--ink-tenue)", flexGrow: 1 }}>{a.explicacao}</span>
-                <span className="num" style={{ fontSize: 11.5, color: "var(--ink-fraco)" }}>{brlCurto(a.faturamentoCents)}</span>
+                <span className="num" style={{ fontSize: 11.5, color: "var(--ink-fraco)" }}>{dinheiro(a.faturamentoCents, true)}</span>
                 <span className="num" style={{ fontSize: 12.5, fontWeight: 600, minWidth: 34, textAlign: "right" }}>{num(a.vendas)}</span>
               </div>
             ))}
@@ -202,7 +205,7 @@ export function Saude({
                     <div className="num" style={{ color: "var(--ink-tenue)" }}>{d.quando}</div>
                     <div className="num" style={{ color: "var(--ink-medio)" }}>{d.evento}</div>
                     <div style={{ color: "var(--ink-fraco)" }}>{d.gateway ?? "—"}</div>
-                    <div className="num">{d.valorCents === null ? "—" : brl(d.valorCents)}</div>
+                    <div className="num">{d.valorCents === null ? "—" : dinheiro(d.valorCents)}</div>
                     <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                       {TODAS_CHAVES.map((k) => {
                         const tem = d.chaves.includes(k);
