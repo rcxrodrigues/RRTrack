@@ -596,6 +596,124 @@ export function Integracoes({
     router.refresh();
   }
 
+  /*
+   * A lista de conexoes de uma ou mais especies.
+   *
+   * E funcao, e nao JSX repetido, porque a mesma linha aparece em dois
+   * cartoes: "Webhooks" e "Credenciais de API". Duas copias de cem linhas
+   * divergiriam, e a divergencia apareceria como um cartao ganhando um aviso
+   * que o outro nao tem.
+   */
+  const listaDeConexoes = (especies: readonly string[]) => {
+            const ORDEM = ["plataforma", "gateway", "api"] as const;
+            const TITULO: Record<string, string> = {
+              plataforma: "Plataformas de venda",
+              gateway: "Gateways de pagamento",
+              api: "Entrada direta",
+            };
+            const especieDe = (gw: string) =>
+              gatewaysDisponiveis.find((x) => x.id === gw)?.especie ?? "gateway";
+
+            const ativas = [...conexoes.filter(
+              (c) => c.ativo && especies.includes(especieDe(c.gateway)),
+            )].sort(
+              (a, b) => ORDEM.indexOf(especieDe(a.gateway)) - ORDEM.indexOf(especieDe(b.gateway)),
+            );
+
+            /*
+             * O subtitulo so aparece quando ha mais de uma especie na lista.
+             * Num cartao que so tem uma, ele repetiria o titulo do proprio
+             * cartao — ruido que faz a pessoa procurar uma distincao que nao
+             * existe ali.
+             */
+            const separa = new Set(ativas.map((c) => especieDe(c.gateway))).size > 1;
+
+            let anterior: string | null = null;
+            return ativas.map((c) => {
+            const g = gatewaysDisponiveis.find((x) => x.id === c.gateway);
+            const esp = especieDe(c.gateway);
+            const cabecalho = separa && esp !== anterior ? TITULO[esp] : null;
+            anterior = esp;
+            return (
+              <Fragment key={c.id}>
+              {cabecalho && (
+                <div style={{
+                  fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
+                  color: "var(--ink-tenue)", fontWeight: 600,
+                  margin: "14px 0 8px",
+                }}>{cabecalho}</div>
+              )}
+              <div style={{
+                border: "1px solid var(--linha-forte)", borderRadius: 6,
+                padding: 14, marginBottom: 10,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+                  <span style={{ fontWeight: 600, fontSize: 12.5, flexGrow: 1 }}>{g?.label ?? c.gateway}</span>
+                  <Selo ok>ativo</Selo>
+                  <button onClick={() => desativar("gateway", c.id)} style={{
+                    background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
+                  }}>remover</button>
+                </div>
+                {c.gateway === "api" ? (
+                  <>
+                    <Copiavel rotulo="Endereço para enviar a venda" valor={`${base}/api/pedidos/${c.segredo}`} />
+                    <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.55 }}>
+                      Para gateway sem integração pronta, ERP ou checkout próprio.
+                      Seu servidor manda um POST com a venda; o resto do caminho é o
+                      mesmo dos outros.
+                    </div>
+                    <ExemploApi />
+                  </>
+                ) : (
+                  <>
+                    <Copiavel rotulo="URL do webhook" valor={`${base}/api/webhook/${c.gateway}/${c.segredo}`} />
+                    <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8 }}>
+                      O identificador do clique volta em <span className="num">{g?.repasse}</span>
+                      {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
+                      {/*
+                        A Shopify devolve o campo, mas ele chega vazio se o
+                        tema não puser nada nele. E aí a venda entra normal,
+                        só que sem origem — falha que não dá erro nenhum e
+                        que só aparece quando alguém estranha que nenhuma
+                        venda tem campanha.
+                      */}
+                      {c.gateway === "shopify" && (
+                        <> — o tema precisa gravar o clickId em <span className="num">note_attributes</span> do
+                        carrinho; sem isso a venda entra sem origem</>
+                      )}
+                    </div>
+                    <ChaveDeApi
+                      conexao={c}
+                      aberto={editando === `chave:${c.gateway}`}
+                      abrir={() => { setEditando(`chave:${c.gateway}`); setForm({}); }}
+                      fechar={() => setEditando(null)}
+                      valor={form.apiKey ?? ""}
+                      mudou={(v) => setForm((f) => ({ ...f, apiKey: v }))}
+                      assinatura={form.signingSecret ?? ""}
+                      mudouAssinatura={(v) => setForm((f) => ({ ...f, signingSecret: v }))}
+                      salvando={salvando}
+                      gravar={() => salvar({
+                        tipo: "gateway", gateway: c.gateway,
+                        apiKey: form.apiKey, clientId: form.apiKey,
+                        signingSecret: form.signingSecret,
+                      })}
+                    />
+                    <TaxasDoGateway
+                      taxas={c.taxas}
+                      aberto={editando === `taxas:${c.gateway}`}
+                      abrir={() => setEditando(`taxas:${c.gateway}`)}
+                      fechar={() => setEditando(null)}
+                      salvando={salvando}
+                      gravar={(taxas) => salvar({ tipo: "taxas", gateway: c.gateway, taxas })}
+                    />
+                  </>
+                )}
+              </div>
+              </Fragment>
+            );
+            });
+  };
+
   const ABAS: Array<{ id: Aba; rotulo: string; icone: string }> = [
     { id: "anuncios", rotulo: "Anúncios", icone: "M6 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM14 6.5l-6 2M14 13.5l-6-3M14 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM14 16a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" },
     { id: "webhooks", rotulo: "Webhooks", icone: "M10 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6.5 6.5a5 5 0 0 0 0 7M13.5 6.5a5 5 0 0 1 0 7" },
@@ -799,8 +917,18 @@ export function Integracoes({
         {aba === "webhooks" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 1100, alignItems: "start" }}>
 
-            <Cartao titulo="Origem das vendas"
-              descricao="De onde as vendas chegam — plataforma, gateway ou o seu próprio servidor. Cada uma recebe uma URL própria.">
+            {/*
+              Dois cartoes, com os nomes que o lojista ja usa na Utmify.
+              
+              Um cartao so, chamado "Origem das vendas", era mais preciso e
+              pior: obrigava a traduzir o vocabulario dele para o nosso toda
+              vez. E a entrada por API ficava escondida como opcao de um menu
+              suspenso, que foi exatamente o que tinha acontecido com a
+              Shopify — consertar o rotulo de um e deixar o outro enterrado
+              era consertar metade do problema.
+            */}
+            <Cartao titulo="Webhooks"
+              descricao="Adicione webhooks para se conectar com as plataformas de venda e gateways. Cada um recebe uma URL própria.">
               {/*
                 Agrupado por espécie, e não numa lista só.
                 
@@ -809,105 +937,7 @@ export function Integracoes({
                 certo: a Shopify não é um gateway, e a tela afirmava que era.
                 O menu tinha a opção o tempo todo; o rótulo é que escondia.
               */}
-              {(() => {
-                const ORDEM = ["plataforma", "gateway", "api"] as const;
-                const TITULO: Record<string, string> = {
-                  plataforma: "Plataformas de venda",
-                  gateway: "Gateways de pagamento",
-                  api: "Entrada direta",
-                };
-                const especieDe = (gw: string) =>
-                  gatewaysDisponiveis.find((x) => x.id === gw)?.especie ?? "gateway";
-
-                const ativas = [...conexoes.filter((c) => c.ativo)].sort(
-                  (a, b) => ORDEM.indexOf(especieDe(a.gateway)) - ORDEM.indexOf(especieDe(b.gateway)),
-                );
-
-                let anterior: string | null = null;
-                return ativas.map((c) => {
-                const g = gatewaysDisponiveis.find((x) => x.id === c.gateway);
-                const esp = especieDe(c.gateway);
-                const cabecalho = esp !== anterior ? TITULO[esp] : null;
-                anterior = esp;
-                return (
-                  <Fragment key={c.id}>
-                  {cabecalho && (
-                    <div style={{
-                      fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
-                      color: "var(--ink-tenue)", fontWeight: 600,
-                      margin: "14px 0 8px",
-                    }}>{cabecalho}</div>
-                  )}
-                  <div style={{
-                    border: "1px solid var(--linha-forte)", borderRadius: 6,
-                    padding: 14, marginBottom: 10,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
-                      <span style={{ fontWeight: 600, fontSize: 12.5, flexGrow: 1 }}>{g?.label ?? c.gateway}</span>
-                      <Selo ok>ativo</Selo>
-                      <button onClick={() => desativar("gateway", c.id)} style={{
-                        background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
-                      }}>remover</button>
-                    </div>
-                    {c.gateway === "api" ? (
-                      <>
-                        <Copiavel rotulo="Endereço para enviar a venda" valor={`${base}/api/pedidos/${c.segredo}`} />
-                        <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.55 }}>
-                          Para gateway sem integração pronta, ERP ou checkout próprio.
-                          Seu servidor manda um POST com a venda; o resto do caminho é o
-                          mesmo dos outros.
-                        </div>
-                        <ExemploApi />
-                      </>
-                    ) : (
-                      <>
-                        <Copiavel rotulo="URL do webhook" valor={`${base}/api/webhook/${c.gateway}/${c.segredo}`} />
-                        <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8 }}>
-                          O identificador do clique volta em <span className="num">{g?.repasse}</span>
-                          {c.gateway === "appmax" && " — a Appmax não devolve nada, então precisa da chamada de reivindicação"}
-                          {/*
-                            A Shopify devolve o campo, mas ele chega vazio se o
-                            tema não puser nada nele. E aí a venda entra normal,
-                            só que sem origem — falha que não dá erro nenhum e
-                            que só aparece quando alguém estranha que nenhuma
-                            venda tem campanha.
-                          */}
-                          {c.gateway === "shopify" && (
-                            <> — o tema precisa gravar o clickId em <span className="num">note_attributes</span> do
-                            carrinho; sem isso a venda entra sem origem</>
-                          )}
-                        </div>
-                        <ChaveDeApi
-                          conexao={c}
-                          aberto={editando === `chave:${c.gateway}`}
-                          abrir={() => { setEditando(`chave:${c.gateway}`); setForm({}); }}
-                          fechar={() => setEditando(null)}
-                          valor={form.apiKey ?? ""}
-                          mudou={(v) => setForm((f) => ({ ...f, apiKey: v }))}
-                          assinatura={form.signingSecret ?? ""}
-                          mudouAssinatura={(v) => setForm((f) => ({ ...f, signingSecret: v }))}
-                          salvando={salvando}
-                          gravar={() => salvar({
-                            tipo: "gateway", gateway: c.gateway,
-                            apiKey: form.apiKey, clientId: form.apiKey,
-                            signingSecret: form.signingSecret,
-                          })}
-                        />
-                        <TaxasDoGateway
-                          taxas={c.taxas}
-                          aberto={editando === `taxas:${c.gateway}`}
-                          abrir={() => setEditando(`taxas:${c.gateway}`)}
-                          fechar={() => setEditando(null)}
-                          salvando={salvando}
-                          gravar={(taxas) => salvar({ tipo: "taxas", gateway: c.gateway, taxas })}
-                        />
-                      </>
-                    )}
-                  </div>
-                  </Fragment>
-                );
-                });
-              })()}
+              {listaDeConexoes(["plataforma", "gateway"])}
 
               {editando === "gateway:novo" ? (
                 <div style={{ borderTop: "1px solid var(--linha)", paddingTop: 14, marginTop: 4 }}>
@@ -927,7 +957,6 @@ export function Integracoes({
                       {([
                         ["plataforma", "Plataformas de venda"],
                         ["gateway", "Gateways de pagamento"],
-                        ["api", "Entrada direta"],
                       ] as const).map(([esp, titulo]) => {
                         const desta = gatewaysDisponiveis.filter((g) =>
                           g.especie === esp && !conexoes.some((c) => c.gateway === g.id && c.ativo));
@@ -982,8 +1011,30 @@ export function Integracoes({
                   </div>
                 </div>
               ) : (
-                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar origem</Botao>
+                <Botao onClick={() => { setEditando("gateway:novo"); setForm({}); }}>Adicionar webhook</Botao>
               )}
+            </Cartao>
+
+            <Cartao titulo="Credenciais de API"
+              descricao="Para integrar por API: seu servidor manda a venda direto, sem webhook.">
+              {listaDeConexoes(["api"])}
+
+              {/*
+                Sem menu de escolha: existe um adaptador de entrada por API, e
+                so um. Um <select> de uma opcao so e um passo a mais para
+                chegar no mesmo lugar.
+              */}
+              {(() => {
+                const disponivel = gatewaysDisponiveis.find(
+                  (g) => g.especie === "api" && !conexoes.some((c) => c.gateway === g.id && c.ativo),
+                );
+                if (!disponivel) return null;
+                return (
+                  <Botao disabled={salvando} onClick={() => salvar({
+                    tipo: "gateway", gateway: disponivel.id,
+                  })}>{salvando ? "criando…" : "Adicionar credencial"}</Botao>
+                );
+              })()}
             </Cartao>
 
             <Cartao titulo="Seu site"
