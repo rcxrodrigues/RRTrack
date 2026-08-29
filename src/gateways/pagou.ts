@@ -22,6 +22,23 @@
  * Em compensação, o bloco `data.attribution` já traz utm_*, fbc, fbp, gclid,
  * ttclid, src e sck. É o gateway mais generoso em atribuição que apareceu até
  * agora, e serve de fonte secundária quando o clickId não resolve.
+ *
+ * NÃO TROQUE ISTO POR UMA CREDENCIAL DE API.
+ *
+ * Desde que a entrada por API passou a entender o formato da Utmify, é
+ * tentador unificar tudo por lá — um endereço só, um token só. Para a pagou.ai
+ * isso seria um downgrade em duas frentes, e nenhuma delas daria erro:
+ *
+ *   1. O `trackingParameters` da Utmify tem src, sck e utm_*, e NÃO tem fbc
+ *      nem fbp. São as duas chaves de correspondência mais valiosas que
+ *      existem para tráfego pago, e o webhook nativo daqui traz as duas.
+ *   2. `fetchOrder` deixaria de ser chamado. Como este gateway não assina, a
+ *      venda passaria a entrar sem confirmação nenhuma — e venda forjada por
+ *      quem descobrir o token custa caro: o painel mente e a Meta otimiza
+ *      para uma conversão que não existiu.
+ *
+ * A credencial de API é para gateway que NÃO tem webhook configurável. Este
+ * tem.
  */
 
 import type {
