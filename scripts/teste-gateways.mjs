@@ -329,6 +329,116 @@ check("lucro bate com o painel deles", 500 - Number(vP?.fee_cents) === 188, "R$ 
 check("sem repasse, fica sem atribuicao", vP?.attribution_method === "unattributed", vP?.attribution_method);
 
 
+/* ==================================================== SHOPIFY ============ */
+console.log("\nSHOPIFY — a loja inteira, nao um gateway");
+
+/*
+ * O segredo de assinatura da Shopify e UM POR LOJA, mostrado no rodape da
+ * pagina de webhooks do admin. Assinamos com ele, e nao com o segredo do
+ * caminho da URL — assinar com o da URL validaria a implementacao contra ela
+ * mesma, que foi exatamente como o bug da MillionsPay passou.
+ */
+const SEGREDO_SHOPIFY = Buffer.from(wc.getRandomValues(new Uint8Array(32))).toString("hex");
+
+async function cadastrarSegredoShopify() {
+  const bytes = Uint8Array.from(atob(process.env.CREDENTIALS_KEY), (c) => c.charCodeAt(0));
+  const key = await wc.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt"]);
+  const iv = wc.getRandomValues(new Uint8Array(12));
+  const out = await wc.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, new TextEncoder().encode(SEGREDO_SHOPIFY),
+  );
+  const b64 = (b) => btoa(String.fromCharCode(...b));
+  await sql`UPDATE gateway_connections SET credentials = ${JSON.stringify({
+    signingSecret: `${b64(iv)}.${b64(new Uint8Array(out))}`,
+  })}::jsonb WHERE id = ${seed.gateways.shopify.connectionId}`;
+}
+await cadastrarSegredoShopify();
+
+const assinarShopify = async (corpo) => {
+  const key = await wc.subtle.importKey(
+    "raw", new TextEncoder().encode(SEGREDO_SHOPIFY),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  return Buffer.from(
+    await wc.subtle.sign("HMAC", key, new TextEncoder().encode(corpo)),
+  ).toString("base64");
+};
+
+const clickShopify = await novaSessao();
+const pedidoShopify = 5300000000000 + Math.floor(Math.random() * 999999);
+
+/*
+ * Payload no formato que a Shopify entrega de verdade: dinheiro em decimal,
+ * `*_set` com shop_money, `note_attributes` como LISTA e endereco completo.
+ */
+const corpoShopify = JSON.stringify({
+  id: pedidoShopify,
+  email: "compradora@exemplo.com.br",
+  phone: "+5531988776655",
+  currency: "BRL",
+  financial_status: "paid",
+  total_price: "149.85",
+  total_price_set: {
+    shop_money: { amount: "149.85", currency_code: "BRL" },
+    presentment_money: { amount: "149.85", currency_code: "BRL" },
+  },
+  total_shipping_price_set: { shop_money: { amount: "19.90", currency_code: "BRL" } },
+  total_discounts_set: { shop_money: { amount: "0.00", currency_code: "BRL" } },
+  payment_gateway_names: ["shopify_payments"],
+  processed_at: new Date().toISOString(),
+  landing_site: "/products/serum?utm_source=facebook&utm_campaign=shopify-e2e",
+  referring_site: "https://l.facebook.com/",
+  note_attributes: [{ name: "rr_click_id", value: clickShopify }],
+  customer: { first_name: "Ana", last_name: "Nogueira", email: "compradora@exemplo.com.br" },
+  shipping_address: {
+    first_name: "Ana", last_name: "Nogueira",
+    city: "Belo Horizonte", province: "Minas Gerais", province_code: "MG",
+    zip: "30140-071", country: "Brazil", country_code: "BR",
+  },
+  line_items: [
+    { sku: "FLR-001", title: "Serum Facial", variant_title: "30ml",
+      quantity: 2, price: "64.97", product_type: "Skincare" },
+  ],
+});
+
+const rS = await enviar("shopify", corpoShopify, {
+  "x-shopify-topic": "orders/paid",
+  "x-shopify-hmac-sha256": await assinarShopify(corpoShopify),
+  "x-shopify-webhook-id": wc.randomUUID(),
+});
+check("webhook assinado e aceito", rS.status === 200, "status " + rS.status);
+
+const [vS] = await sql`SELECT * FROM orders WHERE gateway_order_id = ${String(pedidoShopify)}`;
+check("venda registrada", !!vS);
+/* "149.85" e cento e quarenta e nove reais, nao um real e quarenta e nove. */
+check("decimal virou centavo certo", Number(vS?.gross_cents) === 14985, String(vS?.gross_cents));
+check("frete", Number(vS?.shipping_cents) === 1990, String(vS?.shipping_cents));
+check("moeda da loja", vS?.currency === "BRL", vS?.currency);
+check("metodo de pagamento", vS?.payment_method === "credit_card", vS?.payment_method);
+
+/*
+ * O que faz a Shopify valer a pena: o clickId volta pelo note_attributes, e a
+ * venda casa com a sessao pelo caminho certo — nao por fbp nem por palpite.
+ */
+check("atribuida pelo clickId", vS?.attribution_method === "click_id", vS?.attribution_method);
+check("na sessao certa", vS?.click_id === clickShopify, vS?.click_id);
+
+/* E o endereco, que nenhum gateway brasileiro entrega. */
+const cS = vS?.customer ?? {};
+check("comprador cifrado em repouso",
+  typeof cS.zip === "string" && cS.zip.includes("."), "sem formato iv.dados");
+check("guardou cidade, estado e CEP",
+  !!cS.city && !!cS.state && !!cS.zip);
+
+/* Assinatura errada nao pode passar, nem em producao. */
+const rSFalso = await enviar("shopify", corpoShopify, {
+  "x-shopify-topic": "orders/paid",
+  "x-shopify-hmac-sha256": await assinarShopify(corpoShopify + "adulterado"),
+  "x-shopify-webhook-id": wc.randomUUID(),
+});
+check("assinatura invalida e recusada", rSFalso.status === 401, "status " + rSFalso.status);
+
+
 console.log("\nISOLAMENTO");
 
 const rCruzado = await fetch(
@@ -339,7 +449,7 @@ check("segredo do pagou não abre o appmax", rCruzado.status === 404, `status ${
 
 const [{ count: nVendas }] = await sql`
   SELECT count(*)::int FROM orders WHERE tenant_id = ${seed.tenantId}`;
-check("tres vendas, uma por gateway", nVendas === 3, String(nVendas));
+check("quatro vendas, uma por gateway", nVendas === 4, String(nVendas));
 
 console.log("\n" + (falhas === 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)") + "\n");
 process.exit(falhas === 0 ? 0 : 1);

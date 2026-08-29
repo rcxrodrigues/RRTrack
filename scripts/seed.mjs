@@ -43,6 +43,7 @@ for (const [id, label] of [
   ["pagou", "Pagou.ai"],
   ["appmax", "Appmax"],
   ["millions", "MillionsPay"],
+  ["shopify", "Shopify"],
   /* Coringa: a venda empurrada por quem não tem adaptador. */
   ["api", "Entrada por API"],
 ]) {
