@@ -177,7 +177,42 @@ const eq = (l, g, w) => {
   const u2 = await T.porUtm(p, "campanha");
   eq("agrupa por campanha", u2.some((l) => l.campanha === "Frio"), true);
 
+  /*
+   * A BORDA DO DIA, que ja quebrou este painel uma vez.
+   *
+   * Sao Paulo e UTC-3. Uma venda as 23:30 UTC aconteceu as 20:30 de Sao Paulo,
+   * no mesmo dia; uma as 02:30 UTC do dia seguinte aconteceu as 23:30 de Sao
+   * Paulo, AINDA no dia anterior.
+   *
+   * Ler qualquer uma das duas em UTC nao da erro: da hora errada no mapa de
+   * horario e, na segunda, dia errado no faturamento. Foi assim que tres horas
+   * por dia sumiram do painel antes — e o numero continuava plausivel.
+   */
+  console.log("\n== a borda do dia ==");
+
+  const DIA_SP = "2026-08-20";
+  for (const quando of ["2026-08-20T23:30:00Z", "2026-08-21T02:30:00Z"]) {
+    await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, payment_method, click_id, attribution_method, occurred_at)
+      VALUES (${t.id}, ${conn.id}, ${"b" + wc.randomUUID()}, 'paid', 10000, 'pix', ${ses[0]}, 'click_id', ${quando})`;
+  }
+
+  const pBorda = { ...p, de: DIA_SP, ate: DIA_SP };
+  const hb = await R.porHorario(pBorda);
+
+  eq("as duas caem no mesmo dia de Sao Paulo", hb.reduce((s, c) => s + c.vendas, 0), 2);
+  eq("23:30 UTC vira 20h em Sao Paulo", hb.some((c) => c.hora === 20), true);
+  eq("02:30 UTC do dia seguinte vira 23h do dia anterior",
+    hb.some((c) => c.hora === 23), true);
+  eq("e nenhuma aparece na hora de UTC",
+    hb.some((c) => c.hora === 2 || c.hora === 23.5), false);
+
+  /* E o faturamento do dia tem que ver as duas, senao some R$ 200 do dia. */
+  const iBorda = await R.indicadores(pBorda);
+  eq("as duas entram no faturamento do dia", iBorda.faturamentoBrutoCents, 20000);
+
   await sql`DELETE FROM tenants WHERE slug = 'resumo-teste'`;
+
+
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
   process.exit(f === 0 ? 0 : 1);
 })();
