@@ -49,6 +49,6 @@ export const config = {
    * de ingestão entra nesta lista no mesmo commit em que nasce.
    */
   matcher: [
-    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|rr/|rr\.js|_next|favicon).*)",
+    "/((?!api/collect|api/webhook|api/pedidos|api/claim|api/auth|api/meta/retorno|vincular/|rr/|rr\.js|_next|favicon).*)",
   ],
 };
