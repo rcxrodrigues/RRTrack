@@ -68,6 +68,7 @@ export default async function PaginaIntegracoes() {
       gatewaysDisponiveis={listGateways().map((g) => ({
         id: g.id, label: g.label, especie: g.especie,
         repasse: g.passthroughFields.join(", "),
+        credenciais: (g.credenciais ?? []).map((c) => ({ ...c })),
       }))}
       modelosUtm={MODELOS}
       perfilMeta={perfil[0]

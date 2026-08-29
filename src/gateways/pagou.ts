@@ -135,6 +135,15 @@ export const pagouAdapter: GatewayAdapter = {
   id: "pagou",
   label: "Pagou.ai",
   especie: "gateway",
+  /*
+   * Opcional de proposito: sem a chave as vendas continuam entrando, so que
+   * marcadas como nao verificadas — a pagou.ai nao assina o webhook, entao a
+   * confirmacao depende desta consulta.
+   */
+  credenciais: [
+    { chave: "apiKey", rotulo: "Chave de API",
+      dica: "Confirma a venda na origem. Sem ela, a venda entra marcada como não verificada." },
+  ],
   passthroughFields: PASSTHROUGH,
 
   async verify(_req: WebhookRequest, _secret: string): Promise<VerifyResult> {

@@ -308,6 +308,17 @@ export const shopifyAdapter: GatewayAdapter = {
   label: "Shopify",
   /* A loja inteira, nao so o pagamento — e e dai que vem o endereco. */
   especie: "plataforma",
+  credenciais: [
+    { chave: "signingSecret", rotulo: "Segredo de assinatura do webhook", obrigatoria: true,
+      dica: "Configurações → Notificações → Webhooks, no rodapé da página. É o que prova que o POST veio da loja." },
+    /*
+     * Os dois de baixo servem so a reconciliacao — buscar na Admin API um
+     * pedido cujo webhook se perdeu. O webhook em si nao precisa deles.
+     */
+    { chave: "shopDomain", rotulo: "Domínio da loja (opcional)",
+      dica: "minhaloja.myshopify.com — só para reconciliar venda cujo webhook se perdeu." },
+    { chave: "accessToken", rotulo: "Token da Admin API (opcional)" },
+  ],
   /* A Shopify não tem `src`/`sck`: o campo livre por pedido é este. */
   passthroughFields: ["note_attributes"],
 

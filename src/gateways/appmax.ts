@@ -206,6 +206,15 @@ export const appmaxAdapter: GatewayAdapter = {
   id: "appmax",
   label: "Appmax",
   especie: "gateway",
+  /*
+   * Os dois, e os dois obrigatorios: sem eles o `enrich` nao roda e a venda
+   * entra sem comprador nenhum — a Appmax nao manda comprador no webhook.
+   */
+  credenciais: [
+    { chave: "clientId", rotulo: "Client ID", obrigatoria: true,
+      dica: "Sem ele a venda entra sem comprador: a Appmax não manda comprador no webhook." },
+    { chave: "clientSecret", rotulo: "Client Secret", obrigatoria: true },
+  ],
   passthroughFields: PASSTHROUGH,
 
   async verify(_req: WebhookRequest, _secret: string): Promise<VerifyResult> {

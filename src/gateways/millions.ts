@@ -96,6 +96,10 @@ export const millionsAdapter: GatewayAdapter = {
   id: "millions",
   label: "MillionsPay",
   especie: "gateway",
+  credenciais: [
+    { chave: "signingSecret", rotulo: "Segredo de assinatura", obrigatoria: true,
+      dica: "O segredo que a MillionsPay gera ao criar o endpoint — não é o segredo da nossa URL." },
+  ],
   passthroughFields: PASSTHROUGH,
 
   /*

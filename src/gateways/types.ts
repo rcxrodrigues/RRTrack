@@ -46,6 +46,29 @@ export interface GatewayAdapter {
   especie: "plataforma" | "gateway" | "api";
 
   /*
+   * Que credenciais esta integração precisa, e como pedi-las.
+   *
+   * Fica aqui e não na tela porque é o adaptador que sabe: a Appmax precisa de
+   * client_id e client_secret, a MillionsPay de um segredo de assinatura, a
+   * Shopify de outro, a pagou.ai de uma chave que é opcional. A tela decidindo
+   * isso virava uma cadeia de `if` por nome de gateway, e integração nova
+   * nascia com o formulário errado — mostrando um campo que ela não usa e
+   * escondendo o que ela exige.
+   *
+   * A rota que grava também lê esta lista: campo não declarado aqui não entra
+   * no banco. Assim declarar o campo e aceitá-lo são a mesma coisa, em vez de
+   * duas listas que divergem em silêncio.
+   */
+  credenciais?: ReadonlyArray<{
+    /** Nome no objeto de credenciais — é como o adaptador vai lê-lo. */
+    chave: string;
+    rotulo: string;
+    dica?: string;
+    /** Sem ela a integração não funciona; a tela não deixa salvar vazia. */
+    obrigatoria?: boolean;
+  }>;
+
+  /*
    * Como este gateway devolve o que mandamos no checkout. Determina onde o
    * `clickId` viaja. `src` e `sck` são a convenção dos gateways brasileiros;
    * gateways internacionais costumam ter `metadata` ou `note_attributes`.

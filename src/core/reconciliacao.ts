@@ -228,17 +228,30 @@ async function cobrarReivindicacoes(
     const adapter = getGateway(orfa.gateway);
     if (!adapter?.fetchOrder) continue;
 
-    const [conexao] = await db
+    /*
+     * TODAS as conexoes deste gateway, e nao a primeira.
+     *
+     * Com duas lojas do mesmo gateway, escolher uma no `.limit(1)` era
+     * perguntar pelo pedido de uma usando a credencial da outra. A resposta e
+     * "nao existe" — e este arquivo trata "nao existe" como carrinho que nunca
+     * virou pedido, zerando as tentativas. A venda real ficava orfa para
+     * sempre, e o motivo nao aparecia em lugar nenhum.
+     *
+     * A reivindicacao guarda o gateway, nao a conexao: quem chama /api/claim e
+     * a loja, que sabe o gateway e nao tem por que saber de conexao. Entao a
+     * pergunta certa nao e "qual conexao" e sim "alguma destas conhece este
+     * pedido" — e so quando NENHUMA conhece e que ele nao existe.
+     */
+    const conexoes = (await db
       .select()
       .from(gatewayConnections)
       .where(and(
         eq(gatewayConnections.tenantId, tenantId),
         eq(gatewayConnections.gateway, orfa.gateway),
         eq(gatewayConnections.active, true),
-      ))
-      .limit(1);
+      ))).filter((c) => Object.keys(c.credentials).length > 0);
 
-    if (!conexao || Object.keys(conexao.credentials).length === 0) continue;
+    if (!conexoes.length) continue;
 
     /*
      * Marca a consulta ANTES de fazê-la. Se a função morrer no meio, o contador
@@ -252,20 +265,34 @@ async function cobrarReivindicacoes(
     r.reivindicacoesConsultadas++;
 
     let pedido: CanonicalOrder | null = null;
-    try {
-      const cred = await decryptRecord(conexao.credentials);
-      pedido = await adapter.fetchOrder(orfa.gatewayOrderId, cred);
-    } catch {
-      /* API instável. A próxima varredura tenta de novo, dentro do teto. */
-      continue;
+    let conexao: (typeof conexoes)[number] | undefined;
+    let instavel = false;
+
+    for (const c of conexoes) {
+      try {
+        const cred = await decryptRecord(c.credentials);
+        const achado = await adapter.fetchOrder(orfa.gatewayOrderId, cred);
+        if (achado) { pedido = achado; conexao = c; break; }
+      } catch {
+        /* API instavel. Nao conclui nada por esta conexao. */
+        instavel = true;
+      }
     }
+
+    /*
+     * Se alguma conexao falhou por instabilidade, "nao achei" nao significa
+     * "nao existe": pode estar justamente na que nao respondeu. Sai sem
+     * concluir, e a proxima varredura tenta de novo dentro do teto.
+     */
+    if (!pedido && instavel) continue;
 
     /*
      * Pedido que não existe no gateway não é venda perdida — é reivindicação de
      * carrinho que nunca virou pedido. Zera as tentativas restantes para não
      * consultar de novo.
      */
-    if (!pedido) {
+    /* `conexao` so fica vazia quando `pedido` tambem esta — andam juntos. */
+    if (!pedido || !conexao) {
       await db.update(orderClaims)
         .set({ checks: MAX_CONSULTAS })
         .where(eq(orderClaims.id, orfa.id));

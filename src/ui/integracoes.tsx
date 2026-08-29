@@ -419,8 +419,9 @@ function ExemploApi() {
             <span className="num">amount</span>, <span className="num">customer</span>).<br />
             Mandar o mesmo pedido duas vezes não duplica a venda; mudança de
             estado passa.<br />
-            O endereço tem o segredo no caminho — mantenha no servidor, nunca em
-            código de navegador.
+            O token vai no cabeçalho{" "}
+            <span className="num">Authorization: Bearer &lt;token&gt;</span> — e vive
+            no seu servidor, nunca em código de navegador.
           </div>
         </>
       )}
@@ -551,6 +552,8 @@ export function Integracoes({
   gatewaysDisponiveis: Array<{
     id: string; label: string; repasse: string;
     especie: "plataforma" | "gateway" | "api";
+    /* O que pedir no formulário — declarado pelo adaptador, ver gateways/types.ts. */
+    credenciais: Array<{ chave: string; rotulo: string; dica?: string; obrigatoria?: boolean }>;
   }>;
   modelosUtm: Record<string, { rotulo: string; modelo: string; nota: string }>;
 }) {
@@ -648,16 +651,29 @@ export function Integracoes({
                 padding: 14, marginBottom: 10,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
-                  {/*
-              Credencial mostra o nome que a pessoa deu; gateway mostra a
-              marca. Com varias credenciais, "Entrada por API" repetido tres
-              vezes nao diria qual e a do ERP e qual e a do parceiro — e o
-              nome existe justamente para poder revogar uma sem derrubar as
-              outras.
+            {/*
+              Marca e nome próprio, quando há nome próprio.
+
+              Podendo existir duas da mesma marca, "Shopify" repetido duas
+              vezes não diz qual é a loja de fora — e na hora de remover uma,
+              a escolha vira sorteio.
             */}
-            <span style={{ fontWeight: 600, fontSize: 12.5, flexGrow: 1 }}>
-              {esp === "api" ? (c.label || "sem nome") : (g?.label ?? c.gateway)}
-            </span>
+            {(() => {
+              const marca = g?.label ?? c.gateway;
+              const proprio = c.label && c.label !== marca && c.label !== c.gateway
+                ? c.label : null;
+              return (
+                <span style={{ display: "flex", alignItems: "baseline", gap: 7, flexGrow: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 12.5 }}>{marca}</span>
+                  {proprio && (
+                    <span style={{
+                      fontSize: 11, color: "var(--ink-tenue)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{proprio}</span>
+                  )}
+                </span>
+              );
+            })()}
                   <Selo ok>ativo</Selo>
                   <button onClick={() => desativar("gateway", c.id)} style={{
                     background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
@@ -665,11 +681,26 @@ export function Integracoes({
                 </div>
                 {c.gateway === "api" ? (
                   <>
-                    <Copiavel rotulo="Endereço para enviar a venda" valor={`${base}/api/pedidos/${c.segredo}`} />
+                    {/*
+                      Endereço e token separados, e o token num campo próprio.
+
+                      Antes era uma URL só, com o segredo no caminho. Funciona,
+                      e é o jeito errado de entregar credencial de API: URL
+                      aparece em log de servidor, log de proxy, cabeçalho
+                      Referer e histórico de navegador. Cabeçalho de
+                      autorização não aparece em nenhum desses por acidente.
+
+                      A URL antiga continua valendo, para quem já configurou.
+                    */}
+                    <Copiavel rotulo="Endereço" valor={`${base}/api/pedidos`} />
+                    <div style={{ marginTop: 8 }}>
+                      <Copiavel rotulo="Token" valor={c.segredo} />
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.55 }}>
                       Para gateway sem integração pronta, ERP ou checkout próprio.
-                      Seu servidor manda um POST com a venda; o resto do caminho é o
-                      mesmo dos outros.
+                      Seu servidor manda um POST com a venda, com o token em
+                      <span className="num"> Authorization: Bearer</span>; o resto do
+                      caminho é o mesmo dos outros.
                     </div>
                     <ExemploApi />
                   </>
@@ -702,7 +733,9 @@ export function Integracoes({
                       mudouAssinatura={(v) => setForm((f) => ({ ...f, signingSecret: v }))}
                       salvando={salvando}
                       gravar={() => salvar({
-                        tipo: "gateway", gateway: c.gateway,
+                        /* Pelo id: com duas do mesmo gateway, gravar por marca
+                           escreveria na conexão errada. */
+                        tipo: "gateway", id: c.id, gateway: c.gateway,
                         apiKey: form.apiKey, clientId: form.apiKey,
                         signingSecret: form.signingSecret,
                       })}
@@ -713,7 +746,7 @@ export function Integracoes({
                       abrir={() => setEditando(`taxas:${c.gateway}`)}
                       fechar={() => setEditando(null)}
                       salvando={salvando}
-                      gravar={(taxas) => salvar({ tipo: "taxas", gateway: c.gateway, taxas })}
+                      gravar={(taxas) => salvar({ tipo: "taxas", id: c.id, gateway: c.gateway, taxas })}
                     />
                   </>
                 )}
@@ -967,8 +1000,13 @@ export function Integracoes({
                         ["plataforma", "Plataformas de venda"],
                         ["gateway", "Gateways de pagamento"],
                       ] as const).map(([esp, titulo]) => {
-                        const desta = gatewaysDisponiveis.filter((g) =>
-                          g.especie === esp && !conexoes.some((c) => c.gateway === g.id && c.ativo));
+                        /*
+                         * Sem filtrar o que ja esta ligado: duas lojas Shopify
+                         * ou dois gateways da mesma marca sao caso normal, e
+                         * esconder a opcao dizia que nao dava — sem dizer por
+                         * que, o que e a pior forma de negar.
+                         */
+                        const desta = gatewaysDisponiveis.filter((g) => g.especie === esp);
                         if (!desta.length) return null;
                         return (
                           <optgroup key={esp} label={titulo}>
@@ -980,26 +1018,30 @@ export function Integracoes({
                   </label>
 
                   {/*
-                    Os campos mudam conforme o que foi escolhido, porque o que
-                    cada um precisa é diferente e mostrar os dois sempre faria
-                    a pessoa preencher o errado.
-
-                    A Shopify assina os webhooks dela, e o segredo é UM POR
-                    LOJA, mostrado no rodapé da página de webhooks do admin.
-                    Ele precisava estar AQUI: antes só existia depois da
-                    conexão criada, atrás do "trocar" — e uma conexão sem ele
-                    aceita a venda, mas marcada como não verificada. Funciona
-                    o bastante para ninguém perceber que falta.
+                    Nome e campos vêm depois da escolha, porque só aí se sabe o
+                    que pedir. Cada integração declara o que precisa no próprio
+                    adaptador — a tela não tem uma cadeia de `if` por marca.
                   */}
-                  {gatewaysDisponiveis.find((g) => g.id === form.gateway)?.especie === "plataforma" ? (
-                    <Campo rotulo="Segredo de assinatura do webhook" type="password"
-                      dica="Na Shopify: Configurações → Notificações → Webhooks, no rodapé da página. É o que prova que o POST veio da loja."
-                      {...campo("signingSecret")} />
-                  ) : (
-                    <Campo rotulo="Chave de API (opcional)" type="password"
-                      dica="Só a Appmax exige, para buscar o comprador. Sem ela, ficam 5 chaves em vez de 9."
-                      {...campo("apiKey")} />
-                  )}
+                  {form.gateway && (() => {
+                    const esc = gatewaysDisponiveis.find((g) => g.id === form.gateway);
+                    if (!esc) return null;
+                    return (
+                      <>
+                        {/*
+                          O nome existe porque pode haver duas da mesma marca.
+                          Duas linhas escritas "Shopify" nao dizem qual e a loja
+                          de fora, e na hora de remover uma vira adivinhacao.
+                        */}
+                        <Campo rotulo="Nome"
+                          dica="Para diferenciar, se um dia houver mais de uma desta mesma plataforma."
+                          {...campo("label")} />
+                        {esc.credenciais.map((cr) => (
+                          <Campo key={cr.chave} rotulo={cr.rotulo} type="password"
+                            dica={cr.dica} {...campo(cr.chave)} />
+                        ))}
+                      </>
+                    );
+                  })()}
                   {/*
                     A chave da pagou.ai vence em 180 dias e ninguém avisa: os
                     webhooks continuam chegando, mas a confirmação por API passa
@@ -1010,12 +1052,23 @@ export function Integracoes({
                     dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
                     {...campo("expiraEm")} />
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Botao disabled={salvando || !form.gateway} onClick={() => salvar({
-                      tipo: "gateway", gateway: form.gateway,
-                      clientId: form.apiKey, apiKey: form.apiKey,
-                      signingSecret: form.signingSecret,
-                      expiraEm: form.expiraEm,
-                    })}>{salvando ? "salvando…" : "Adicionar"}</Botao>
+                    {(() => {
+                      const esc = gatewaysDisponiveis.find((g) => g.id === form.gateway);
+                      /* Campo obrigatorio vazio bloqueia aqui, e nao no servidor:
+                         a integracao entraria e falharia calada depois. */
+                      const falta = (esc?.credenciais ?? [])
+                        .some((cr) => cr.obrigatoria && !form[cr.chave]?.trim());
+                      return (
+                        <Botao disabled={salvando || !form.gateway || falta} onClick={() => salvar({
+                          tipo: "gateway", gateway: form.gateway,
+                          label: form.label?.trim() || undefined,
+                          expiraEm: form.expiraEm,
+                          ...Object.fromEntries(
+                            (esc?.credenciais ?? []).map((cr) => [cr.chave, form[cr.chave]]),
+                          ),
+                        })}>{salvando ? "salvando…" : "Adicionar"}</Botao>
+                      );
+                    })()}
                     <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                   </div>
                 </div>

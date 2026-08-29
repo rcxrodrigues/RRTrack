@@ -160,5 +160,51 @@ eq("e a outra segue funcionando",
     parceiro.webhook_secret)).status, 200);
 
 
+/*
+ * O token no cabecalho, que e como credencial de API se entrega.
+ *
+ * O segredo no caminho da URL continua valendo — quem ja configurou nao pode
+ * parar de entregar venda porque mudamos de ideia sobre estilo. Mas URL vaza
+ * por onde URL passa: log de servidor, log de proxy, Referer, historico. O
+ * cabecalho nao.
+ */
+console.log("\n== token no cabecalho Authorization ==");
+
+const porToken = (corpo, token, prefixo = "Bearer ") =>
+  fetch(`${BASE}/api/pedidos`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token === null ? {} : { authorization: prefixo + token }),
+    },
+    body: JSON.stringify(corpo),
+  });
+
+const vendaToken = "TOK-" + Date.now();
+eq("Bearer com o token certo entrega",
+  (await porToken({ pedido_id: vendaToken, status: "pago", valor: 150, click_id: click },
+    parceiro.webhook_secret)).status, 200);
+
+const [gravada] = await sql`SELECT gross_cents, attribution_method FROM orders
+  WHERE tenant_id = ${s.tenantId} AND gateway_order_id = ${vendaToken}`;
+eq("e a venda entra igual a que veio pela URL", Number(gravada?.gross_cents), 15000);
+eq("com a mesma atribuicao", gravada?.attribution_method, "click_id");
+
+/* Metade dos clientes HTTP manda o valor cru; recusar viraria uma tarde de
+   depuracao para descobrir que faltava escrever "Bearer". */
+eq("token sem a palavra Bearer tambem serve",
+  (await porToken({ pedido_id: "TOK-CRU-" + Date.now(), status: "pago", valor: 150, click_id: click },
+    parceiro.webhook_secret, "")).status, 200);
+
+eq("token errado e recusado",
+  (await porToken({ pedido_id: "X", status: "pago", valor: 1 }, "rrt_naoexiste")).status, 404);
+eq("sem cabecalho nenhum, 401",
+  (await porToken({ pedido_id: "X", status: "pago", valor: 1 }, null)).status, 401);
+
+/* A credencial revogada tambem nao vale pelo cabecalho. */
+eq("credencial revogada nao vale nem por token",
+  (await porToken({ pedido_id: "X", status: "pago", valor: 1 }, erp.webhook_secret)).status, 404);
+
+
 console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
 process.exit(f === 0 ? 0 : 1);

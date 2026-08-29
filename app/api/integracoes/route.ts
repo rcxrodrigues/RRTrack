@@ -116,45 +116,56 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         /*
-         * Lista fechada de propósito: o corpo vem do navegador, e gravar
-         * qualquer chave que chegasse deixaria o cliente escolher o que entra
-         * cifrado no banco.
+         * As chaves aceitas saem do proprio adaptador.
          *
-         * `shopDomain`, `accessToken` e `apiVersion` sao da Shopify, e servem
-         * so a reconciliacao — o webhook dela nao precisa de nenhum dos tres,
-         * porque a Shopify assina e o `signingSecret` ja cobre isso. Nao ha
-         * campo na tela para eles ainda; entram por esta rota.
+         * Continua sendo lista fechada — o corpo vem do navegador, e gravar
+         * qualquer chave que chegasse deixaria o cliente escolher o que entra
+         * cifrado no banco. So que agora a lista e a MESMA que a tela usa para
+         * montar o formulario, em vez de uma segunda copia aqui. Duas listas
+         * divergiriam no dia em que alguem acrescentasse um campo num lugar
+         * so, e o sintoma seria o campo aparecer na tela, a pessoa preencher,
+         * e o valor sumir sem erro nenhum.
+         *
+         * `apiVersion` nao esta declarada em adaptador nenhum: e um ajuste de
+         * manutencao da Shopify, sem campo na tela, que entra so por esta rota.
          */
+        const adaptador = getGateway(gateway)!;
+        const aceitas = new Set([
+          ...(adaptador.credenciais ?? []).map((c) => c.chave),
+          "apiVersion",
+        ]);
+
         const cred: Record<string, string> = {};
-        for (const chave of ["apiKey", "apiSecret", "clientId", "clientSecret", "publicKey", "secretKey", "signingSecret",
-          "shopDomain", "accessToken", "apiVersion"]) {
+        for (const chave of aceitas) {
           const v = texto(corpo[chave]);
           if (v) cred[chave] = await encryptValue(v);
         }
 
         /*
-         * Credencial de API pode existir várias vezes; conexão de webhook, não.
+         * Editar aponta para UMA conexao, pelo id. Sem id, cria outra.
          *
-         * A diferença não é preferência. Uma credencial de API é um endereço
-         * que o lojista entrega a um sistema — o ERP, um checkout próprio, a
-         * ferramenta de um parceiro. São vários sistemas, cada um com o seu,
-         * e o nome ao lado é o que permite revogar UM sem derrubar os outros.
-         *
-         * Conexão de webhook continua única por gateway porque a reconciliação
-         * escolhe UMA conexão para consultar o pedido na origem (`.limit(1)`
-         * em core/reconciliacao.ts). Com duas, ela usaria a credencial de uma
-         * loja para perguntar pelo pedido da outra — e a resposta seria "não
-         * existe", que este sistema trata como venda forjada. A entrada por
-         * API não passa por ali: o adaptador dela não tem `fetchOrder`.
+         * Antes isto procurava por (loja, gateway) e so podia haver uma de
+         * cada. Duas consequencias, as duas ruins: nao dava para ligar duas
+         * lojas Shopify nem dois ERPs, e — pior — quando passassem a existir
+         * duas, editar a credencial de uma escreveria na primeira que a busca
+         * encontrasse. Sem erro, e com a venda parando de chegar do lado que
+         * ninguem mexeu.
          */
-        const especie = getGateway(gateway)!.especie;
+        const id = texto(corpo.id);
 
-        const [existente] = especie === "api"
-          ? [undefined]
-          : await db.select({ id: gatewayConnections.id, segredo: gatewayConnections.webhookSecret })
+        const [existente] = id
+          ? await db.select({ id: gatewayConnections.id, segredo: gatewayConnections.webhookSecret })
             .from(gatewayConnections)
-            .where(and(eq(gatewayConnections.tenantId, tenantId), eq(gatewayConnections.gateway, gateway)))
-            .limit(1);
+            .where(and(
+              eq(gatewayConnections.tenantId, tenantId),
+              eq(gatewayConnections.id, id),
+            ))
+            .limit(1)
+          : [undefined];
+
+        if (id && !existente) {
+          return Response.json({ erro: "conexão não encontrada" }, { status: 404 });
+        }
 
         if (existente) {
           const venceGw = vencimento(corpo.expiraEm);
@@ -170,7 +181,13 @@ export async function POST(req: Request): Promise<Response> {
           return Response.json({ ok: true, id: existente.id, segredo: existente.segredo, novo: false });
         }
 
-        const segredo = "whsec_" + aleatorio(24);
+        /*
+         * Prefixo diferente para a entrada por API porque a coisa e diferente:
+         * `whsec_` vive no caminho de uma URL que o gateway configura; o token
+         * da API vai num cabecalho Authorization, como todo token. O nome
+         * errado fazia a pessoa procurar onde colar uma URL.
+         */
+        const segredo = (adaptador.especie === "api" ? "rrt_" : "whsec_") + aleatorio(24);
         const [nova] = await db.insert(gatewayConnections).values({
           tenantId, gateway,
           label: texto(corpo.label) ?? gateway,
@@ -191,9 +208,15 @@ export async function POST(req: Request): Promise<Response> {
         const gateway = texto(corpo.gateway);
         if (!gateway) return Response.json({ erro: "gateway ausente" }, { status: 400 });
 
+        /* Pelo id quando vier: podendo haver duas do mesmo gateway, gravar a
+           tabela de taxas por marca acertaria a conexao errada. */
+        const idTaxas = texto(corpo.id);
         const [conexao] = await db.select({ id: gatewayConnections.id })
           .from(gatewayConnections)
-          .where(and(eq(gatewayConnections.tenantId, tenantId), eq(gatewayConnections.gateway, gateway)))
+          .where(and(
+            eq(gatewayConnections.tenantId, tenantId),
+            idTaxas ? eq(gatewayConnections.id, idTaxas) : eq(gatewayConnections.gateway, gateway),
+          ))
           .limit(1);
 
         if (!conexao) return Response.json({ erro: "gateway não conectado" }, { status: 404 });
