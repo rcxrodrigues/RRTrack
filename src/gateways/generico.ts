@@ -43,6 +43,8 @@ const STATUS: Record<string, OrderStatus> = {
   chargeback: "chargeback", contestado: "chargeback",
   /* inglês */
   pending: "pending", waiting: "pending", processing: "pending",
+  /* Nome da Utmify. Quem ja integrou com eles aponta para ca sem mexer. */
+  waiting_payment: "pending",
   paid: "paid", approved: "paid", completed: "paid",
   refused: "refused", declined: "refused", failed: "refused",
   canceled: "canceled", cancelled: "canceled",
@@ -57,10 +59,39 @@ const METODO: Record<string, PaymentMethod> = {
   cartao_debito: "debit_card", debito: "debit_card", debit_card: "debit_card",
   boleto: "boleto", bank_slip: "boleto",
   carteira: "wallet", wallet: "wallet", paypal: "wallet",
+  /*
+   * "free_price" e a venda de valor zero da Utmify — brinde, cortesia, plano
+   * gratuito. Nao passa por adquirente nenhuma, entao nao e cartao: cair em
+   * credito faria a tabela de taxas descontar uma taxa que ninguem cobrou.
+   */
+  free_price: "other", gratis: "other", free: "other",
 };
 
 /* Campos onde o clickId pode ter viajado, na entrada por API. */
 const REPASSE = ["click_id", "clickId", "sck", "src", "xcod", "utm_id", "tracking"] as const;
+
+/*
+ * Converte texto em instante, tratando data SEM FUSO como UTC.
+ *
+ * "2026-08-29 14:30:00" e o formato da Utmify, e a documentacao deles diz que
+ * e UTC. O `new Date` do JavaScript le exatamente essa forma como hora LOCAL
+ * do servidor — num servidor em Sao Paulo a venda entra tres horas atrasada,
+ * o que joga toda venda entre 21h e meia-noite para o dia anterior.
+ *
+ * O erro nao aparece: a venda entra, com data plausivel, no dia errado. E o
+ * faturamento do dia fecha diferente do extrato sem ninguem saber por que.
+ *
+ * Data COM fuso escrito continua sendo respeitada como veio.
+ */
+function instante(v: unknown): Date | undefined {
+  const t = texto(v);
+  if (!t) return undefined;
+  const cru = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(t)
+    ? t.replace(" ", "T") + "Z"
+    : t;
+  const d = new Date(cru);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
 
 function texto(v: unknown): string | undefined {
   if (typeof v === "string") { const t = v.trim(); return t || undefined; }
@@ -121,7 +152,10 @@ function dinheiro(
   nome: string,
   nomeIngles: string,
 ): Cents | undefined {
-  const cent = campo(fonte, `${nome}_centavos`, `${nomeIngles}_cents`, `${nomeIngles}Cents`);
+  const cent = campo(fonte,
+    `${nome}_centavos`, `${nomeIngles}_cents`, `${nomeIngles}Cents`,
+    /* `priceInCents`, `totalPriceInCents` — o jeito da Utmify. */
+    `${nomeIngles}InCents`);
   if (cent !== undefined) return paraCentavos(cent, true);
 
   const moeda = campo(fonte, nome, nomeIngles);
@@ -150,7 +184,8 @@ function lerItens(fonte: Record<string, unknown>): OrderItem[] {
       unitPriceCents: dinheiro(i, "preco", "price")
         ?? dinheiro(i, "valor", "amount") ?? 0,
       unitCostCents: dinheiro(i, "custo", "cost"),
-      variant: texto(campo(i, "variacao", "variant", "variante")),
+      /* `planName` e o nome do plano na Utmify — e variacao, para nos. */
+      variant: texto(campo(i, "variacao", "variant", "variante", "planName", "plan_name")),
       category: texto(campo(i, "categoria", "category")),
     };
   }).filter((i): i is OrderItem => i !== null);
@@ -201,8 +236,17 @@ function lerRepasse(fonte: Record<string, unknown>): Record<string, string> {
     if (v) out[f] = v;
   }
 
-  /* Também aceita um objeto solto, como os gateways fazem com `metadata`. */
-  for (const nome of ["repasse", "passthrough", "metadata", "meta", "custom"]) {
+  /*
+   * E dentro do bloco de rastreamento, que e onde a Utmify guarda `sck`.
+   *
+   * Olhar so o topo do corpo era o suficiente enquanto o formato fosse nosso.
+   * No formato deles, `sck` mora em `trackingParameters` — e `sck` e
+   * justamente por onde o nosso clickId volta. Sem esta parte, toda venda
+   * vinda de la entrava sem origem: nao dava erro, so nao tinha campanha.
+   */
+  for (const nome of ["repasse", "passthrough", "metadata", "meta", "custom",
+    "trackingParameters", "tracking_parameters", "utm", "utms",
+    "atribuicao", "attribution"]) {
     const bloco = obj(fonte[nome]);
     if (!bloco) continue;
     for (const [k, v] of Object.entries(bloco)) {
@@ -236,7 +280,7 @@ export const genericoAdapter: GatewayAdapter = {
     /* Aceita tanto o objeto no topo quanto embrulhado em `pedido`/`order`. */
     const d = obj(campo(body, "pedido", "order", "data")) ?? body;
 
-    const pedidoId = texto(campo(d, "pedido_id", "order_id", "id", "codigo", "code"));
+    const pedidoId = texto(campo(d, "pedido_id", "order_id", "orderId", "id", "codigo", "code"));
     if (!pedidoId) return null;
 
     const statusBruto = (texto(campo(d, "status", "situacao", "state")) ?? "").toLowerCase();
@@ -246,17 +290,44 @@ export const genericoAdapter: GatewayAdapter = {
 
     const itens = lerItens(d);
 
+    /*
+     * O bloco financeiro da Utmify. Vem separado do pedido:
+     *
+     *   commission: { totalPriceInCents, gatewayFeeInCents, currency }
+     *
+     * Ler so o topo perdia o valor inteiro de quem manda no formato deles — a
+     * venda entrava valendo a soma dos itens, sem frete e sem juros.
+     */
+    const comissao = obj(campo(d, "commission", "comissao"));
+
     const bruto = dinheiro(d, "valor", "amount")
       ?? dinheiro(d, "total", "total")
+      ?? (comissao ? dinheiro(comissao, "total", "totalPrice") : undefined)
       ?? itens.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
-    const quando = (() => {
-      const t = texto(campo(d, "pago_em", "paid_at", "criado_em", "created_at", "data", "date"));
-      const dt = t ? new Date(t) : new Date();
-      return Number.isNaN(dt.getTime()) ? new Date() : dt;
-    })();
+    /*
+     * A ordem importa: o instante da venda e quando ela foi PAGA, e so na
+     * falta disso quando foi criada. Um pedido criado ontem e pago hoje conta
+     * no faturamento de hoje — e e no dia do pagamento que o gasto do anuncio
+     * tem com o que ser comparado.
+     */
+    const quando = instante(campo(d, "pago_em", "paid_at", "approvedDate", "approved_date"))
+      ?? instante(campo(d, "estornado_em", "refundedAt", "refunded_at"))
+      ?? instante(campo(d, "criado_em", "created_at", "createdAt", "data", "date"))
+      ?? new Date();
 
-    const utm = obj(campo(d, "utm", "utms", "atribuicao", "attribution"));
+    /*
+     * `trackingParameters` e onde a Utmify guarda UTM, `src` e `sck` — e `sck`
+     * e justamente por onde o nosso clickId volta. Sem ler este bloco, quem
+     * manda no formato deles entrega venda sem origem nenhuma.
+     */
+    const utm = obj(campo(d, "utm", "utms", "atribuicao", "attribution",
+      "trackingParameters", "tracking_parameters"));
+
+    /* Fora do bloco de UTM porque a Utmify o guarda dentro de `customer`. */
+    const ipDoCliente = texto(campo(
+      obj(campo(d, "cliente", "customer", "comprador", "buyer")) ?? {}, "ip",
+    ));
     const parcelas = Number(campo(d, "parcelas", "installments") ?? 0);
 
     return {
@@ -267,25 +338,46 @@ export const genericoAdapter: GatewayAdapter = {
        */
       gatewayEventId: texto(campo(d, "evento_id", "event_id")) ?? `${pedidoId}:${status}`,
       status,
-      currency: (texto(campo(d, "moeda", "currency")) ?? "BRL").toUpperCase(),
+      currency: (
+        texto(campo(d, "moeda", "currency"))
+        ?? (comissao ? texto(campo(comissao, "moeda", "currency")) : undefined)
+        ?? "BRL"
+      ).toUpperCase(),
       grossCents: bruto,
-      feeCents: dinheiro(d, "taxa", "fee"),
+      feeCents: dinheiro(d, "taxa", "fee")
+        ?? (comissao ? dinheiro(comissao, "taxa_gateway", "gatewayFee") : undefined),
       shippingCents: dinheiro(d, "frete", "shipping"),
       discountCents: dinheiro(d, "desconto", "discount"),
-      paymentMethod: METODO[(texto(campo(d, "metodo", "payment_method", "forma_pagamento")) ?? "").toLowerCase()] ?? "other",
+      paymentMethod: METODO[
+        (texto(campo(d, "metodo", "payment_method", "paymentMethod", "forma_pagamento")) ?? "").toLowerCase()
+      ] ?? "other",
       installments: Number.isFinite(parcelas) && parcelas > 0 ? Math.round(parcelas) : undefined,
       items: itens,
       customer: lerCliente(d),
-      attribution: utm ? {
-        utmSource: texto(campo(utm, "utm_source", "source", "origem")),
-        utmMedium: texto(campo(utm, "utm_medium", "medium", "midia")),
-        utmCampaign: texto(campo(utm, "utm_campaign", "campaign", "campanha")),
-        utmContent: texto(campo(utm, "utm_content", "content", "conteudo")),
-        utmTerm: texto(campo(utm, "utm_term", "term", "termo")),
-        fbc: texto(campo(utm, "fbc", "_fbc")),
-        fbp: texto(campo(utm, "fbp", "_fbp")),
-        gclid: texto(campo(utm, "gclid")),
-        ttclid: texto(campo(utm, "ttclid")),
+      /*
+       * A atribuicao sai do bloco de UTM E do comprador — o IP mora la dentro,
+       * no formato da Utmify. Amarrar tudo a existencia do bloco de UTM
+       * perdia o IP de quem manda venda sem campanha, que e chave de
+       * correspondencia igual as outras.
+       */
+      attribution: (utm || ipDoCliente) ? {
+        utmSource: texto(campo(utm ?? {}, "utm_source", "source", "origem")),
+        utmMedium: texto(campo(utm ?? {}, "utm_medium", "medium", "midia")),
+        utmCampaign: texto(campo(utm ?? {}, "utm_campaign", "campaign", "campanha")),
+        utmContent: texto(campo(utm ?? {}, "utm_content", "content", "conteudo")),
+        utmTerm: texto(campo(utm ?? {}, "utm_term", "term", "termo")),
+        fbc: texto(campo(utm ?? {}, "fbc", "_fbc")),
+        fbp: texto(campo(utm ?? {}, "fbp", "_fbp")),
+        gclid: texto(campo(utm ?? {}, "gclid")),
+        ttclid: texto(campo(utm ?? {}, "ttclid")),
+        /*
+         * O IP do comprador, que a Utmify aceita dentro de `customer`.
+         *
+         * E chave de correspondencia no CAPI da Meta e no Enhanced Conversions
+         * do Google, e e das poucas que a venda empurrada por servidor pode
+         * trazer — o navegador do comprador nunca falou conosco nesse caminho.
+         */
+        ip: ipDoCliente,
       } : undefined,
       passthrough: lerRepasse(d),
       occurredAt: quando,
@@ -316,6 +408,11 @@ export const genericoAdapter: GatewayAdapter = {
 export const webhookGenericoAdapter: GatewayAdapter = {
   ...genericoAdapter,
   id: "webhook",
-  label: "Outra plataforma",
+  /*
+   * O "+" e o verbo estao no rotulo de proposito: no menu, "Outra plataforma"
+   * lia como o nome de uma marca que ninguem conhece. O que a pessoa procura
+   * ali e a acao — cadastrar a que ela usa e nao esta na lista.
+   */
+  label: "+ Cadastrar nova plataforma",
   especie: "plataforma",
 };

@@ -420,8 +420,20 @@ function ExemploApi() {
             Mandar o mesmo pedido duas vezes não duplica a venda; mudança de
             estado passa.<br />
             O token vai no cabeçalho{" "}
-            <span className="num">Authorization: Bearer &lt;token&gt;</span> — e vive
-            no seu servidor, nunca em código de navegador.
+            <span className="num">Authorization: Bearer &lt;token&gt;</span> ou{" "}
+            <span className="num">x-api-token</span> — e vive no seu servidor, nunca em
+            código de navegador.<br />
+            Data sem fuso escrito é lida como UTC (<span className="num">2026-08-20 23:30:00</span>).
+            Mande com fuso se for hora local.<br />
+            <strong style={{ color: "var(--ink-medio)" }}>isTest: true</strong> valida e
+            devolve o que entendeu, sem gravar nada.<br />
+            O formato da Utmify também é aceito inteiro —{" "}
+            <span className="num">orderId</span>, <span className="num">commission</span>,{" "}
+            <span className="num">trackingParameters</span>,{" "}
+            <span className="num">priceInCents</span>. Quem já integra com eles aponta
+            para cá sem mexer no código, e ganha os campos que eles não têm: CEP,
+            cidade, estado, nascimento e gênero, que viram chave de correspondência
+            a mais na Meta.
           </div>
         </>
       )}

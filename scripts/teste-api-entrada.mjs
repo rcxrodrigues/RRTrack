@@ -206,5 +206,103 @@ eq("credencial revogada nao vale nem por token",
   (await porToken({ pedido_id: "X", status: "pago", valor: 1 }, erp.webhook_secret)).status, 404);
 
 
+/*
+ * O payload da Utmify, no formato exato da documentacao deles.
+ *
+ * Quem ja integrou com a Utmify aponta a URL para ca e nao mexe em mais nada.
+ * Isso so vale se cada campo do formato deles chegar no lugar certo aqui — e
+ * o jeito de errar e silencioso: valor cem vezes maior, data no dia errado,
+ * venda sem origem porque o `sck` estava num bloco que ninguem leu.
+ */
+console.log("\n== formato da Utmify, campo por campo ==");
+
+const pedidoU = "UTM-" + Date.now();
+const rU = await fetch(`${BASE}/api/pedidos`, {
+  method: "POST",
+  headers: { "content-type": "application/json", "x-api-token": parceiro.webhook_secret },
+  body: JSON.stringify({
+    orderId: pedidoU,
+    platform: "MinhaPlataforma",
+    paymentMethod: "pix",
+    status: "paid",
+    createdAt: "2026-08-20 10:00:00",
+    approvedDate: "2026-08-20 23:30:00",
+    refundedAt: null,
+    customer: {
+      name: "Ana Nogueira",
+      email: "ana@exemplo.com.br",
+      phone: "5531988776655",
+      document: "12345678909",
+      country: "BR",
+      ip: "200.100.50.25",
+    },
+    products: [
+      { id: "P1", name: "Kit", planId: null, planName: "Mensal",
+        quantity: 2, priceInCents: 4995 },
+    ],
+    trackingParameters: {
+      src: null, sck: click,
+      utm_source: "facebook", utm_campaign: "utmify-compat",
+      utm_medium: null, utm_content: null, utm_term: null,
+    },
+    commission: {
+      totalPriceInCents: 9990,
+      gatewayFeeInCents: 499,
+      userCommissionInCents: 9491,
+      currency: "BRL",
+    },
+  }),
+});
+eq("x-api-token e aceito", rU.status, 200);
+
+const [vU] = await sql`SELECT * FROM orders WHERE gateway_order_id = ${pedidoU}`;
+eq("venda registrada", !!vU, true);
+/* priceInCents e totalPriceInCents JA sao centavos: multiplicar por cem aqui
+   daria R$ 999,00 numa venda de R$ 99,90. */
+eq("totalPriceInCents entra como centavo", Number(vU?.gross_cents), 9990);
+eq("gatewayFeeInCents vira a taxa", Number(vU?.fee_cents), 499);
+eq("metodo pix", vU?.payment_method, "pix");
+eq("moeda do bloco commission", vU?.currency, "BRL");
+
+/*
+ * A data. "2026-08-20 23:30:00" e UTC na documentacao deles, e o `new Date` do
+ * JavaScript leria como hora local — num servidor em Sao Paulo, 23:30 UTC do
+ * dia 20 viraria 20:30 do dia 20, e toda venda da noite cairia no dia errado.
+ */
+eq("data sem fuso e lida como UTC",
+  new Date(vU?.occurred_at).toISOString(), "2026-08-20T23:30:00.000Z");
+
+/* O `sck` deles e por onde o nosso clickId volta. */
+eq("sck do trackingParameters atribui a venda", vU?.attribution_method, "click_id");
+eq("na sessao certa", vU?.click_id, click);
+
+const itensU = await sql`SELECT * FROM order_items WHERE order_id = ${vU?.id}`;
+eq("um item", itensU.length, 1);
+eq("preco do item em centavos", Number(itensU[0]?.unit_price_cents), 4995);
+eq("planName virou a variacao", itensU[0]?.variant, "Mensal");
+
+console.log("\n== isTest valida e nao grava ==");
+
+const pedidoT = "TESTE-" + Date.now();
+const rT = await fetch(`${BASE}/api/pedidos`, {
+  method: "POST",
+  headers: { "content-type": "application/json", "x-api-token": parceiro.webhook_secret },
+  body: JSON.stringify({
+    orderId: pedidoT, status: "paid", paymentMethod: "pix",
+    isTest: true,
+    commission: { totalPriceInCents: 12345, currency: "BRL" },
+  }),
+});
+const jT = await rT.json();
+eq("isTest responde 200", rT.status, 200);
+eq("e diz que nao gravou", jT.gravado, false);
+/* Devolve o que ENTENDEU: e assim que o desenvolvedor ve o valor lido errado
+   antes de ligar de verdade, em vez de descobrir pelo faturamento. */
+eq("devolve o valor que entendeu", jT.entendido?.valorCents, 12345);
+
+const [naoGravou] = await sql`SELECT id FROM orders WHERE gateway_order_id = ${pedidoT}`;
+eq("e nao gravou mesmo", naoGravou, undefined);
+
+
 console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
 process.exit(f === 0 ? 0 : 1);
