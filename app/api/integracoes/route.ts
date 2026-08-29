@@ -132,10 +132,29 @@ export async function POST(req: Request): Promise<Response> {
           if (v) cred[chave] = await encryptValue(v);
         }
 
-        const [existente] = await db.select({ id: gatewayConnections.id, segredo: gatewayConnections.webhookSecret })
-          .from(gatewayConnections)
-          .where(and(eq(gatewayConnections.tenantId, tenantId), eq(gatewayConnections.gateway, gateway)))
-          .limit(1);
+        /*
+         * Credencial de API pode existir várias vezes; conexão de webhook, não.
+         *
+         * A diferença não é preferência. Uma credencial de API é um endereço
+         * que o lojista entrega a um sistema — o ERP, um checkout próprio, a
+         * ferramenta de um parceiro. São vários sistemas, cada um com o seu,
+         * e o nome ao lado é o que permite revogar UM sem derrubar os outros.
+         *
+         * Conexão de webhook continua única por gateway porque a reconciliação
+         * escolhe UMA conexão para consultar o pedido na origem (`.limit(1)`
+         * em core/reconciliacao.ts). Com duas, ela usaria a credencial de uma
+         * loja para perguntar pelo pedido da outra — e a resposta seria "não
+         * existe", que este sistema trata como venda forjada. A entrada por
+         * API não passa por ali: o adaptador dela não tem `fetchOrder`.
+         */
+        const especie = getGateway(gateway)!.especie;
+
+        const [existente] = especie === "api"
+          ? [undefined]
+          : await db.select({ id: gatewayConnections.id, segredo: gatewayConnections.webhookSecret })
+            .from(gatewayConnections)
+            .where(and(eq(gatewayConnections.tenantId, tenantId), eq(gatewayConnections.gateway, gateway)))
+            .limit(1);
 
         if (existente) {
           const venceGw = vencimento(corpo.expiraEm);

@@ -648,7 +648,16 @@ export function Integracoes({
                 padding: 14, marginBottom: 10,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
-                  <span style={{ fontWeight: 600, fontSize: 12.5, flexGrow: 1 }}>{g?.label ?? c.gateway}</span>
+                  {/*
+              Credencial mostra o nome que a pessoa deu; gateway mostra a
+              marca. Com varias credenciais, "Entrada por API" repetido tres
+              vezes nao diria qual e a do ERP e qual e a do parceiro — e o
+              nome existe justamente para poder revogar uma sem derrubar as
+              outras.
+            */}
+            <span style={{ fontWeight: 600, fontSize: 12.5, flexGrow: 1 }}>
+              {esp === "api" ? (c.label || "sem nome") : (g?.label ?? c.gateway)}
+            </span>
                   <Selo ok>ativo</Selo>
                   <button onClick={() => desativar("gateway", c.id)} style={{
                     background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
@@ -1025,14 +1034,37 @@ export function Integracoes({
                 chegar no mesmo lugar.
               */}
               {(() => {
-                const disponivel = gatewaysDisponiveis.find(
-                  (g) => g.especie === "api" && !conexoes.some((c) => c.gateway === g.id && c.ativo),
-                );
-                if (!disponivel) return null;
+                const adaptador = gatewaysDisponiveis.find((g) => g.especie === "api");
+                if (!adaptador) return null;
+
+                if (editando !== "api:novo") {
+                  return (
+                    <Botao onClick={() => { setEditando("api:novo"); setForm({}); }}>
+                      Adicionar credencial
+                    </Botao>
+                  );
+                }
+
                 return (
-                  <Botao disabled={salvando} onClick={() => salvar({
-                    tipo: "gateway", gateway: disponivel.id,
-                  })}>{salvando ? "criando…" : "Adicionar credencial"}</Botao>
+                  <div style={{ borderTop: "1px solid var(--linha)", paddingTop: 14, marginTop: 4 }}>
+                    {/*
+                      O nome e obrigatorio, e nao opcional com um padrao.
+                      
+                      Uma credencial sem nome so incomoda quando ja existem
+                      tres e nenhuma diz de quem e — que e tarde, porque a
+                      essa altura ninguem lembra qual entregou pra quem, e
+                      revogar vira adivinhacao.
+                    */}
+                    <Campo rotulo="Nome"
+                      dica="Para saber de quem é esta credencial — o ERP, o checkout próprio, um parceiro."
+                      {...campo("label")} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Botao disabled={salvando || !form.label?.trim()} onClick={() => salvar({
+                        tipo: "gateway", gateway: adaptador.id, label: form.label?.trim(),
+                      })}>{salvando ? "criando…" : "Criar credencial"}</Botao>
+                      <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
+                    </div>
+                  </div>
                 );
               })()}
             </Cartao>

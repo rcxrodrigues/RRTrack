@@ -118,5 +118,47 @@ const [estornada] = await sql`SELECT status FROM orders
   WHERE tenant_id = ${s.tenantId} AND gateway_order_id = ${pedidoId}`;
 eq("estorno avança", estornada.status, "refunded");
 
+/*
+ * Varias credenciais, cada uma com o seu nome e o seu segredo.
+ *
+ * O ponto de nomear nao e organizacao: e poder revogar UMA sem derrubar as
+ * outras. Se apagar a do parceiro derruba a do ERP junto, o lojista descobre
+ * pelo faturamento parando — e nao ha erro nenhum dizendo por que.
+ */
+console.log("\n== credenciais nomeadas convivem ==");
+
+const [erp] = await sql`
+  INSERT INTO gateway_connections (tenant_id, gateway, label, credentials, webhook_secret, active)
+  VALUES (${s.tenantId}, 'api', 'ERP da loja', '{}'::jsonb, ${'whsec_erp_' + Date.now()}, true)
+  RETURNING id, webhook_secret`;
+const [parceiro] = await sql`
+  INSERT INTO gateway_connections (tenant_id, gateway, label, credentials, webhook_secret, active)
+  VALUES (${s.tenantId}, 'api', 'Parceiro', '{}'::jsonb, ${'whsec_parc_' + Date.now()}, true)
+  RETURNING id, webhook_secret`;
+
+const vendaErp = "ERP-" + Date.now();
+const vendaParc = "PARC-" + Date.now();
+
+eq("a credencial do ERP entrega",
+  (await empurrar({ pedido_id: vendaErp, status: "pago", valor: 100, click_id: click },
+    erp.webhook_secret)).status, 200);
+eq("a do parceiro tambem",
+  (await empurrar({ pedido_id: vendaParc, status: "pago", valor: 200, click_id: click },
+    parceiro.webhook_secret)).status, 200);
+
+const ambas = await sql`SELECT gateway_order_id FROM orders
+  WHERE tenant_id = ${s.tenantId} AND gateway_order_id IN (${vendaErp}, ${vendaParc})`;
+eq("as duas vendas entraram, na mesma loja", ambas.length, 2);
+
+/* Revogar uma nao pode calar a outra — e a razao de existirem separadas. */
+await sql`UPDATE gateway_connections SET active = false WHERE id = ${erp.id}`;
+
+eq("credencial revogada para de entregar",
+  (await empurrar({ pedido_id: "ERP-2", status: "pago", valor: 100 }, erp.webhook_secret)).status, 404);
+eq("e a outra segue funcionando",
+  (await empurrar({ pedido_id: "PARC-2-" + Date.now(), status: "pago", valor: 200, click_id: click },
+    parceiro.webhook_secret)).status, 200);
+
+
 console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
 process.exit(f === 0 ? 0 : 1);
