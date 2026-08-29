@@ -312,7 +312,14 @@
   }
 
   function decorateAll() {
-    var sel = cfg.checkoutSelector || "[data-checkout-link], a[href*='checkout']";
+    /*
+     * Só ÂNCORA se carimba: é o href que a gente consegue reescrever. Botão de
+     * formulário não tem URL para carimbar — o destino é decidido pelo
+     * servidor no POST, e aí o clickId precisa chegar ao checkout por outro
+     * caminho. Incluí-los aqui faria `a.href` ser undefined e o laço pular,
+     * sem erro e sem carimbar nada.
+     */
+    var sel = "[data-checkout-link], a[href*='checkout']";
     var links = document.querySelectorAll(sel);
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
@@ -507,15 +514,29 @@
   }
 
   function doOpenGraph() {
-    var id = meta("product:retailer_item_id") || meta("og:product_id");
+    /*
+     * PRECISA de sinal de produto, e não só de um título.
+     *
+     * Antes bastava `og:title`, e og:title toda página tem — a home virava
+     * produto, o carrinho virava produto, e o funil registrava "viu o
+     * produto" de gente que só abriu o site. Etapa inflada é pior que etapa
+     * zerada: a taxa de conversão despenca e parece problema de oferta.
+     *
+     * Sinal de produto é uma destas três: `og:type` dizendo produto, um preço
+     * declarado, ou um código de item de varejo.
+     */
+    var preco = numero(meta("product:price:amount") || meta("og:price:amount"));
+    var codigo = meta("product:retailer_item_id") || meta("og:product_id");
+    var tipo = (meta("og:type") || "").toLowerCase();
+
+    if (tipo.indexOf("product") === -1 && preco === undefined && !codigo) return null;
+
     var nome = meta("og:title");
-    if (!id && !nome) return null;
-    return {
-      id: id || nome,
-      name: nome,
-      price: numero(meta("product:price:amount") || meta("og:price:amount")),
-      currency: meta("product:price:currency") || meta("og:price:currency")
-    };
+    var id = codigo || nome;
+    if (!id) return null;
+
+    return { id: id, name: nome, price: preco,
+      currency: meta("product:price:currency") || meta("og:price:currency") };
   }
 
   /* O que a página está mostrando agora, e a variante escolhida agora. */
@@ -632,7 +653,19 @@
      * anúncio precisa ouvir. O funil conta sessões distintas, então repetir não
      * distorce a taxa de passagem.
      */
-    var selCarrinho = cfg.addToCartSelector || "[data-add-to-cart], [data-rr-add-to-cart]";
+    /*
+     * Os seletores da Shopify entram por padrão.
+     *
+     * Antes só reconhecia `data-add-to-cart` e `data-rr-add-to-cart`, que são
+     * atributos NOSSOS — nenhum tema de loja tem. Numa Shopify o botão é um
+     * submit dentro do formulário que posta em /cart/add, ou tem name="add".
+     * Sem isto, "adicionou ao carrinho" ficava em zero para sempre, e o funil
+     * mostrava a etapa como se ninguém clicasse.
+     */
+    var selCarrinho = cfg.addToCartSelector
+      || "[data-add-to-cart], [data-rr-add-to-cart],"
+      + " form[action*='/cart/add'] [type='submit'], button[name='add'],"
+      + " [name='add'], .product-form__submit, .add-to-cart, .btn--add-to-cart";
     var botao = ev.target && ev.target.closest ? ev.target.closest(selCarrinho) : null;
     if (botao) {
       send("add_to_cart", paramsDe(lerProduto(botao, "data-rr-product")));
@@ -644,7 +677,22 @@
      * que o navegador ainda consegue ver — depois disso a pessoa está no
      * domínio do gateway, onde não temos alcance nenhum.
      */
-    var sel = cfg.checkoutSelector || "[data-checkout-link], a[href*='checkout']";
+    /*
+     * O botão de finalizar compra da Shopify NÃO É UM LINK.
+     *
+     * É um submit dentro do formulário do carrinho, com name="checkout" — e o
+     * seletor só olhava `a[href*='checkout']`. Numa loja real a pessoa clicou
+     * em finalizar e o "iniciou o checkout" ficou em zero, porque o botão não
+     * era uma âncora.
+     *
+     * A troca de domínio acontece depois, no redirecionamento do servidor;
+     * por isso o evento tem de sair no CLIQUE, que é o último instante em que
+     * ainda estamos na página.
+     */
+    var sel = cfg.checkoutSelector
+      || "[data-checkout-link], a[href*='checkout'],"
+      + " button[name='checkout'], [name='checkout'],"
+      + " .cart__checkout, .checkout-button";
     var link = ev.target && ev.target.closest ? ev.target.closest(sel) : null;
     if (link && link.getAttribute("data-rr-ic") !== "1") {
       link.setAttribute("data-rr-ic", "1");
@@ -702,6 +750,30 @@
 
   if (document.readyState !== "loading") verProduto();
   document.addEventListener("DOMContentLoaded", verProduto);
+
+  /*
+   * Tenta de novo por alguns segundos, e o motivo é concreto.
+   *
+   * `ShopifyAnalytics.meta` é publicado pelo script da própria Shopify, que
+   * costuma carregar DEPOIS do nosso. Na primeira leitura ele não existe, a
+   * detecção cai no JSON-LD ou no Open Graph, e numa página de produto onde só
+   * a Shopify tinha o dado o `view_content` simplesmente não saía — foi o que
+   * aconteceu numa loja real: page_view na página do produto, e nenhum
+   * view_content.
+   *
+   * Para quando achar, e desiste depois de três segundos. `jaViu` garante que
+   * só sai um por página, então repetir a tentativa não repete o evento.
+   */
+  (function insistir() {
+    var tentativas = 0;
+    var t = setInterval(function () {
+      if (jaViu || ++tentativas > 10) { clearInterval(t); return; }
+      /* Esquece o que leu antes: agora pode haver fonte melhor. */
+      lidoDaPagina = null;
+      varianteLida = null;
+      verProduto();
+    }, 300);
+  })();
 
   /*
    * ------------------------------------ navegação que não recarrega a página

@@ -251,6 +251,46 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
   eq("mesmo caminho de novo nao dispara", nav.enviados.length, estavel);
 
 
+  console.log("\n== pagina que NAO e de produto, mas tem og:title ==");
+
+  /*
+   * Aconteceu numa loja real: a home e o carrinho dispararam view_content, e a
+   * pagina do produto nao. O motivo era este — `og:title` sozinho fazia
+   * qualquer pagina virar produto, e toda pagina tem og:title.
+   *
+   * Etapa inflada e pior que etapa zerada: a taxa de conversao do funil
+   * despenca e parece problema de oferta.
+   */
+  const home = carregar({
+    url: "https://loja.exemplo.com/",
+    html: `<meta property="og:title" content="Transforlar - Loja">
+           <meta property="og:type" content="website">`,
+  });
+  eq("home com og:title nao vira produto", home.rr("product"), null);
+
+  const carrinho = carregar({
+    url: "https://loja.exemplo.com/cart",
+    html: `<meta property="og:title" content="Seu carrinho">`,
+  });
+  eq("carrinho tambem nao", carrinho.rr("product"), null);
+
+  /* Mas pagina de produto de verdade, por og, continua valendo. */
+  const ogProduto = carregar({
+    html: `<meta property="og:title" content="Escorredor 2 pecas">
+           <meta property="og:type" content="product">
+           <meta property="product:price:amount" content="59.90">`,
+  });
+  eq("og:type product vale", ogProduto.rr("product")?.name, "Escorredor 2 pecas");
+  eq("com o preco certo", ogProduto.rr("product")?.price, 59.90);
+
+  /* So o preco tambem basta: alguns temas nao escrevem og:type. */
+  const ogPreco = carregar({
+    html: `<meta property="og:title" content="Kit">
+           <meta property="product:price:amount" content="19.90">`,
+  });
+  eq("preco declarado tambem vale", ogPreco.rr("product")?.price, 19.90);
+
+
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
   process.exit(f === 0 ? 0 : 1);
 })();
