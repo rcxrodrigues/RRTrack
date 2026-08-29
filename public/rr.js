@@ -703,6 +703,60 @@
   if (document.readyState !== "loading") verProduto();
   document.addEventListener("DOMContentLoaded", verProduto);
 
+  /*
+   * ------------------------------------ navegação que não recarrega a página
+   *
+   * Num site clássico cada link é um carregamento novo: o script roda de novo,
+   * e `page_view` sai sozinho. Tema com navegação por JavaScript troca o
+   * conteúdo sem recarregar nada — e aí o script rodou UMA vez, na primeira
+   * página. A pessoa visita seis produtos e a Meta vê um PageView e um
+   * ViewContent.
+   *
+   * Não dá erro. Some dado, e some do jeito pior: o funil mostra menos gente
+   * vendo produto do que viu, e a otimização da campanha trabalha com menos
+   * sinal do que existe.
+   *
+   * Só o CAMINHO conta como página nova. Mudança de query sozinha é filtro de
+   * coleção ou troca de variante — disparar ali inflaria o `page_view` a cada
+   * clique num filtro, e número inflado é pior que número faltando, porque
+   * ninguém desconfia de um número grande.
+   */
+  var caminhoAtual = location.pathname;
+
+  function trocouDePagina() {
+    if (location.pathname === caminhoAtual) return;
+    caminhoAtual = location.pathname;
+
+    /* A página é outra: o produto lido e o "já viu" da anterior não valem. */
+    lidoDaPagina = null;
+    varianteLida = null;
+    jaViu = false;
+
+    send("page_view");
+    verProduto();
+  }
+
+  /*
+   * `pushState` e `replaceState` não emitem evento nenhum — são chamadas de
+   * função. Envolver as duas é a única forma de saber que a navegação
+   * aconteceu, e o `try` existe porque outro script pode ter chegado antes e
+   * deixado a propriedade travada.
+   */
+  try {
+    ["pushState", "replaceState"].forEach(function (nome) {
+      var original = history[nome];
+      if (typeof original !== "function") return;
+      history[nome] = function () {
+        var r = original.apply(this, arguments);
+        /* No fim da fila: o tema costuma trocar o conteúdo logo depois. */
+        setTimeout(trocouDePagina, 0);
+        return r;
+      };
+    });
+  } catch (e) { /* sem isto, só perde a navegação por JavaScript */ }
+
+  window.addEventListener("popstate", trocouDePagina);
+
   /* ------------------------------------------------- quem ainda está aqui */
 
   /*
