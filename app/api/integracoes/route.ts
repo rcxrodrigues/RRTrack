@@ -88,7 +88,8 @@ export async function POST(req: Request): Promise<Response> {
         if (existente) {
           const venceAd = vencimento(corpo.expiraEm);
           await db.update(adAccounts).set({
-            label: texto(corpo.label) ?? plataforma,
+            /* Ver a nota longa no caso "gateway": ausente é "não mexa". */
+            ...(texto(corpo.label) ? { label: texto(corpo.label)! } : {}),
             ...(venceAd !== undefined ? { credentialsExpireAt: venceAd } : {}),
             /* Credencial vazia não apaga a que já existe: quem só renomeou a
                conta não deveria perder o token por causa disso. */
@@ -170,7 +171,19 @@ export async function POST(req: Request): Promise<Response> {
         if (existente) {
           const venceGw = vencimento(corpo.expiraEm);
           await db.update(gatewayConnections).set({
-            label: texto(corpo.label) ?? gateway,
+            /*
+             * Nome ausente NÃO vira o id do gateway.
+             *
+             * O `?? gateway` estava aqui desde quando o nome não era editável
+             * e servia de rótulo padrão na criação. Numa edição ele apagava o
+             * nome: quem abriu a linha só para colar o segredo de assinatura
+             * via "Transforlar" virar "shopify" — sem aviso, e sem entender o
+             * que tinha feito de errado.
+             *
+             * Campo que não veio no corpo significa "não mexa nisso", e não
+             * "apague". Vale para a credencial logo abaixo pelo mesmo motivo.
+             */
+            ...(texto(corpo.label) ? { label: texto(corpo.label)! } : {}),
             ...(venceGw !== undefined ? { credentialsExpireAt: venceGw } : {}),
             ...(Object.keys(cred).length ? { credentials: cred } : {}),
             active: corpo.active !== false,
