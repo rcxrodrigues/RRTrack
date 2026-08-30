@@ -15,9 +15,12 @@
  *    recomenda quando o resultado é incerto. O roteador compara o que o
  *    webhook disse com o que a API respondeu antes de contabilizar.
  *
- * 2. O CPF do comprador nunca vem no webhook. Isso custa as chaves `ct`, `st`
- *    e `zp` no CAPI — não há como contornar pelo webhook; só consultando a
- *    transação pela API, quando a conta tiver permissão.
+ * 2. O CPF e o endereço não vêm no webhook — mas EXISTEM na API, e por muito
+ *    tempo este comentário afirmou o contrário. Estão em
+ *    `/v2/customers/{buyer.id}`, um recurso que ninguém tinha chamado: CEP,
+ *    cidade, estado, país, documento e nascimento. É o que o `enrich` no fim
+ *    deste arquivo busca, e é a diferença entre um Purchase com três chaves
+ *    de correspondência e um com oito.
  *
  * Em compensação, o bloco `data.attribution` já traz utm_*, fbc, fbp, gclid,
  * ttclid, src e sck. É o gateway mais generoso em atribuição que apareceu até
@@ -360,5 +363,75 @@ export const pagouAdapter: GatewayAdapter = {
       occurredAt: new Date(),
       raw: j,
     };
+  },
+
+  /*
+   * Busca o comprador completo, que o webhook não traz.
+   *
+   * O webhook manda `customer` com nome, e-mail e telefone, e nada mais. Por
+   * muito tempo isso passou por limitação da pagou.ai — o comentário no topo
+   * deste arquivo dizia que o CPF "entra e não sai". Estava errado: o dado
+   * existe, num recurso que ninguém tinha chamado.
+   *
+   *   GET /v2/transactions/{id}   →  buyer.id
+   *   GET /v2/customers/{buyer.id}  →  endereço, documento, nascimento
+   *
+   * São duas chamadas, e só acontecem quando há credencial cadastrada. O custo
+   * é alto para o que se ganha: CEP, cidade, estado e país são quatro chaves
+   * de correspondência, e o CPF vira `external_id`, que é das mais fortes. Um
+   * Purchase sai de três chaves para oito ou nove.
+   *
+   * NUNCA SOBRESCREVE o que o webhook já disse. O que veio no evento é o que o
+   * gateway afirmou sobre AQUELA transação; o cadastro do comprador é o estado
+   * atual dele, e pode ter mudado de endereço depois da compra.
+   *
+   * Falhar aqui não derruba a venda — ela entra com menos chaves, que é melhor
+   * que não entrar.
+   */
+  async enrich(order: CanonicalOrder, cred: GatewayCredentials): Promise<CanonicalOrder> {
+    const chave = cred.apiKey ?? cred.secretKey;
+    if (!chave) return order;
+
+    const cabecalhos = { authorization: `Bearer ${chave}`, accept: "application/json" };
+
+    const buscar = async (caminho: string): Promise<Record<string, unknown> | null> => {
+      const res = await fetch(`https://api.pagou.ai${caminho}`, { headers: cabecalhos });
+      if (!res.ok) return null;
+      const j = await res.json() as Record<string, unknown>;
+      return (j.data ?? j) as Record<string, unknown>;
+    };
+
+    try {
+      const trx = await buscar(`/v2/transactions/${order.gatewayOrderId}`);
+      const idComprador = str(pick(trx, "buyer.id"));
+      if (!idComprador) return order;
+
+      const c = await buscar(`/v2/customers/${idComprador}`);
+      if (!c) return order;
+
+      const atual = order.customer ?? {};
+
+      /* Data de nascimento serve à Meta como AAAA-MM-DD; corta hora se vier. */
+      const nascimento = str(pick(c, "birth_date"))?.slice(0, 10);
+
+      return {
+        ...order,
+        customer: {
+          ...atual,
+          name: atual.name ?? str(pick(c, "name")),
+          email: atual.email ?? str(pick(c, "email")),
+          phone: atual.phone ?? str(pick(c, "phone")),
+          document: atual.document ?? str(pick(c, "document.document_number")),
+          zip: atual.zip ?? str(pick(c, "address.zip_code")),
+          city: atual.city ?? str(pick(c, "address.city")),
+          state: atual.state ?? str(pick(c, "address.state")),
+          country: atual.country ?? str(pick(c, "address.country")),
+          birthdate: atual.birthdate ?? nascimento,
+        },
+      };
+    } catch {
+      /* API instável ou credencial sem escopo: segue com o que o webhook deu. */
+      return order;
+    }
   },
 };
