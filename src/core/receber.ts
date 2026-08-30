@@ -22,8 +22,25 @@ import { getGateway } from "../gateways/registry";
 import { reenviarPendentes } from "./dispatch";
 import { reconciliar } from "./reconciliacao";
 import { registrarPedido } from "./pedido";
+import type { CanonicalOrder } from "./types";
 import { decryptRecord } from "./crypto";
 
+
+/*
+ * Vale a pena consultar o gateway para completar este comprador?
+ *
+ * Não é "existe comprador": é "existe o que importa". As chaves que decidem a
+ * qualidade do evento são justamente as que gateway nenhum manda no webhook —
+ * documento, CEP, cidade e estado. Um comprador com nome e e-mail parece
+ * preenchido e vale metade.
+ *
+ * O telefone entra na lista porque a pagou.ai manda a palavra "null" nele; o
+ * número de verdade está no cadastro.
+ */
+function faltaComprador(c: CanonicalOrder["customer"]): boolean {
+  if (!c) return true;
+  return !c.document || !c.zip || !c.city || !c.state || !c.phone;
+}
 
 export async function receberVenda(
   req: Request,
@@ -155,8 +172,18 @@ export async function receberVenda(
    * Completa o que o webhook não trouxe. A Appmax não manda comprador nenhum
    * no webhook de pedido, então sem isto a venda dela chegaria só com as
    * chaves de navegador. Melhor-esforço: falhar aqui não derruba a venda.
+   *
+   * A CONDIÇÃO ERA `!pedido.customer`, e isso desligava o enriquecimento
+   * inteiro para quem manda comprador PARCIAL.
+   *
+   * Foi escrita pensando na Appmax, que não manda nada. A pagou.ai manda nome,
+   * e-mail e telefone — comprador existe, então a busca nunca rodava, e o
+   * endereço e o CPF que ela guarda em `/v2/customers` ficavam lá. Numa venda
+   * real o Purchase saiu com quatro chaves de correspondência quando podia ter
+   * saído com oito, e nada acusou: a venda entrou, o disparo saiu, e só a
+   * qualidade do evento ficou pela metade.
    */
-  if (adapter.enrich && temCredencial && !pedido.customer) {
+  if (adapter.enrich && temCredencial && faltaComprador(pedido.customer)) {
     try {
       pedido = await adapter.enrich(pedido, credenciais ?? await decryptRecord(conexao.credentials));
     } catch { /* segue com o que o webhook trouxe */ }
