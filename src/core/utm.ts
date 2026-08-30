@@ -157,9 +157,4 @@ export const MODELOS: Record<string, { rotulo: string; modelo: string; nota: str
     modelo: "?utm_source=tiktok&utm_campaign=__CAMPAIGN_NAME__|__CAMPAIGN_ID__&utm_medium=__AID_NAME__|__AID__&utm_content=__CID_NAME__|__CID__&utm_term=__PLACEMENT__&utm_id=__CAMPAIGN_ID__",
     nota: "Cole no campo de URL do anúncio. AID é o conjunto, CID é o criativo.",
   },
-  kwai: {
-    rotulo: "Kwai Ads",
-    modelo: "?utm_source=kwai&utm_campaign=__CAMPAIGN_NAME__|__CAMPAIGN_ID__&utm_medium=__UNIT_NAME__|__UNIT_ID__&utm_content=__CREATIVE_NAME__|__CREATIVE_ID__",
-    nota: "Cole no campo de URL de destino do criativo.",
-  },
 };
