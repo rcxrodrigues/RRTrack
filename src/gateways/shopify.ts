@@ -314,8 +314,20 @@ function transacaoDeOutro(pedido: unknown): { gateway: string; gatewayOrderId: s
   ].filter(Boolean).join(" ");
   if (!texto) return undefined;
 
-  const m = /TXN-([0-9a-fA-F][0-9a-fA-F-]{30,40})/.exec(texto)
-    ?? /transa[cç][aã]o\s*#\s*([0-9a-fA-F][0-9a-fA-F-]{30,40})/i.exec(texto);
+  /*
+   * O id é lido até o próximo separador, e NÃO por um formato.
+   *
+   * A primeira versão exigia algo com cara de UUID, porque foi o que apareceu
+   * na venda real. Mas o formato do id é escolha do gateway, não nossa: basta
+   * a pagou.ai emitir `trx_a1b2c3` num plano diferente, ou mudar de esquema,
+   * para o casamento parar sem nada acusando — e o sintoma seria a venda
+   * voltando a entrar duas vezes, que é justamente o que isto evita.
+   *
+   * O marcador é o `TXN-`. O que vem depois dele é o identificador, seja lá
+   * como for escrito.
+   */
+  const m = /TXN-([^\s,;]{6,64})/.exec(texto)
+    ?? /transa[cç][aã]o\s*#\s*([^\s,;]{6,64})/i.exec(texto);
   if (!m?.[1]) return undefined;
 
   /* Hoje só a pagou.ai escreve deste jeito. Outro app, outra regra. */

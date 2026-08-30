@@ -329,6 +329,53 @@ check("lucro bate com o painel deles", 500 - Number(vP?.fee_cents) === 188, "R$ 
 check("sem repasse, fica sem atribuicao", vP?.attribution_method === "unattributed", vP?.attribution_method);
 
 
+/* ============================ ESPELHO NA SHOPIFY ======================== */
+console.log("\nESPELHO — a Shopify completa a venda da Pagou, nao duplica");
+
+/*
+ * O app da Pagou cria o pedido na Shopify e escreve `TXN-<id>` nas tags. E a
+ * MESMA venda: contar as duas dobrou o faturamento numa loja real, R$ 10,00
+ * para um pagamento de R$ 5,00.
+ *
+ * Mas o espelho tem o que falta no original — endereco, e o CPF que o app
+ * escreve na observacao porque a Shopify nao tem campo para ele. A pagou.ai
+ * nao devolve nenhum dos dois em consulta nenhuma.
+ */
+const antesDoEspelho = await sql`SELECT count(*)::int n FROM orders WHERE tenant_id = ${seed.tenantId}`;
+
+const rEsp = await enviar("shopify", JSON.stringify({
+  id: 9900000000001,
+  financial_status: "paid",
+  currency: "BRL",
+  total_price: "5.00",
+  total_price_set: { shop_money: { amount: "5.00", currency_code: "BRL" } },
+  tags: `Pagou, PIX, TXN-${trxReal}`,
+  note: `Pagamento via Pagou — transacao #${trxReal}\nCPF: 08455633603`,
+  shipping_address: {
+    first_name: "Ana", last_name: "Nogueira", city: "Betim",
+    province_code: "MG", zip: "32600-000", country_code: "BR",
+  },
+  line_items: [{ sku: "X", title: "Item", quantity: 1, price: "5.00" }],
+}), { "x-shopify-topic": "orders/paid", "x-shopify-webhook-id": wc.randomUUID() });
+check("espelho aceito", rEsp.status === 200, "status " + rEsp.status);
+
+const depoisDoEspelho = await sql`SELECT count(*)::int n FROM orders WHERE tenant_id = ${seed.tenantId}`;
+check("NAO criou pedido novo",
+  depoisDoEspelho[0].n === antesDoEspelho[0].n,
+  `${antesDoEspelho[0].n} -> ${depoisDoEspelho[0].n}`);
+
+const [vEsp] = await sql`SELECT status, gross_cents, fee_cents, customer FROM orders
+  WHERE gateway_order_id = ${trxReal}`;
+/* O gateway que cobrou tem a palavra final: o espelho nao sabe da taxa. */
+check("valor e taxa da Pagou preservados",
+  Number(vEsp?.gross_cents) === 500 && Number(vEsp?.fee_cents) === 312,
+  `${vEsp?.gross_cents} / ${vEsp?.fee_cents}`);
+
+const campos = Object.keys(vEsp?.customer ?? {});
+check("ganhou o endereco do espelho",
+  ["zip", "city", "state", "country"].every((k) => campos.includes(k)), campos.join(","));
+check("e o CPF da observacao", campos.includes("document"), campos.join(","));
+
 /* ==================================================== SHOPIFY ============ */
 console.log("\nSHOPIFY — a loja inteira, nao um gateway");
 
