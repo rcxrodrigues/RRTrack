@@ -850,6 +850,41 @@
   window.addEventListener("popstate", trocouDePagina);
 
   /*
+   * ------------------------------- o clickId na PRÓPRIA URL da loja
+   *
+   * Descoberto observando uma venda real: o checkout externo recebeu
+   * `utm_source`, `utm_campaign`, `utm_medium` e `utm_term` — exatamente os
+   * parâmetros que estavam na URL da loja. O app do gateway COPIA A QUERY DA
+   * VITRINE ao montar o endereço do checkout.
+   *
+   * Carimbar o link não bastou: o botão de finalizar da Shopify é um submit,
+   * não uma âncora, e o destino é decidido no servidor. Mas o que está na URL
+   * da loja atravessa — foi assim que as UTMs chegaram.
+   *
+   * Então o clickId entra na própria URL. `replaceState` não cria entrada no
+   * histórico, então o botão voltar continua se comportando como antes, e a
+   * pessoa não vê a página recarregar.
+   *
+   * Não substitui os outros caminhos: o `note_attributes` da Shopify e o
+   * carimbo no clique continuam valendo, porque cada arranjo perde um deles.
+   */
+  (function clickIdNaUrl() {
+    var alvo = cfg.passthroughField || "sck";
+    try {
+      var u = new URL(location.href);
+      if (u.searchParams.get(alvo)) return;
+
+      u.searchParams.set(alvo, state.click_id);
+      /*
+       * `replaceState` pode falhar em about:blank, sandbox e alguns
+       * navegadores embutidos. Falhar aqui não pode derrubar o rastreamento:
+       * perde-se este caminho e os outros continuam.
+       */
+      history.replaceState(history.state, "", u.toString());
+    } catch (e) { /* segue sem */ }
+  })();
+
+  /*
    * ------------------------------------------- o clickId dentro do carrinho
    *
    * Numa Shopify, o que o carrinho carrega chega ao pedido: `cart.attributes`

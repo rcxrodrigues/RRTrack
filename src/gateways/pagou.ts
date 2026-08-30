@@ -89,8 +89,19 @@ function pick(obj: unknown, path: string): unknown {
   }, obj);
 }
 
+/*
+ * "null" e "undefined" ESCRITOS COMO TEXTO são ausência.
+ *
+ * A pagou.ai manda `"phone": "null"` — a palavra, não o nulo do JSON. Aceitar
+ * como texto fazia duas coisas ruins: guardava um telefone de zero dígitos, e
+ * — pior — fazia o `enrich` achar que já tinha telefone e NÃO buscar o de
+ * verdade no cadastro do comprador. O dado existia dos dois lados e se perdia
+ * no meio.
+ */
+const VAZIOS = new Set(["null", "undefined", "nil", "none", "n/a", "-"]);
+
 function str(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "string" && v.trim() && !VAZIOS.has(v.trim().toLowerCase())) return v.trim();
   if (typeof v === "number") return String(v);
   return undefined;
 }

@@ -66,6 +66,7 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
 
   /* Navegacao sem recarregar, como um tema com JavaScript faria. */
   const hist = {
+    state: null,
     pushState(_e, _t, destino) {
       const d = new URL(destino, loc.href);
       loc.href = d.href; loc.pathname = d.pathname; loc.search = d.search;
@@ -326,6 +327,27 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
   await new Promise((r) => setTimeout(r, 30));
   eq("fora da Shopify nao chama nada",
     semShopify.posts.some((p) => String(p.url).includes("/cart/update.js")), false);
+
+
+  console.log("\n== o clickId entra na propria URL da loja ==");
+
+  /*
+   * Numa venda real o checkout externo recebeu as utm_* da URL da vitrine — o
+   * app do gateway copia a query. O `sck` nao estava la, entao a venda voltou
+   * sem o identificador do clique e casou por UTM, que e palpite e nao
+   * certeza.
+   */
+  const naUrl = carregar({ url: "https://loja.exemplo.com/products/x?utm_source=FB" });
+  eq("o sck entra na URL", naUrl.loc.search.includes("sck="), true);
+  eq("com o clickId da sessao",
+    new URLSearchParams(naUrl.loc.search).get("sck"), naUrl.rr("clickId"));
+  eq("e nao apaga o que ja estava la",
+    new URLSearchParams(naUrl.loc.search).get("utm_source"), "FB");
+
+  /* Se o sck ja veio na URL, respeita: quem mandou foi mais especifico. */
+  const jaTinha = carregar({ url: "https://loja.exemplo.com/x?sck=veio-de-fora" });
+  eq("sck que ja existia nao e sobrescrito",
+    new URLSearchParams(jaTinha.loc.search).get("sck"), "veio-de-fora");
 
 
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
