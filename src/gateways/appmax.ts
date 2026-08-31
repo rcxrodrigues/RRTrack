@@ -32,6 +32,7 @@
 import type {
   GatewayAdapter, WebhookRequest, VerifyResult, GatewayCredentials,
 } from "./types";
+import { instante, texto } from "../core/normalizar";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
 } from "../core/types";
@@ -111,11 +112,8 @@ function pick(obj: unknown, path: string): unknown {
   }, obj);
 }
 
-function str(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return v.trim();
-  if (typeof v === "number") return String(v);
-  return undefined;
-}
+/* Recusa "null" escrito como texto — ver a nota longa em core/normalizar.ts. */
+const str = texto;
 
 /* Valores em centavos: 25990 é R$ 259,90. */
 function cents(v: unknown): Cents {
@@ -160,11 +158,19 @@ function lerPagamento(data: unknown): { metodo: string; parcelas?: number; pagoE
   return { metodo: "" };
 }
 
-/* Datas vêm como "2025-03-15 14:30:00", sem T nem fuso — é horário de Brasília. */
+/*
+ * Datas vêm como "2025-03-15 14:30:00", sem T nem fuso.
+ *
+ * A documentação da Appmax NÃO diz o fuso — foi conferida. Brasília é a
+ * suposição, e é a mais provável para um gateway brasileiro atendendo lojista
+ * brasileiro. Fica declarada aqui em vez de herdada do fuso do servidor, que
+ * é o que o `new Date()` faria: na Vercel o servidor é UTC, e a mesma string
+ * viraria três horas adiantada sem ninguém escolher isso.
+ *
+ * Se um dia a Appmax confirmar UTC, muda-se este argumento e só ele.
+ */
 function parseData(v: string | undefined): Date | null {
-  if (!v) return null;
-  const d = new Date(v.includes("T") ? v : v.replace(" ", "T") + "-03:00");
-  return Number.isNaN(d.getTime()) ? null : d;
+  return instante(v, "America/Sao_Paulo") ?? null;
 }
 
 /*

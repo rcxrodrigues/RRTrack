@@ -45,6 +45,7 @@
 import type {
   GatewayAdapter, WebhookRequest, VerifyResult, GatewayCredentials,
 } from "./types";
+import { instante, texto } from "../core/normalizar";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
 } from "../core/types";
@@ -110,11 +111,8 @@ function pick(obj: unknown, path: string): unknown {
   }, obj);
 }
 
-function str(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return v.trim();
-  if (typeof v === "number") return String(v);
-  return undefined;
-}
+/* Recusa "null" escrito como texto — ver a nota longa em core/normalizar.ts. */
+const str = texto;
 
 /*
  * Lê um par valor+moeda do formato `*_set` da Shopify, caindo no campo solto
@@ -511,9 +509,12 @@ export const shopifyAdapter: GatewayAdapter = {
     const bruto = dinheiroDe(body, "total_price_set", "total_price", moeda)
       ?? items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
-    const quando = str(body.cancelled_at)
-      ?? str(body.processed_at) ?? str(body.created_at);
-    const d = quando ? new Date(quando) : new Date();
+    /* A Shopify manda ISO com deslocamento ("...T16:50:34-03:00"), então o
+       pressuposto quase nunca entra — mas entra explícito se um dia faltar. */
+    const d = instante(str(body.cancelled_at), "UTC")
+      ?? instante(str(body.processed_at), "UTC")
+      ?? instante(str(body.created_at), "UTC")
+      ?? new Date();
 
     const gateways = pick(body, "payment_gateway_names");
     const nomes = Array.isArray(gateways)
@@ -588,8 +589,9 @@ export const shopifyAdapter: GatewayAdapter = {
     const moeda = moedaDaLoja(pedido);
     const items = parseItems(pedido, moeda);
 
-    const quando = str(pedido.processed_at) ?? str(pedido.created_at);
-    const d = quando ? new Date(quando) : new Date();
+    const d = instante(str(pedido.processed_at), "UTC")
+      ?? instante(str(pedido.created_at), "UTC")
+      ?? new Date();
 
     const gateways = pick(pedido, "payment_gateway_names");
     const nomes = Array.isArray(gateways)

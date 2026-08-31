@@ -17,6 +17,7 @@
 import type {
   GatewayAdapter, WebhookRequest, VerifyResult, GatewayCredentials,
 } from "./types";
+import { instante, texto } from "../core/normalizar";
 import type {
   CanonicalOrder, OrderStatus, PaymentMethod, OrderItem, Cents,
 } from "../core/types";
@@ -49,11 +50,8 @@ function pick(obj: unknown, path: string): unknown {
   }, obj);
 }
 
-function str(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return v.trim();
-  if (typeof v === "number") return String(v);
-  return undefined;
-}
+/* Recusa "null" escrito como texto — ver a nota longa em core/normalizar.ts. */
+const str = texto;
 
 function cents(v: unknown): Cents {
   if (typeof v === "number") return Number.isInteger(v) ? v : Math.round(v * 100);
@@ -205,8 +203,10 @@ export const millionsAdapter: GatewayAdapter = {
     const occurredAt = (() => {
       const t = str(charge.captured_at) ?? str(body.occurred_at)
         ?? str(charge.updated_at) ?? str(charge.created_at);
-      const d = t ? new Date(t) : new Date();
-      return Number.isNaN(d.getTime()) ? new Date() : d;
+      /* Assume UTC quando não vier fuso — ver core/normalizar.ts. O formato
+         real deles não está documentado, e herdar o fuso do servidor seria
+         uma escolha que ninguém fez. */
+      return instante(t, "UTC") ?? new Date();
     })();
 
     return {
