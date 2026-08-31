@@ -23,7 +23,10 @@ export default async function Pagina({ searchParams }: {
 
   const busca = await searchParams;
   const periodo = um(busca.periodo) || PERIODO_PADRAO;
-  const { de, ate } = janelaDe(periodo, loja.timezone);
+  /* As datas do personalizado vêm da URL, como o período — ver core/janela.ts. */
+  const { de, ate } = janelaDe(periodo, loja.timezone, {
+    de: um(busca.de), ate: um(busca.ate),
+  });
   /* O que esta loja conta como faturamento — ver core/faturamento.ts. */
   const regra = { countShipping: loja.countShipping, countInterest: loja.countInterest };
   const p = { tenantId: loja.id, de, ate, timezone: loja.timezone,

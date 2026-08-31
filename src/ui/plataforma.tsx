@@ -9,6 +9,9 @@ import {
   DialogoColunas, PADRAO, carregarEscolha, colunasDe, salvarEscolha,
   type Coluna,
 } from "./colunas";
+/* A MESMA lista do resto do painel: duas cópias divergiriam, e esta aba
+   ofereceria períodos que as outras telas não têm — ou o contrário. */
+import { PERIODOS } from "./comum";
 
 /*
  * Tela de uma fonte de tráfego.
@@ -27,12 +30,6 @@ const NIVEIS: Array<{ id: Nivel; rotulo: string; coluna: string }> = [
   { id: "anuncio", rotulo: "Anúncios", coluna: "Anúncio" },
 ];
 
-const PERIODOS = [
-  { id: "hoje", rotulo: "Hoje" },
-  { id: "7d", rotulo: "Últimos 7 dias" },
-  { id: "14d", rotulo: "Últimos 14 dias" },
-  { id: "30d", rotulo: "Últimos 30 dias" },
-];
 
 /* -------------------------------------------------------- formatação -- */
 

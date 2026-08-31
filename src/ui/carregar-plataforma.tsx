@@ -6,7 +6,7 @@ import { adAccounts } from "@/db/schema";
 import { contexto } from "@/core/sessao";
 import { lojaAtual } from "@/core/loja-atual";
 import { metricas, totalizar, type Nivel } from "@/core/metricas";
-import { PERIODO_PADRAO } from "@/core/janela";
+import { PERIODO_PADRAO, janelaDe } from "@/core/janela";
 import { precisaBuscarGasto, sincronizarGasto } from "@/core/sincronizar-gasto";
 import { Plataforma } from "./plataforma";
 
@@ -17,17 +17,28 @@ import { Plataforma } from "./plataforma";
 
 const NIVEIS = ["conta", "campanha", "conjunto", "anuncio"] as const;
 
-/** Converte o período escolhido em datas, no fuso da loja. */
-function janela(periodo: string, timezone: string): { de: string; ate: string; dias: number } {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone });
-  const hoje = fmt.format(new Date());
-  const dias = periodo === "hoje" ? 0
-    : periodo === "14d" ? 13
-    : periodo === "30d" ? 29 : 6;
-  const de = fmt.format(new Date(Date.now() - dias * 86400_000));
-  /* `dias` volta junto porque quem busca o gasto na Meta precisa saber o
-     tamanho da janela que a pessoa está olhando — ver abaixo. */
-  return { de, ate: hoje, dias: dias + 1 };
+/*
+ * Converte o período em datas, reaproveitando core/janela.ts.
+ *
+ * Esta função tinha a própria cópia da conta, com os mesmos quatro períodos
+ * escritos de novo. Quando "ontem", "esse mês" e "personalizado" entraram na
+ * outra, esta ficaria para trás — e a aba de anúncios mostraria uma janela
+ * diferente da que o seletor no topo diz, sem nada acusando.
+ *
+ * `dias` volta junto porque quem busca o gasto na Meta precisa saber o tamanho
+ * da janela; agora sai da diferença entre as datas, e não de uma segunda
+ * tabela de períodos.
+ */
+function janela(
+  periodo: string, timezone: string, custom?: { de?: string; ate?: string },
+): { de: string; ate: string; dias: number } {
+  const { de, ate } = janelaDe(periodo, timezone, custom);
+  const umDia = 86400_000;
+  const dias = Math.max(
+    1,
+    Math.round((Date.parse(ate + "T12:00:00Z") - Date.parse(de + "T12:00:00Z")) / umDia) + 1,
+  );
+  return { de, ate, dias };
 }
 
 export async function CarregarPlataforma({
@@ -51,7 +62,9 @@ export async function CarregarPlataforma({
   const periodo = um(busca.periodo) || PERIODO_PADRAO;
   const nome = um(busca.nome);
 
-  const { de, ate, dias } = janela(periodo, loja.timezone);
+  const { de, ate, dias } = janela(periodo, loja.timezone, {
+    de: um(busca.de), ate: um(busca.ate),
+  });
 
   const contas = await db.select({
     id: adAccounts.id, sincronizadoEm: adAccounts.lastSyncedAt,

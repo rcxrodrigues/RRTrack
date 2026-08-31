@@ -42,11 +42,24 @@ export const razao = (v: number | null) =>
 export const corValor = (v: number) =>
   v > 0 ? "var(--positivo)" : v < 0 ? "var(--negativo)" : "var(--ink-medio)";
 
+/*
+ * A ordem é a da Utmify, de propósito.
+ *
+ * O lojista já lê esta lista lá todo dia; procurar "Ontem" num lugar diferente
+ * é atrito que não rende nada. As de 14 e 30 dias entram no meio porque já
+ * existiam aqui e estavam em uso — tirá-las para copiar a lista ao pé da letra
+ * seria perder função para ganhar semelhança.
+ */
 export const PERIODOS = [
+  { id: "max", rotulo: "Máximo" },
   { id: "hoje", rotulo: "Hoje" },
-  { id: "7d", rotulo: "7 dias" },
-  { id: "14d", rotulo: "14 dias" },
-  { id: "30d", rotulo: "30 dias" },
+  { id: "ontem", rotulo: "Ontem" },
+  { id: "7d", rotulo: "Últimos 7 dias" },
+  { id: "14d", rotulo: "Últimos 14 dias" },
+  { id: "30d", rotulo: "Últimos 30 dias" },
+  { id: "mes", rotulo: "Esse mês" },
+  { id: "mespassado", rotulo: "Mês passado" },
+  { id: "personalizado", rotulo: "Personalizado" },
 ];
 
 /*
@@ -71,6 +84,19 @@ export function Cabecalho({
   function trocar(id: string) {
     const p = new URLSearchParams(params.toString());
     p.set("periodo", id);
+    /*
+     * Sair do personalizado limpa as datas. Deixá-las na URL faria elas
+     * voltarem sozinhas na próxima vez que alguém escolhesse "Personalizado",
+     * mostrando um intervalo que a pessoa não pediu.
+     */
+    if (id !== "personalizado") { p.delete("de"); p.delete("ate"); }
+    router.push(`${caminho}?${p.toString()}`);
+  }
+
+  function trocarData(qual: "de" | "ate", valor: string) {
+    const p = new URLSearchParams(params.toString());
+    p.set("periodo", "personalizado");
+    p.set(qual, valor);
     router.push(`${caminho}?${p.toString()}`);
   }
 
@@ -94,19 +120,30 @@ export function Cabecalho({
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <AutoAtualiza />
         {extra}
-        <div style={{
-          display: "flex", gap: 2, padding: 3, borderRadius: 6,
-          border: "1px solid var(--linha-forte)", background: "var(--painel-alto)",
-        }}>
+        {/*
+          Menu, e não a fileira de botões de antes.
+          
+          Com quatro opções a fileira cabia; com nove ela empurraria o resto da
+          barra para fora da tela no celular. E o menu é o formato que o
+          lojista já conhece de outras ferramentas.
+        */}
+        {periodo === "personalizado" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="date" value={params.get("de") ?? ""}
+              onChange={(e) => trocarData("de", e.target.value)}
+              style={{ width: "auto", fontSize: 11.5, padding: "4px 7px" }} />
+            <span style={{ fontSize: 11.5, color: "var(--ink-tenue)" }}>até</span>
+            <input type="date" value={params.get("ate") ?? ""}
+              onChange={(e) => trocarData("ate", e.target.value)}
+              style={{ width: "auto", fontSize: 11.5, padding: "4px 7px" }} />
+          </div>
+        )}
+        <select value={periodo} onChange={(e) => trocar(e.target.value)}
+          style={{ width: "auto", fontSize: 11.5, padding: "5px 9px" }}>
           {PERIODOS.map((p) => (
-            <button key={p.id} onClick={() => trocar(p.id)} style={{
-              padding: "4px 11px", borderRadius: 4, border: "none", fontSize: 11.5,
-              fontWeight: 500,
-              background: periodo === p.id ? "var(--linha-forte)" : "transparent",
-              color: periodo === p.id ? "var(--ink)" : "var(--ink-fraco)",
-            }}>{p.rotulo}</button>
+            <option key={p.id} value={p.id}>{p.rotulo}</option>
           ))}
-        </div>
+        </select>
       </div>
     </div>
   );

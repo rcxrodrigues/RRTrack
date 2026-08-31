@@ -28,6 +28,10 @@ const hash = async (v) => Buffer.from(
   await wc.subtle.digest("SHA-256", new TextEncoder().encode(v)),
 ).toString("hex");
 
+/* Formato da Appmax: "AAAA-MM-DD HH:MM:SS", horario de Brasilia. */
+const horasAtras = (h) => new Date(Date.now() - h * 3600_000)
+  .toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" });
+
 const clickId = wc.randomUUID();
 const pedido = 800000 + Math.floor(Math.random() * 99999);
 const marca = Date.now();
@@ -98,8 +102,19 @@ const corpo = JSON.stringify({
     status: "aprovado",
     total: 34900,
     freight_value: 0,
-    paid_at: "2026-08-24 10:00:00",
-    created_at: "2026-08-24 09:58:00",
+    /*
+     * Datas RELATIVAS, e nao fixas.
+     *
+     * Estavam escritas como "2026-08-24 10:00:00", que funcionou no dia em que
+     * este teste nasceu e apodreceu sozinha: a Meta recusa evento com mais de
+     * sete dias, e nos barramos antes de enviar. Uma semana depois o disparo
+     * passou a falhar com "fora da janela de 7 dias" e nove asseroes cairam
+     * juntas, parecendo defeito de normalizacao.
+     *
+     * Duas horas atras e o que uma venda de verdade parece.
+     */
+    paid_at: horasAtras(2),
+    created_at: horasAtras(2.05),
     products: [{ sku: "PROD-9", name: "Kit", price: 34900, quantity: 1 }],
     payment_info: { pix: { captured_at: "2026-08-24 10:00:00" } },
   },
@@ -118,7 +133,23 @@ console.log("\n4. o disparo para a Meta");
 const [venda] = await sql`SELECT * FROM orders WHERE gateway_order_id = ${String(pedido)}`;
 check("venda gravada", !!venda);
 
-const [d] = await sql`SELECT * FROM dispatches WHERE order_id = ${venda?.id}`;
+/*
+ * Espera o `request_body` aparecer, e nao so a linha do disparo.
+ *
+ * As chaves de correspondencia sao gravadas quando o disparo e montado; o
+ * corpo da requisicao, quando ele e enviado. Sao duas escritas, e sob carga a
+ * segunda demora — rodando a suite inteira, este teste lia a linha entre uma
+ * e outra e as nove asseroes de normalizacao falhavam de uma vez.
+ *
+ * Isolado passava sempre, junto falhava: teste que depende de quem rodou antes
+ * e ruido, e ruido faz a suite deixar de ser levada a serio.
+ */
+let d;
+for (let tentativa = 0; tentativa < 20; tentativa++) {
+  [d] = await sql`SELECT * FROM dispatches WHERE order_id = ${venda?.id}`;
+  if (d?.request_body) break;
+  await new Promise((r) => setTimeout(r, 500));
+}
 const chaves = (d?.match_keys ?? []).sort();
 console.log("     chaves: " + chaves.join(", "));
 
@@ -136,7 +167,8 @@ for (const k of ["em", "ph", "fn", "ln", "ct", "st", "zp", "country", "db", "ge"
 console.log("\n5. normalização antes do hash");
 
 const ud = d?.request_body?.data?.[0]?.user_data;
-check("e-mail em minúscula e sem espaço", ud?.em?.[0] === await hash("jose.nogueira@gmail.com"));
+check("e-mail em minúscula e sem espaço", ud?.em?.[0] === await hash("jose.nogueira@gmail.com"),
+  ud ? `campos: ${Object.keys(ud).sort().join(",")}` : `SEM request_body (status ${d?.status}, erro ${String(d?.error).slice(0,60)})`);
 check("telefone com DDI", ud?.ph?.[0] === await hash("5531988776655"));
 check("sobrenome sem acento", ud?.ln?.[0] === await hash("nogueira"));
 check("CEP só com dígitos", ud?.zp?.[0] === await hash("30140071"));
