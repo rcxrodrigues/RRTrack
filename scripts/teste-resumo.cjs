@@ -210,6 +210,32 @@ const eq = (l, g, w) => {
   const iBorda = await R.indicadores(pBorda);
   eq("as duas entram no faturamento do dia", iBorda.faturamentoBrutoCents, 20000);
 
+  /*
+   * A VIRADA, no segundo.
+   *
+   * 23:59:59 do dia 20 ainda e dia 20; 00:00:00 do dia 21 ja e dia 21. Parece
+   * obvio, e e justamente o que quebra quando o filtro compara INSTANTE em vez
+   * de DATA: com `occurred_at BETWEEN de AND ate`, o `ate` vale meia-noite e
+   * o dia inteiro depois disso some — o dia corrente aparece sempre vazio.
+   *
+   * Sao Paulo e UTC-3, entao a virada local acontece as 03:00 UTC.
+   */
+  const [a20] = await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, payment_method, click_id, attribution_method, occurred_at)
+    VALUES (${t.id}, ${conn.id}, ${"v" + wc.randomUUID()}, 'paid', 700, 'pix', ${ses[0]}, 'click_id', '2026-08-21T02:59:59Z') RETURNING id`;
+  const [a21] = await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, payment_method, click_id, attribution_method, occurred_at)
+    VALUES (${t.id}, ${conn.id}, ${"v" + wc.randomUUID()}, 'paid', 900, 'pix', ${ses[0]}, 'click_id', '2026-08-21T03:00:00Z') RETURNING id`;
+
+  const dia20 = await R.indicadores({ ...p, de: "2026-08-20", ate: "2026-08-20" });
+  const dia21 = await R.indicadores({ ...p, de: "2026-08-21", ate: "2026-08-21" });
+
+  /* O dia 20 ja tinha R$ 200 do bloco acima; a venda das 23:59:59 soma R$ 7. */
+  eq("23:59:59 ainda conta no dia 20", dia20.faturamentoBrutoCents, 20700);
+  eq("00:00:00 ja conta no dia 21", dia21.faturamentoBrutoCents, 900);
+  eq("e nenhuma aparece nos dois", dia20.faturamentoBrutoCents + dia21.faturamentoBrutoCents, 21600);
+
+  /* Limpa para nao contaminar o que roda depois. */
+  await sql`DELETE FROM orders WHERE id IN (${a20.id}, ${a21.id})`;
+
   await sql`DELETE FROM tenants WHERE slug = 'resumo-teste'`;
 
 
