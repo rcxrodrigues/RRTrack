@@ -27,7 +27,21 @@ const [site] = await sql`INSERT INTO sites (tenant_id, domain, public_key) VALUE
 const [conta] = await sql`INSERT INTO ad_accounts (tenant_id, platform, external_id, label, credentials) VALUES (${t.id}, 'meta', 'act_1', 'Conta', '{}'::jsonb) RETURNING id`;
 const [conn] = await sql`INSERT INTO gateway_connections (tenant_id, gateway, label, webhook_secret) VALUES (${t.id}, 'pagou', 'P', ${'ws_'+Date.now()}) RETURNING id`;
 
-const hoje = new Date().toISOString().slice(0, 10);
+/*
+ * "Hoje" NO FUSO DA LOJA, e nao em UTC.
+ *
+ * Em UTC, este teste falhava toda noite das 21h a meia-noite de Sao Paulo: o
+ * dia UTC ja tinha virado e o de Sao Paulo nao. O gasto era semeado no dia
+ * seguinte, as vendas caiam no dia anterior, e o cruzamento devolvia zero em
+ * TUDO — dezenove asseroes de uma vez.
+ *
+ * Passava 21 horas por dia e mentia nas outras 3. E a mesma armadilha que o
+ * teste-resumo.cjs ja tinha levado, com o mesmo conserto: `sv-SE` porque o
+ * formato dele e AAAA-MM-DD, que e o que o filtro espera.
+ */
+const hoje = new Date()
+  .toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" })
+  .slice(0, 10);
 
 for (const [ad, gasto, imp, cli] of [["AD1", 30000, 10000, 200], ["AD2", 20000, 8000, 100]]) {
   await sql`INSERT INTO ad_spend_daily (tenant_id, ad_account_id, platform, date, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend_cents, impressions, clicks)
