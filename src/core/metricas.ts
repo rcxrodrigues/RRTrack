@@ -211,6 +211,14 @@ export async function metricas(f: Filtro): Promise<LinhaMetrica[]> {
     .where(and(
       eq(orders.tenantId, f.tenantId),
       eq(orders.status, "paid"),
+      /*
+       * Só venda na moeda da loja, como o gasto logo acima.
+       *
+       * Sem isto, uma venda em dólar entraria no ROAS ao lado de um gasto em
+       * real — e o ROAS é justamente a divisão de um pelo outro. O número
+       * sairia sem significado e com cara de significado.
+       */
+      sql`upper(${orders.currency}) = upper(${f.moeda})`,
       noPeriodo(orders.occurredAt),
       isNotNull(colSessao),
     ))

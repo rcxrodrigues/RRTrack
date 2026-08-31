@@ -236,6 +236,28 @@ const eq = (l, g, w) => {
   /* Limpa para nao contaminar o que roda depois. */
   await sql`DELETE FROM orders WHERE id IN (${a20.id}, ${a21.id})`;
 
+  /*
+   * VENDA EM OUTRA MOEDA.
+   *
+   * O gasto ja recusava somar moeda diferente; o faturamento nao, e era a
+   * mesma falha do outro lado da conta. Cem dolares somados a cem reais dao
+   * duzentos de nada — e o painel mostra um simbolo so, entao parece certo.
+   *
+   * A venda estrangeira sai do bloco INTEIRO, valor e contagem, para o ticket
+   * medio e a margem continuarem coerentes entre si.
+   */
+  console.log("\n== venda em outra moeda ==");
+
+  await sql`INSERT INTO orders (tenant_id, gateway_connection_id, gateway_order_id, status, gross_cents, currency, payment_method, click_id, attribution_method, occurred_at)
+    VALUES (${t.id}, ${conn.id}, ${"m" + wc.randomUUID()}, 'paid', 50000, 'USD', 'credit_card', ${ses[0]}, 'click_id', '2026-08-20T15:00:00Z')`;
+
+  const comGringa = await R.indicadores({ ...p, de: "2026-08-20", ate: "2026-08-20" });
+  eq("dolar nao entra no faturamento em real", comGringa.faturamentoBrutoCents, 20000);
+  eq("nem na contagem de vendas", comGringa.vendasAprovadas, 2);
+  eq("mas a tela fica sabendo", comGringa.vendasForaDeMoeda, 1);
+  eq("e sabe qual moeda", comGringa.moedasIgnoradas.includes("USD"), true);
+
+
   await sql`DELETE FROM tenants WHERE slug = 'resumo-teste'`;
 
 

@@ -53,6 +53,8 @@ export interface Indicadores {
    * um custo incompleto e a tela precisa dizer isso.
    */
   moedasIgnoradas: string[];
+  /* Quantas VENDAS ficaram de fora por estarem em outra moeda. */
+  vendasForaDeMoeda: number;
   lucroCents: number;
   vendasAprovadas: number;
   vendasPendentes: number;
@@ -88,6 +90,34 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
       count(*)                       filter (where status in ('refunded','chargeback'))::int AS reembolsadas
     FROM orders
     WHERE tenant_id = ${p.tenantId}
+      /*
+       * Só venda NA MOEDA DA LOJA entra neste bloco.
+       *
+       * O gasto já filtrava; o faturamento não, e era a mesma falha do outro
+       * lado da conta. Uma venda em dólar somada a uma em real dá um número
+       * que não é dinheiro nenhum — e como o painel só mostra um símbolo, o
+       * resultado parece certo.
+       *
+       * A venda em outra moeda NÃO é ignorada por ser inválida: ela é uma
+       * venda de verdade. Ela sai do bloco INTEIRO — valor e contagem — para
+       * que ticket médio, margem e taxa de aprovação continuem coerentes
+       * entre si. Somar o valor de uma e a contagem da outra daria um ticket
+       * médio que não existe.
+       *
+       * Quem tem operação em outra moeda cria outra loja aqui, com a moeda
+       * dela. Este filtro é a rede de segurança para a venda avulsa que
+       * escapa, não o jeito de tocar duas operações numa loja só.
+       */
+      AND upper(currency) = upper(${p.moeda})
+      AND (occurred_at AT TIME ZONE ${p.timezone})::date BETWEEN ${p.de}::date AND ${p.ate}::date
+  `));
+
+  /* O que ficou de fora, para a tela poder dizer em vez de esconder. */
+  const [foraDeMoeda] = await linhasDe(db.execute<{ moedas: string | null; n: number }>(sql`
+    SELECT string_agg(DISTINCT upper(currency), ',') AS moedas, count(*)::int AS n
+    FROM orders
+    WHERE tenant_id = ${p.tenantId}
+      AND upper(currency) <> upper(${p.moeda})
       AND (occurred_at AT TIME ZONE ${p.timezone})::date BETWEEN ${p.de}::date AND ${p.ate}::date
   `));
 
@@ -127,7 +157,16 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
     reembolsosCents: reembolsos,
     custoProdutoCents: custo,
     gastoCents: gasto,
-    moedasIgnoradas: g?.ignoradas ? g.ignoradas.split(",") : [],
+    /*
+     * A união do que ficou de fora dos dois lados: gasto e venda. É uma lista
+     * só porque, para quem lê, a pergunta é a mesma — "o que este número não
+     * está contando?".
+     */
+    moedasIgnoradas: [...new Set([
+      ...(g?.ignoradas ? g.ignoradas.split(",") : []),
+      ...(foraDeMoeda?.moedas ? foraDeMoeda.moedas.split(",") : []),
+    ])],
+    vendasForaDeMoeda: Number(foraDeMoeda?.n ?? 0),
     lucroCents: lucro,
     vendasAprovadas: aprovadas,
     vendasPendentes: Number(linha?.pendentes ?? 0),

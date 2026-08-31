@@ -408,6 +408,18 @@ export function Resumo({
         <Nota>
           O faturamento e o lucro saem das suas vendas; o gasto vem da API de cada plataforma.
           {!temGasto && " Sem conta de anúncio conectada, ROAS e CPA não têm como ser calculados — e ficam em N/A, não em zero."}
+          {ind.vendasForaDeMoeda > 0 && (
+            <>
+              {" "}<strong style={{ color: "var(--alerta)" }}>
+                {ind.vendasForaDeMoeda === 1
+                  ? "Uma venda ficou de fora"
+                  : `${ind.vendasForaDeMoeda} vendas ficaram de fora`}
+              </strong>{" "}
+              por estarem em outra moeda — valor e contagem, para o ticket médio
+              e a margem continuarem coerentes. Operação em outra moeda pede uma
+              loja separada aqui, com a moeda dela.
+            </>
+          )}
           {ind.moedasIgnoradas.length > 0 && (
             <>
               {" "}Há conta de anúncio reportando em {ind.moedasIgnoradas.join(", ")}, e esse gasto
