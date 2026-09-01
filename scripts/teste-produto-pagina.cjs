@@ -54,7 +54,11 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
       return [];
     },
     addEventListener() {}, removeEventListener() {},
-    readyState: "complete", cookie: "", referrer: "",
+    readyState: "complete", referrer: "",
+    /* Acumula o que o script grava, para o teste do dominio conferir. */
+    _cookies: "",
+    get cookie() { return this._cookies; },
+    set cookie(v) { this._cookies += (this._cookies ? "; " : "") + v; },
     title: "", documentElement: {}, body: {},
   };
 
@@ -348,6 +352,29 @@ function carregar({ html = "", url = "https://loja.exemplo.com/products/x", glob
   const jaTinha = carregar({ url: "https://loja.exemplo.com/x?sck=veio-de-fora" });
   eq("sck que ja existia nao e sobrescrito",
     new URLSearchParams(jaTinha.loc.search).get("sck"), "veio-de-fora");
+
+
+  console.log("\n== o dominio do cookie, que decide se a sessao existe ==");
+
+  /*
+   * O cookie e gravado em `.dominioRegistravel`, para valer tambem no
+   * subdominio de checkout. Errar isso e silencioso: o navegador recusa cookie
+   * de sufixo publico sem avisar, o `_rr_cid` nao grava, e cada pagina vira
+   * uma sessao nova — o funil mostra visitante que nunca avanca.
+   */
+  const dominioDe = (url) => {
+    const j = carregar({ url });
+    const m = /domain=\.([^;]+)/.exec(j.janela.document.cookie || "");
+    return m ? m[1] : null;
+  };
+
+  eq("dominio simples", dominioDe("https://loja.exemplo.com/x"), "exemplo.com");
+  eq("subdominio nao muda o alvo", dominioDe("https://www.exemplo.com/x"), "exemplo.com");
+  /* Os dois que quebravam: sufixo composto precisa de tres rotulos. */
+  eq("com.br pega tres rotulos", dominioDe("https://loja.exemplo.com.br/x"), "exemplo.com.br");
+  eq("co.uk tambem", dominioDe("https://shop.exemplo.co.uk/x"), "exemplo.co.uk");
+  eq("e o subdominio de checkout cai no mesmo alvo",
+    dominioDe("https://seguro.exemplo.com.br/x"), "exemplo.com.br");
 
 
   console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");

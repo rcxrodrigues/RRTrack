@@ -39,6 +39,38 @@
     });
   }
 
+  /*
+   * O domínio em que o cookie vale, e o motivo de não serem "os dois últimos".
+   *
+   * Pegar os dois últimos rótulos funciona em `transforlar.com`, e QUEBRA em
+   * `loja.com.br` — daria `com.br`, que é sufixo público. O navegador recusa
+   * cookie de sufixo público sem dizer nada: o `_rr_cid` não grava, cada página
+   * vira uma sessão nova, e o funil mostra visitante que nunca avança.
+   *
+   * Silencioso e no mercado principal: `.com.br` é o domínio da maioria das
+   * lojas brasileiras, e `.co.uk` seria o mesmo problema na operação inglesa.
+   *
+   * A lista cobre os compostos que aparecem de verdade. A lista completa de
+   * sufixos públicos tem milhares de entradas e é atualizada toda semana —
+   * carregá-la num script de rastreamento custaria mais do que resolve.
+   */
+  var COMPOSTOS = [
+    "com.br", "net.br", "org.br", "com.pt",
+    "co.uk", "org.uk", "me.uk", "ac.uk",
+    "com.au", "net.au", "org.au",
+    "co.jp", "co.nz", "co.za", "co.in", "com.mx", "com.ar", "com.co",
+  ];
+
+  function dominioRegistravel(hostname) {
+    var partes = hostname.split(".");
+    if (partes.length < 3) return hostname;
+
+    var doisUltimos = partes.slice(-2).join(".");
+    /* Sufixo composto pede três rótulos: loja.com.br, e não com.br. */
+    if (COMPOSTOS.indexOf(doisUltimos) !== -1) return partes.slice(-3).join(".");
+    return doisUltimos;
+  }
+
   function setCookie(name, value, days) {
     var d = new Date();
     d.setTime(d.getTime() + days * 864e5);
@@ -48,7 +80,7 @@
      * sobreviver ao retorno do gateway; Strict o esconderia justamente na
      * volta, que é quando ele é necessário.
      */
-    var host = location.hostname.split(".").slice(-2).join(".");
+    var host = dominioRegistravel(location.hostname);
     document.cookie = name + "=" + encodeURIComponent(value) +
       ";expires=" + d.toUTCString() + ";path=/;domain=." + host +
       ";SameSite=Lax" + (location.protocol === "https:" ? ";Secure" : "");
