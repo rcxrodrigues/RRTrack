@@ -151,7 +151,12 @@ input::placeholder { color: var(--ink-tenue); }
   .rr-grupo { display: none !important; }
   .rr-lateral nav a { white-space: nowrap; }
 
-  .rr-rodape { display: none !important; }
+  /*
+   * O bloco de usuário no pé da lateral não existe mais: virou o avatar no
+   * topo, junto do logo. Era esta regra que o escondia no celular — e com ela
+   * ia embora o único "sair" da tela. No telefone não havia como sair da
+   * conta, e nada indicava isso.
+   */
 
   /* O placar já empilha sozinho; aqui só encolhe o respiro das laterais. */
   .rr-barra { padding: 9px 14px 10px !important; }

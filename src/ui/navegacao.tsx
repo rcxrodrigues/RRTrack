@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { LojaDoUsuario } from "@/core/auth";
@@ -87,6 +87,39 @@ export function Navegacao({
     try { setRecolhido(localStorage.getItem("rr_menu") === "recolhido"); } catch { /* modo privado */ }
   }, []);
 
+  /*
+   * O menu do usuário: avatar no topo, e-mail e sair dentro.
+   *
+   * Ele existe no TOPO, e não no pé, por um motivo que só aparecia no
+   * celular: abaixo de 860px a barra lateral vira faixa horizontal, e o CSS
+   * escondia o rodapé — que era exatamente onde o "sair" morava. No telefone
+   * não havia como sair da conta, e nada na tela dizia isso.
+   */
+  const [menuAberto, setMenuAberto] = useState(false);
+  const caixaUsuario = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuAberto) return;
+
+    function foraDaCaixa(ev: MouseEvent) {
+      if (!caixaUsuario.current?.contains(ev.target as Node)) setMenuAberto(false);
+    }
+    function tecla(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setMenuAberto(false);
+    }
+
+    /*
+     * `mousedown` e não `click`: com `click`, o mesmo toque que abre o menu
+     * fecharia na sequência, porque o evento sobe até o documento depois.
+     */
+    document.addEventListener("mousedown", foraDaCaixa);
+    document.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("mousedown", foraDaCaixa);
+      document.removeEventListener("keydown", tecla);
+    };
+  }, [menuAberto]);
+
   function alternar() {
     setRecolhido((v) => {
       const novo = !v;
@@ -102,6 +135,88 @@ export function Navegacao({
     await fetch("/api/auth/sair", { method: "POST" });
     router.refresh();
     router.push("/entrar");
+  }
+
+  /*
+   * O widget de conta: avatar redondo com as iniciais, e um menu com o e-mail
+   * e o sair.
+   *
+   * Fica aqui dentro, e não em componente separado, porque depende de cinco
+   * coisas do estado desta função — iniciais, usuário, `sair`, `menuAberto` e
+   * a referência da caixa. Extrair custaria cinco propriedades para ganhar
+   * nada.
+   *
+   * E é CHAMADA — `{menuUsuario()}` — em vez de usada como elemento. Como a
+   * declaração está dentro de outra, cada render de `Navegacao` produz um tipo
+   * de componente novo, e tipo novo o React não reaproveita: desmonta o DOM e
+   * monta outro. O `ref` se solta e o foco do botão some a cada abertura.
+   * Chamada, o JSX entra direto no lugar e nada disso acontece.
+   *
+   * O e-mail aparece no menu porque com várias contas (a do Ryan e a de um
+   * sócio) o avatar de iniciais sozinho não diz em qual você está — e sair da
+   * conta errada é o tipo de erro que só se percebe depois de entrar de novo.
+   */
+  function menuUsuario() {
+    return (
+      <div ref={caixaUsuario} style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          onClick={() => setMenuAberto((v) => !v)}
+          title={usuario.nome ?? usuario.email}
+          aria-label="Conta"
+          aria-expanded={menuAberto}
+          className="num"
+          style={{
+            width: 26, height: 26, borderRadius: "50%", border: "none",
+            padding: 0, cursor: "pointer",
+            background: "var(--acento-fundo)", color: "var(--acento)",
+            display: "grid", placeItems: "center",
+            fontWeight: 600, fontSize: 10,
+          }}
+        >{iniciais}</button>
+
+        {menuAberto && (
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            minWidth: 190, zIndex: 50,
+            background: "var(--painel-alto)", border: "1px solid var(--linha-forte)",
+            borderRadius: 8, padding: 4,
+            boxShadow: "0 10px 28px rgba(0,0,0,.45)",
+          }}>
+            <div style={{ padding: "8px 10px 9px", borderBottom: "1px solid var(--linha)" }}>
+              {usuario.nome && (
+                <div style={{
+                  fontSize: 12, fontWeight: 600, overflow: "hidden",
+                  textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>{usuario.nome}</div>
+              )}
+              {/*
+                O e-mail pode ser longo e não pode ser cortado sem aviso: é o
+                que identifica a conta. `break-all` deixa quebrar em duas
+                linhas em vez de virar "ryan.rodrig…".
+              */}
+              <div style={{
+                fontSize: 11, color: "var(--ink-tenue)", wordBreak: "break-all",
+                marginTop: usuario.nome ? 2 : 0,
+              }}>{usuario.email}</div>
+            </div>
+
+            <button onClick={sair} style={{
+              display: "flex", alignItems: "center", gap: 8, width: "100%",
+              background: "none", border: "none", cursor: "pointer",
+              padding: "8px 10px", borderRadius: 5,
+              fontSize: 12, color: "var(--ink-medio)", textAlign: "left",
+            }}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M8 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />
+                <path d="M13 14l4-4-4-4M17 10H8" />
+              </svg>
+              Sair
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -136,6 +251,7 @@ export function Navegacao({
               style={{ ...botaoRecolher, marginLeft: "auto" }}>
               <IconeRecolher recolhido={false} />
             </button>
+            {menuUsuario()}
           </>
         )}
       </div>
@@ -145,10 +261,16 @@ export function Navegacao({
         52px de largura, os dois se espremem e nenhum fica clicável.
       */}
       {recolhido && (
-        <button onClick={alternar} title="Expandir menu" aria-label="Expandir menu"
-          style={{ ...botaoRecolher, margin: "0 auto 10px" }}>
-          <IconeRecolher recolhido />
-        </button>
+        <>
+          <button onClick={alternar} title="Expandir menu" aria-label="Expandir menu"
+            style={{ ...botaoRecolher, margin: "0 auto 8px" }}>
+            <IconeRecolher recolhido />
+          </button>
+          {/* Em 52px de largura o avatar não cabe ao lado do botão: desce. */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+            {menuUsuario()}
+          </div>
+        </>
       )}
 
       {/*
@@ -194,38 +316,6 @@ export function Navegacao({
           </div>
         ))}
       </nav>
-
-      {/* usuário */}
-      <div className="rr-rodape" style={{
-        borderTop: "1px solid var(--linha)", padding: "10px",
-        display: "flex", alignItems: "center", gap: 9,
-        justifyContent: recolhido ? "center" : "flex-start",
-      }}>
-        {/* Recolhido, o próprio avatar vira o botão de sair: não há espaço
-            para o nome nem para o link, e a única ação dali é essa. */}
-        <div className="num"
-          title={recolhido ? `${usuario.nome ?? usuario.email} — clique para sair` : undefined}
-          onClick={recolhido ? sair : undefined}
-          style={{
-            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-            background: "var(--acento-fundo)", color: "var(--acento)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontWeight: 600, fontSize: 10.5,
-            cursor: recolhido ? "pointer" : "default",
-          }}>{iniciais}</div>
-        {!recolhido && (
-          <div style={{ flexGrow: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: 11.5, fontWeight: 600, overflow: "hidden",
-              textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>{usuario.nome ?? usuario.email}</div>
-            <button onClick={sair} style={{
-              background: "none", border: "none", padding: 0,
-              fontSize: 10.5, color: "var(--ink-tenue)",
-            }}>sair</button>
-          </div>
-        )}
-      </div>
     </aside>
   );
 }
