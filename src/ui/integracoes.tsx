@@ -583,11 +583,19 @@ export function Integracoes({
   });
 
   /*
-   * Devolve se gravou. Quem chama daqui de cima não precisa — a faixa verde
-   * do topo já responde — mas a tabela de taxas precisa: o botão dela fica no
-   * fim de uma lista longa, e uma confirmação lá em cima passaria batida.
+   * Devolve se gravou, e aceita sair de cena.
+   *
+   * `proprio` é para quem mostra a própria confirmação — hoje só a tabela de
+   * taxas, cujo botão fica no fim de uma lista longa, onde a faixa do topo
+   * ficaria fora da tela de quem clicou. Nesse caso esta função não fecha o
+   * formulário nem mostra faixa nenhuma: fechar derrubaria a confirmação do
+   * chamador junto (é o `editando` que mantém o painel aberto), e a faixa de
+   * cima apareceria em dobro com a de lá.
    */
-  async function salvar(corpo: Record<string, unknown>): Promise<boolean> {
+  async function salvar(
+    corpo: Record<string, unknown>,
+    proprio = false,
+  ): Promise<boolean> {
     setSalvando(true);
     setErro(null);
     limpar();
@@ -599,9 +607,11 @@ export function Integracoes({
       });
       const j = await r.json();
       if (!r.ok) { setErro(j.erro ?? "falha ao gravar"); setSalvando(false); return false; }
-      setEditando(null);
-      setForm({});
-      confirmar();
+      if (!proprio) {
+        setEditando(null);
+        setForm({});
+        confirmar();
+      }
       router.refresh();
       setSalvando(false);
       return true;
@@ -754,7 +764,7 @@ export function Integracoes({
                       abrir={() => setEditando(`taxas:${c.gateway}`)}
                       fechar={() => setEditando(null)}
                       salvando={salvando}
-                      gravar={(taxas) => salvar({ tipo: "taxas", id: c.id, gateway: c.gateway, taxas })}
+                      gravar={(taxas) => salvar({ tipo: "taxas", id: c.id, gateway: c.gateway, taxas }, true)}
                     />
                   </>
                 )}
