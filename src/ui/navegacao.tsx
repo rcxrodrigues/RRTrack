@@ -237,7 +237,10 @@ export function Navegacao({
         de vetor. Foram gerados a três vezes o tamanho de exibição, que é o que
         os mantém nítidos em tela retina — e ainda assim somam 26 KB.
       */}
-      <div className="rr-lateral-topo" style={{ padding: "16px 14px 12px", display: "flex", alignItems: "center", gap: 9 }}>
+      <div className="rr-lateral-topo" style={{
+        padding: "16px 14px 12px", display: "flex", alignItems: "center",
+        gap: 9, justifyContent: "space-between",
+      }}>
         {recolhido ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src="/marca/icone.png" alt="RRTrack" width={24} height={24}
@@ -247,30 +250,16 @@ export function Navegacao({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca/completa.png" alt="RRTrack" height={22}
               style={{ display: "block", width: "auto" }} />
-            <button onClick={alternar} title="Recolher menu" aria-label="Recolher menu"
-              style={{ ...botaoRecolher, marginLeft: "auto" }}>
-              <IconeRecolher recolhido={false} />
-            </button>
             {menuUsuario()}
           </>
         )}
       </div>
 
-      {/*
-        Recolhido, o botão desce para uma linha própria: ao lado do logo, em
-        52px de largura, os dois se espremem e nenhum fica clicável.
-      */}
+      {/* Em 52px de largura o avatar não cabe ao lado do símbolo: desce. */}
       {recolhido && (
-        <>
-          <button onClick={alternar} title="Expandir menu" aria-label="Expandir menu"
-            style={{ ...botaoRecolher, margin: "0 auto 8px" }}>
-            <IconeRecolher recolhido />
-          </button>
-          {/* Em 52px de largura o avatar não cabe ao lado do botão: desce. */}
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-            {menuUsuario()}
-          </div>
-        </>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          {menuUsuario()}
+        </div>
       )}
 
       {/*
@@ -316,13 +305,36 @@ export function Navegacao({
           </div>
         ))}
       </nav>
+
+      {/*
+        O botão de recolher mora no pé, e não junto do logo, porque lá em cima
+        não cabe: em 178px de lateral sobram 150 úteis, e logo (109) + botão
+        (24) + avatar (26) com os respiros dão 177. Como o logo tem largura
+        mínima automática e não encolhe, quem era empurrado para fora era o
+        avatar — ele terminava 13px além da borda, montado na linha divisória.
+        Apertar não resolve: mesmo com respiro zero são 159 para 150.
+
+        Aqui embaixo não custa altura nenhuma: é a mesma faixa onde ficava o
+        bloco de usuário, que virou o avatar lá em cima.
+      */}
+      <div style={{
+        borderTop: "1px solid var(--linha)", padding: "8px 14px",
+        display: "flex", justifyContent: recolhido ? "center" : "flex-end",
+      }}>
+        <button onClick={alternar}
+          title={recolhido ? "Expandir menu" : "Recolher menu"}
+          aria-label={recolhido ? "Expandir menu" : "Recolher menu"}
+          style={botaoRecolher}>
+          <IconeRecolher recolhido={recolhido} />
+        </button>
+      </div>
     </aside>
   );
 }
 
 const botaoRecolher: React.CSSProperties = {
   width: 24, height: 24, flexShrink: 0, display: "grid", placeItems: "center",
-  border: "none", background: "transparent", borderRadius: 5,
+  border: "none", background: "transparent", borderRadius: 5, cursor: "pointer",
   color: "var(--ink-tenue)", padding: 0,
 };
 
