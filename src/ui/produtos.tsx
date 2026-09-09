@@ -4,6 +4,7 @@ import { useDinheiro } from "./moeda";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Confirmacao, useConfirmacao } from "./confirmacao";
 import { Cartao, Nota, SemDado, num } from "./comum";
 import type { CustoDeSku } from "@/core/custos";
 
@@ -26,7 +27,14 @@ export function Produtos({
   const [editando, setEditando] = useState<string | null>(null);
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
+  /*
+   * `aviso` agora é SÓ erro. Ele carregava as duas coisas — "custo gravado" e
+   * "valor inválido" — na mesma caixa cinza, então quem digitava um valor
+   * ruim via uma confirmação de aparência idêntica à de sucesso e ia embora
+   * achando que tinha gravado.
+   */
   const [aviso, setAviso] = useState<string | null>(null);
+  const { confirmacao, confirmar, limpar } = useConfirmacao();
 
   const semCusto = skus.filter((s) => s.custoCents === null && s.vendas > 0);
   const faturamentoSemCusto = semCusto.reduce((t, s) => t + s.faturamentoCents, 0);
@@ -40,6 +48,7 @@ export function Produtos({
     }
     setSalvando(true);
     setAviso(null);
+    limpar();
     try {
       const r = await fetch("/api/produtos", {
         method: "POST",
@@ -48,9 +57,9 @@ export function Produtos({
       });
       const j = await r.json();
       if (!r.ok) { setAviso(j.erro ?? "falha ao gravar"); setSalvando(false); return; }
-      setAviso(j.recalculadas > 0
-        ? `${j.recalculadas} venda(s) recalculada(s) com o novo custo`
-        : "custo gravado");
+      confirmar(j.recalculadas > 0
+        ? `Alterações salvas com sucesso — ${j.recalculadas} venda(s) recalculada(s) com o novo custo.`
+        : "Alterações salvas com sucesso.");
       setEditando(null);
       setValor("");
       router.refresh();
@@ -89,11 +98,13 @@ export function Produtos({
           </div>
         )}
 
+        <Confirmacao texto={confirmacao} margemAbaixo={0} />
+
         {aviso && (
           <div style={{
             padding: "10px 14px", borderRadius: 6, maxWidth: 900,
-            background: "var(--painel-alto)", border: "1px solid var(--linha-forte)",
-            fontSize: 12.5, color: "var(--ink-medio)",
+            background: "var(--negativo-fundo)", border: "1px solid var(--negativo)",
+            fontSize: 12.5, color: "var(--negativo)",
           }}>{aviso}</div>
         )}
 

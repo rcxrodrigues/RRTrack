@@ -4,6 +4,7 @@ import { useDinheiro } from "./moeda";
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Confirmacao, useConfirmacao } from "./confirmacao";
 import type { LinhaMetrica, Nivel } from "@/core/metricas";
 import {
   DialogoColunas, PADRAO, carregarEscolha, colunasDe, salvarEscolha,
@@ -142,6 +143,7 @@ export function Plataforma({
    */
   const [escolhidas, setEscolhidas] = useState<string[]>(PADRAO);
   const [abrirColunas, setAbrirColunas] = useState(false);
+  const { confirmacao, confirmar } = useConfirmacao();
 
   useEffect(() => {
     setEscolhidas(carregarEscolha(plataforma));
@@ -305,6 +307,12 @@ export function Plataforma({
         </div>
       </div>
 
+      {confirmacao && (
+        <div style={{ padding: "12px 20px 0" }}>
+          <Confirmacao texto={confirmacao} margemAbaixo={0} />
+        </div>
+      )}
+
       {/* o que a sincronização respondeu */}
       {resultado && (
         <div style={{ padding: "12px 20px 0" }}>
@@ -436,6 +444,13 @@ export function Plataforma({
             setEscolhidas(ids);
             salvarEscolha(plataforma, ids);
             setAbrirColunas(false);
+            /*
+             * A escolha de colunas mora no navegador, não no banco — e é por
+             * isso que a confirmação importa MAIS aqui, não menos: quem
+             * marcou uma coluna que já estava marcada não vê a tabela mudar e
+             * fica sem saber se pegou.
+             */
+            confirmar();
           }}
         />
       )}

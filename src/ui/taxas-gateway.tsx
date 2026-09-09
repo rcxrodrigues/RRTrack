@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Confirmacao, useConfirmacao } from "./confirmacao";
 
 /*
  * Quanto fica retido de cada venda.
@@ -66,7 +67,7 @@ export function TaxasDoGateway({
   abrir: () => void;
   fechar: () => void;
   salvando: boolean;
-  gravar: (t: Tabela) => void;
+  gravar: (t: Tabela) => Promise<boolean>;
   /*
    * Muda só o TEXTO, e o texto importa: numa plataforma, "taxas do gateway"
    * faz a pessoa perguntar por que a Shopify cobraria taxa de cartão — e a
@@ -77,6 +78,7 @@ export function TaxasDoGateway({
 }) {
   const atual = taxas as Tabela;
   const configurado = !!(atual?.pix || atual?.credit_card?.length);
+  const { confirmacao, confirmar, limpar } = useConfirmacao();
 
   /* Espelha as três colunas dos painéis de gateway: percentual, fixo, reserva. */
   const [pixPct, setPixPct] = useState(
@@ -257,13 +259,18 @@ export function TaxasDoGateway({
         </div>
       </div>
 
+      {/* Junto do botão, e não no topo da página: a lista de conexões é longa
+          e a faixa de lá ficaria fora da tela de quem acabou de clicar. */}
+      <Confirmacao texto={confirmacao} margemAbaixo={10} />
+
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
         <Botao onClick={() => {
           setPixPct("0,99"); setPixFixo("0,00");
           setCartaoFixo("0,49"); setFaixas(SUGERIDO.credit_card);
         }} style={{ marginRight: "auto" }}>Usar valores comuns</Botao>
-        <Botao onClick={fechar}>Cancelar</Botao>
-        <button onClick={() => gravar(montar())} disabled={salvando} style={{
+        <Botao onClick={() => { limpar(); fechar(); }}>Fechar</Botao>
+        <button onClick={async () => { if (await gravar(montar())) confirmar(); }}
+          disabled={salvando} style={{
           padding: "6px 14px", borderRadius: 5, fontSize: 11.5, fontWeight: 600,
           border: "none", background: "var(--acento)", color: "#062026",
           opacity: salvando ? .6 : 1,

@@ -6,6 +6,7 @@ import type { LojaDoUsuario } from "@/core/auth";
 import { TaxasDoGateway } from "./taxas-gateway";
 import { LogoPlataforma } from "./logos";
 import { MetaVincular } from "./meta-vincular";
+import { Confirmacao, useConfirmacao } from "./confirmacao";
 
 /*
  * Tela de Integrações.
@@ -569,6 +570,7 @@ export function Integracoes({
   const [expandida, setExpandida] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const { confirmacao, confirmar, limpar } = useConfirmacao();
   const [form, setForm] = useState<Record<string, string>>({});
   const [eventosSel, setEventosSel] = useState<string[]>(
     EVENTOS.filter((e) => e.padrao).map((e) => e.id),
@@ -580,9 +582,15 @@ export function Integracoes({
       setForm((f) => ({ ...f, [k]: e.target.value })),
   });
 
-  async function salvar(corpo: Record<string, unknown>) {
+  /*
+   * Devolve se gravou. Quem chama daqui de cima não precisa — a faixa verde
+   * do topo já responde — mas a tabela de taxas precisa: o botão dela fica no
+   * fim de uma lista longa, e uma confirmação lá em cima passaria batida.
+   */
+  async function salvar(corpo: Record<string, unknown>): Promise<boolean> {
     setSalvando(true);
     setErro(null);
+    limpar();
     try {
       const r = await fetch("/api/integracoes", {
         method: "POST",
@@ -590,14 +598,18 @@ export function Integracoes({
         body: JSON.stringify({ tenantId: loja.id, ...corpo }),
       });
       const j = await r.json();
-      if (!r.ok) { setErro(j.erro ?? "falha ao gravar"); setSalvando(false); return; }
+      if (!r.ok) { setErro(j.erro ?? "falha ao gravar"); setSalvando(false); return false; }
       setEditando(null);
       setForm({});
+      confirmar();
       router.refresh();
+      setSalvando(false);
+      return true;
     } catch {
       setErro("sem conexão com o servidor");
+      setSalvando(false);
+      return false;
     }
-    setSalvando(false);
   }
 
   async function desativar(tipo: string, id: string) {
@@ -829,6 +841,8 @@ export function Integracoes({
       )}
 
       <div style={{ padding: 24, flexGrow: 1 }}>
+        <Confirmacao texto={confirmacao} margemAbaixo={16} />
+
         {erro && (
           <div style={{
             background: "var(--negativo-fundo)", border: "1px solid var(--negativo)",
@@ -1466,6 +1480,7 @@ export function ProdutoDaPagina({ site, tenantId }: {
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const { confirmacao, confirmar, limpar } = useConfirmacao();
 
   const [paginaDeProduto, setPaginaDeProduto] = useState(!!site.config.viewContentOnLoad);
   const [id, setId] = useState(site.config.productId ?? "");
@@ -1480,6 +1495,7 @@ export function ProdutoDaPagina({ site, tenantId }: {
 
   async function salvar() {
     setErro(null);
+    limpar();
     setSalvando(true);
     try {
       const r = await fetch("/api/integracoes", {
@@ -1498,7 +1514,13 @@ export function ProdutoDaPagina({ site, tenantId }: {
       });
       const j = await r.json() as { erro?: string };
       if (!r.ok) { setErro(j.erro ?? "falha ao gravar"); setSalvando(false); return; }
-      setAberto(false);
+      /*
+       * O painel NÃO fecha ao salvar, e é de propósito: este bloco some da
+       * tela inteira quando não está aberto nem configurado (o `return null`
+       * lá em cima). Fechando, a confirmação ia junto — logo na primeira
+       * configuração, que é quando ela mais importa.
+       */
+      confirmar();
       router.refresh();
     } catch {
       setErro("sem conexão com o servidor");
@@ -1612,12 +1634,15 @@ export function ProdutoDaPagina({ site, tenantId }: {
             }}>{erro}</div>
           )}
 
+          <Confirmacao texto={confirmacao} margemAbaixo={11} />
+
           <div style={{ display: "flex", gap: 8 }}>
             <Botao pequeno onClick={salvar} disabled={salvando}>
               {salvando ? "salvando..." : "Salvar"}
             </Botao>
-            <Botao pequeno tipo="secundario" onClick={() => { setAberto(false); setErro(null); }}>
-              cancelar
+            <Botao pequeno tipo="secundario"
+              onClick={() => { setAberto(false); setErro(null); limpar(); }}>
+              fechar
             </Botao>
           </div>
 

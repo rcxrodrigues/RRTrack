@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Confirmacao } from "./confirmacao";
 import { Cartao } from "./comum";
 
 interface Conta {
@@ -169,7 +170,7 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
      * como saber que funcionou, e clica de novo.
      */
     setSalvando(false);
-    setAviso("Contas vinculadas.");
+    setAviso("Alterações salvas com sucesso — contas vinculadas.");
 
     if (!embutido) router.push("/integracoes");
     router.refresh();
@@ -251,6 +252,8 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
         <div style={{ fontSize: 12, color: "var(--negativo, #d66)" }}>{erro}</div>
       )}
 
+      <Confirmacao texto={aviso} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button onClick={vincular} disabled={salvando} style={{
           padding: "9px 16px", borderRadius: 5, border: "none",
@@ -260,9 +263,6 @@ export function MetaVincular({ embutido }: { embutido?: boolean } = {}) {
           {salvando ? "salvando…" : "Salvar"}
         </button>
         <a href="/integracoes" style={{ fontSize: 12.5, color: "var(--ink-tenue)" }}>cancelar</a>
-        {aviso && (
-          <span style={{ fontSize: 12.5, color: "var(--positivo)" }}>{aviso}</span>
-        )}
       </div>
 
       {/*

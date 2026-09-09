@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Confirmacao, useConfirmacao } from "./confirmacao";
 import type { LojaDoUsuario } from "@/core/auth";
 
 /*
@@ -183,6 +184,9 @@ function DialogoEditarDashboard({
   /* A exclusão fica atrás de um segundo passo, e não de um botão solto. */
   const [excluindo, setExcluindo] = useState(false);
   const [confirmacao, setConfirmacao] = useState("");
+  /* `salvo`, e não `confirmacao`: o nome já é do texto que se digita para
+     confirmar a exclusão, logo acima. */
+  const { confirmacao: salvo, confirmar, limpar } = useConfirmacao();
 
   useEffect(() => {
     const f = (e: KeyboardEvent) => { if (e.key === "Escape" && !salvando) aoFechar(); };
@@ -193,6 +197,7 @@ function DialogoEditarDashboard({
   async function salvar() {
     setSalvando(true);
     setErro(null);
+    limpar();
     const r = await fetch("/api/lojas", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -206,7 +211,14 @@ function DialogoEditarDashboard({
       setSalvando(false);
       return;
     }
-    aoFechar();
+    /*
+     * O diálogo NÃO fecha ao salvar. Fechando, a confirmação teria de aparecer
+     * na lateral, que tem 150px úteis — e ali ela não cabe sem espremer o
+     * seletor. Quem terminou fecha no "voltar"; quem mudou fuso ou moeda vê
+     * que gravou antes de sair.
+     */
+    setSalvando(false);
+    confirmar();
     router.refresh();
   }
 
@@ -307,6 +319,7 @@ function DialogoEditarDashboard({
               </select>
             </Campo>
             {erro && <Erro texto={erro} />}
+            <Confirmacao texto={salvo} margemAbaixo={0} />
           </div>
         )}
 
@@ -337,7 +350,8 @@ function DialogoEditarDashboard({
                 }}>Excluir</button>
               )}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={aoFechar} disabled={salvando} style={botaoNeutro}>Cancelar</button>
+                <button onClick={() => { limpar(); aoFechar(); }} disabled={salvando}
+                  style={botaoNeutro}>Fechar</button>
                 <button onClick={salvar} disabled={salvando || nome.trim().length < 2} style={{
                   ...botaoPrimario, opacity: salvando || nome.trim().length < 2 ? .5 : 1,
                 }}>{salvando ? "salvando…" : "Salvar"}</button>
