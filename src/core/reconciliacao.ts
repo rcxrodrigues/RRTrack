@@ -195,9 +195,8 @@ async function cobrarReivindicacoes(
   const agora = Date.now();
 
   /*
-   * Reivindicação sem venda. O `leftJoin` com `orders` nulo é a definição de
-   * órfã: a loja avisou que criou o pedido e o webhook correspondente nunca
-   * virou linha em `orders`.
+   * Reivindicação sem venda: a loja avisou que criou o pedido e o webhook
+   * correspondente nunca virou linha em `orders`.
    */
   const orfas = await db
     .select({
@@ -207,13 +206,29 @@ async function cobrarReivindicacoes(
       consultas: orderClaims.checks,
     })
     .from(orderClaims)
-    .leftJoin(orders, and(
-      eq(orders.tenantId, orderClaims.tenantId),
-      eq(orders.gatewayOrderId, orderClaims.gatewayOrderId),
-    ))
     .where(and(
       eq(orderClaims.tenantId, tenantId),
-      isNull(orders.id),
+      /*
+       * "Sem venda" é por (loja, GATEWAY, pedido) — e não só por (loja, pedido).
+       *
+       * O id do pedido é escolha de cada gateway, e nada garante que dois não
+       * repitam o mesmo: a Appmax numera de 1 em diante. Casando só pelo id, a
+       * venda 1041 de um gateway fazia a reivindicação 1041 de OUTRO parecer
+       * resolvida, e a varredura nunca ia atrás dela. Sem erro em lugar nenhum
+       * — só uma venda real que fica órfã para sempre, que é exatamente o
+       * desfecho que este módulo existe para evitar.
+       *
+       * `NOT EXISTS` no lugar do `leftJoin` de antes porque a marca do gateway
+       * não está em `orders`: ela vive na conexão, e comparar por ela exige a
+       * junção com `gateway_connections`.
+       */
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${orders} o
+        JOIN ${gatewayConnections} gc ON gc.id = o.gateway_connection_id
+        WHERE o.tenant_id = ${orderClaims.tenantId}
+          AND o.gateway_order_id = ${orderClaims.gatewayOrderId}
+          AND gc.gateway = ${orderClaims.gateway}
+      )`,
       lt(orderClaims.createdAt, new Date(agora - MIN_ORFA)),
       sql`${orderClaims.createdAt} > now() - interval '${sql.raw(String(JANELA_DIAS))} days'`,
       lt(orderClaims.checks, MAX_CONSULTAS),
