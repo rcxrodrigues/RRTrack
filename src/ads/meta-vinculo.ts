@@ -12,7 +12,7 @@
  * navegador serve — e é por isso que ele precisa valer pouco tempo e uma vez só.
  */
 
-import { and, eq, gt, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
 import { db } from "@/db/index";
 import { metaLinks, metaProfiles } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
@@ -26,7 +26,7 @@ import type { AppMeta } from "./meta-oauth";
  * antes de clicar. A Utmify usa trinta, e é a folga certa — dá tempo de
  * atravessar a troca de navegador sem dar tempo de esquecer que gerou.
  */
-const VALIDADE_MINUTOS = 30;
+export const VALIDADE_MINUTOS = 30;
 
 /*
  * A URL de retorno tem de ser IDÊNTICA em dois lugares: aqui e na lista de
@@ -113,7 +113,13 @@ export async function vinculoPronto(tenantId: string, userId: string): Promise<V
       isNotNull(metaLinks.token),
       gt(metaLinks.expiresAt, new Date()),
     ))
-    .orderBy(metaLinks.createdAt)
+    /*
+     * Do mais novo para o mais velho. Sem o `desc`, `orderBy` é ascendente e
+     * isto devolvia o vínculo mais ANTIGO — o oposto do que o nome promete.
+     * Quem tentasse de novo depois de um consentimento que falhou reencontrava
+     * a tentativa velha, e não a que acabou de dar certo.
+     */
+    .orderBy(desc(metaLinks.createdAt))
     .limit(1);
 
   if (!linha) return null;

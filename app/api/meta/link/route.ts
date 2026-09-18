@@ -13,7 +13,7 @@
 
 import { exigirSessao } from "@/core/sessao";
 import { acessoALoja } from "@/core/auth";
-import { abrirVinculo, appDaMeta, urlDoLink } from "@/ads/meta-vinculo";
+import { abrirVinculo, appDaMeta, urlDoLink, VALIDADE_MINUTOS } from "@/ads/meta-vinculo";
 
 export const runtime = "nodejs";
 
@@ -39,7 +39,11 @@ export async function POST(req: Request): Promise<Response> {
 
   return Response.json({
     url: urlDoLink(vinculo.secret),
-    /* A tela mostra o prazo para a pessoa saber que não adianta guardar. */
-    validoPorMinutos: 15,
+    /*
+     * Do mesmo lugar que grava o vencimento, e não de um número escrito aqui.
+     * Estavam em 15 contra 30 reais: a resposta da API contradizia os três
+     * textos da interface, e nenhum dos dois lados sabia que o outro existia.
+     */
+    validoPorMinutos: VALIDADE_MINUTOS,
   });
 }
