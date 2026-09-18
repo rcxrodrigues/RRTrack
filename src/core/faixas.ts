@@ -13,7 +13,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import { orders } from "../db/schema";
-import { REGRA_PADRAO, valorDaVenda, type RegraFaturamento } from "./faturamento";
+import { valorDaVenda, type RegraFaturamento } from "./faturamento";
 
 /*
  * O placar SEMPRE tira frete e juros, qualquer que seja a regra da loja.
