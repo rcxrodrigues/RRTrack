@@ -11,6 +11,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /*
  * O piso de versão do Node, conferido antes de tudo.
@@ -114,11 +115,27 @@ const PONTA = ["e2e", "gateways", "eventos", "enriquecimento", "api-entrada", "t
 
 console.log(`compilando ${COMPILAR.length} módulos...`);
 rmSync("_tmp", { recursive: true, force: true });
-execFileSync("npx", [
-  "tsc", ...COMPILAR,
+/*
+ * Chama o `tsc` local pelo próprio Node, em vez de `npx` com `shell: true`.
+ *
+ * O shell existia para o Windows, onde `npx` é um `.cmd` que o `execFile` não
+ * executa sozinho. Só que shell ligado faz o Node avisar a cada execução
+ * (DEP0190): argumento passado por shell é concatenado, não escapado — aqui
+ * são nomes de arquivo nossos, mas o aviso é justo e some junto com o shell.
+ *
+ * O binário do TypeScript é um arquivo .js comum. Rodá-lo com `process.execPath`
+ * dispensa shell, dispensa o `npx`, funciona igual nos três sistemas e ainda
+ * economiza a resolução que o npx faria toda vez.
+ */
+/* `fileURLToPath`, e não `.pathname`: no Windows o pathname sai "/C:/...",
+   com uma barra a mais que invalida o caminho. */
+const TSC = fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url));
+
+execFileSync(process.execPath, [
+  TSC, ...COMPILAR,
   "--outDir", "_tmp", "--target", "ES2022", "--module", "commonjs",
   "--moduleResolution", "node", "--skipLibCheck", "--esModuleInterop", "--strict",
-], { stdio: "inherit", shell: true });
+], { stdio: "inherit" });
 writeFileSync("_tmp/package.json", '{"type":"commonjs"}');
 
 let falhas = 0;
