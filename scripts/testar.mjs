@@ -11,6 +11,34 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/*
+ * O piso de versão do Node, conferido antes de tudo.
+ *
+ * `process.loadEnvFile` chegou no Node 20.12 — este arquivo e mais dezenove
+ * scripts dependem dela. Abaixo disso a suíte morre com
+ * "process.loadEnvFile is not a function", mensagem que não diz o que fazer e
+ * que só aparece DEPOIS de o clone e o `npm install` terem dado certo.
+ *
+ * É o primeiro tropeço de quem restaura numa máquina nova, e o mais confuso:
+ * tudo parecia ter funcionado até ali. O `engines` do package.json declara o
+ * mesmo piso, mas o npm só avisa — não impede. Aqui a mensagem chega na hora
+ * certa e diz o que resolve.
+ */
+const NODE_MINIMO = [20, 12];
+const versao = process.versions.node.split(".").map(Number);
+
+if (versao[0] < NODE_MINIMO[0]
+  || (versao[0] === NODE_MINIMO[0] && versao[1] < NODE_MINIMO[1])) {
+  console.error(
+    `\nEste projeto precisa do Node ${NODE_MINIMO.join(".")} ou mais novo.`
+    + `\nVocê está no ${process.versions.node}.`
+    + "\n\nA suíte usa process.loadEnvFile(), que só existe a partir do 20.12."
+    + "\nAtualize o Node e rode de novo.\n",
+  );
+  process.exit(1);
+}
 
 const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
 
@@ -87,11 +115,27 @@ const PONTA = ["e2e", "gateways", "eventos", "enriquecimento", "api-entrada", "t
 
 console.log(`compilando ${COMPILAR.length} módulos...`);
 rmSync("_tmp", { recursive: true, force: true });
-execFileSync("npx", [
-  "tsc", ...COMPILAR,
+/*
+ * Chama o `tsc` local pelo próprio Node, em vez de `npx` com `shell: true`.
+ *
+ * O shell existia para o Windows, onde `npx` é um `.cmd` que o `execFile` não
+ * executa sozinho. Só que shell ligado faz o Node avisar a cada execução
+ * (DEP0190): argumento passado por shell é concatenado, não escapado — aqui
+ * são nomes de arquivo nossos, mas o aviso é justo e some junto com o shell.
+ *
+ * O binário do TypeScript é um arquivo .js comum. Rodá-lo com `process.execPath`
+ * dispensa shell, dispensa o `npx`, funciona igual nos três sistemas e ainda
+ * economiza a resolução que o npx faria toda vez.
+ */
+/* `fileURLToPath`, e não `.pathname`: no Windows o pathname sai "/C:/...",
+   com uma barra a mais que invalida o caminho. */
+const TSC = fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url));
+
+execFileSync(process.execPath, [
+  TSC, ...COMPILAR,
   "--outDir", "_tmp", "--target", "ES2022", "--module", "commonjs",
   "--moduleResolution", "node", "--skipLibCheck", "--esModuleInterop", "--strict",
-], { stdio: "inherit", shell: true });
+], { stdio: "inherit" });
 writeFileSync("_tmp/package.json", '{"type":"commonjs"}');
 
 let falhas = 0;

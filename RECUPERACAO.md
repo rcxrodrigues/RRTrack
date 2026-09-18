@@ -42,6 +42,13 @@ Duas cópias nos dois lugares que você pode apagar num dia ruim não é backup.
 
 ## Restaurar do zero
 
+Confira o Node antes de tudo — o projeto precisa da **versão 20.12 ou mais
+nova**, porque a suíte usa `process.loadEnvFile()`, que não existe antes disso:
+
+```bash
+node --version
+```
+
 ```bash
 git clone https://github.com/rcxrodrigues/RRTrack.git
 cd RRTrack
