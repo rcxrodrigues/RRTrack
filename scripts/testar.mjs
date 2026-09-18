@@ -12,6 +12,33 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 
+/*
+ * O piso de versão do Node, conferido antes de tudo.
+ *
+ * `process.loadEnvFile` chegou no Node 20.12 — este arquivo e mais dezenove
+ * scripts dependem dela. Abaixo disso a suíte morre com
+ * "process.loadEnvFile is not a function", mensagem que não diz o que fazer e
+ * que só aparece DEPOIS de o clone e o `npm install` terem dado certo.
+ *
+ * É o primeiro tropeço de quem restaura numa máquina nova, e o mais confuso:
+ * tudo parecia ter funcionado até ali. O `engines` do package.json declara o
+ * mesmo piso, mas o npm só avisa — não impede. Aqui a mensagem chega na hora
+ * certa e diz o que resolve.
+ */
+const NODE_MINIMO = [20, 12];
+const versao = process.versions.node.split(".").map(Number);
+
+if (versao[0] < NODE_MINIMO[0]
+  || (versao[0] === NODE_MINIMO[0] && versao[1] < NODE_MINIMO[1])) {
+  console.error(
+    `\nEste projeto precisa do Node ${NODE_MINIMO.join(".")} ou mais novo.`
+    + `\nVocê está no ${process.versions.node}.`
+    + "\n\nA suíte usa process.loadEnvFile(), que só existe a partir do 20.12."
+    + "\nAtualize o Node e rode de novo.\n",
+  );
+  process.exit(1);
+}
+
 const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
 
 /* Os que precisam de compilação, com o módulo que cada um exige. */
