@@ -10,7 +10,7 @@
  *   RR_BASE=http://localhost:3000 ...  contra o servidor local
  */
 import { execFileSync } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
 
@@ -23,6 +23,7 @@ const COMPILAR = [
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
   "src/gateways/shopify.ts",
   "src/core/janela.ts", "src/core/robos.ts", "src/core/redes.ts", "src/core/normalizar.ts",
+  "src/core/utm.ts", "src/ads/meta.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];
@@ -32,8 +33,24 @@ const UNITARIOS = [
   "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
   "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
-  "robos",
+  "robos", "utm", "ads-meta",
 ];
+
+/*
+ * O arquivo de um teste, seja `.cjs` ou `.mjs`.
+ *
+ * Os dois formatos convivem porque a diferença é de como cada teste foi
+ * escrito, não do que ele faz — `teste-ads-meta` usa `await` no topo, que só
+ * existe em ESM. Fixar a extensão em `.cjs` foi o que manteve ele e o
+ * `teste-utm` fora da suíte: existiam, passavam, e ninguém rodava.
+ */
+const arquivoDe = (nome) => {
+  for (const ext of ["cjs", "mjs"]) {
+    const caminho = `scripts/teste-${nome}.${ext}`;
+    if (existsSync(caminho)) return caminho;
+  }
+  throw new Error(`teste "${nome}" não encontrado em scripts/`);
+};
 
 /* De ponta a ponta: batem no servidor de verdade, e precisam de uma semente. */
 const PONTA = ["e2e", "gateways", "eventos", "enriquecimento", "api-entrada", "taxas-e2e"];
@@ -77,13 +94,13 @@ const rodar = (nome, args) => {
 };
 
 console.log("\n== unitários ==");
-for (const t of UNITARIOS) rodar(t, [`scripts/teste-${t}.cjs`]);
+for (const t of UNITARIOS) rodar(t, [arquivoDe(t)]);
 
 console.log(`\n== ponta a ponta contra ${BASE} ==`);
 for (const t of PONTA) {
   const semente = execFileSync("node", ["scripts/seed.mjs"], { encoding: "utf8" });
   /* Compacta: o teste so precisa do objeto, e uma linha so viaja inteira. */
-  rodar(t, [`scripts/teste-${t}.mjs`, JSON.stringify(JSON.parse(semente))]);
+  rodar(t, [arquivoDe(t), JSON.stringify(JSON.parse(semente))]);
 }
 
 rmSync("_tmp", { recursive: true, force: true });

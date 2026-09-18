@@ -3,10 +3,12 @@
  * diferente, e ler utm_medium como "meio" é o erro que faz o painel inteiro
  * mostrar número errado sem avisar.
  *
- * Compilado antes de rodar:
- *   npx tsc src/core/utm.ts --outDir /tmp/utmbuild --target ES2022  *     --module ESNext --moduleResolution bundler --skipLibCheck
+ * Roda pela suíte: `node scripts/testar.mjs` compila os módulos em _tmp antes.
+ *
+ * Apontava para um /tmp compilado à mão, e por isso ficou FORA da suíte por
+ * tempo demais — teste que ninguém roda não protege nada.
  */
-import { extrairEstrutura, detectarPlataforma, MODELOS } from "/tmp/utmbuild/utm.js";
+import { extrairEstrutura, detectarPlataforma, MODELOS } from "../_tmp/core/utm.js";
 let f = 0;
 const eq = (l, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) f++;
   console.log(`  ${ok ? "ok  " : "FALHA"} | ${l}` + (ok ? "" : `\n         obtido:   ${JSON.stringify(g)}\n         esperado: ${JSON.stringify(w)}`)); };

@@ -6,22 +6,44 @@
  * real provaria a conexão; isto prova a interpretação, que é onde o erro
  * silencioso mora.
  *
- * Compilar antes:
- *   npx tsc src/ads/meta.ts src/ads/types.ts --outDir /tmp/adsbuild  *     --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck
+ * Roda pela suíte: `node scripts/testar.mjs` compila os módulos em _tmp antes.
+ *
+ * Apontava para um /tmp compilado à mão, e por isso ficou FORA da suíte por
+ * tempo demais — teste que ninguém roda não protege nada.
  */
 /* Simula a Marketing API e confere o que o adaptador faz com a resposta. */
+
+/*
+ * Toda resposta simulada carrega `headers`, e isso não é detalhe.
+ *
+ * O adaptador lê `x-business-use-case-usage` a cada página para parar ANTES de
+ * a Meta precisar bloquear. O mock daqui não tinha headers nenhum, e a
+ * primeira execução depois de religar este teste à suíte morreu em
+ * `r.headers.get` de undefined — no arquivo de teste, não no adaptador.
+ *
+ * Quem estava errado era o mock: `fetch` de verdade sempre devolve headers. O
+ * teste foi escrito antes de o controle de cota existir e ficou apodrecendo
+ * fora da suíte, que é precisamente o que um teste que ninguém roda faz.
+ */
+const cabecalhos = (uso) => ({
+  get: (nome) => (nome === "x-business-use-case-usage" ? uso ?? null : null),
+});
+
+const resposta = (corpo, uso) => ({
+  ok: true, headers: cabecalhos(uso), json: async () => corpo,
+});
 const chamadas = [];
 globalThis.fetch = async (url, init) => {
   chamadas.push(String(url));
   const u = String(url);
 
   if (u.includes("fields=currency")) {
-    return { ok: true, json: async () => ({ currency: "BRL", timezone_name: "America/Sao_Paulo" }) };
+    return resposta({ currency: "BRL", timezone_name: "America/Sao_Paulo" });
   }
 
   /* Segunda página, para provar que ele pagina. */
   if (u.includes("__pagina2__")) {
-    return { ok: true, json: async () => ({
+    return resposta({
       data: [{
         date_start: "2026-08-22", spend: "0.07",
         campaign_id: "C1", campaign_name: "Frio",
@@ -29,10 +51,10 @@ globalThis.fetch = async (url, init) => {
         ad_id: "A9", ad_name: "Video 09",
         impressions: "12", clicks: "1",
       }],
-    }) };
+    });
   }
 
-  return { ok: true, json: async () => ({
+  return resposta({
     data: [
       {
         date_start: "2026-08-22",
@@ -58,10 +80,10 @@ globalThis.fetch = async (url, init) => {
       { date_start: "2026-08-22", spend: "99.99", campaign_id: "C2" },
     ],
     paging: { next: "https://graph.facebook.com/__pagina2__" },
-  }) };
+  });
 };
 
-const { metaAdsAdapter } = await import("/tmp/adsbuild/meta.js");
+const { metaAdsAdapter } = await import("../_tmp/ads/meta.js");
 
 let f = 0;
 const eq = (l, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) f++;
@@ -102,19 +124,36 @@ eq("fuso lido da conta", r.fuso, "America/Sao_Paulo");
 eq("sem avisos quando tudo certo", r.avisos.length, 0);
 eq("total de linhas (2 páginas)", r.linhas.length, 4);
 
-console.log("\n== conta em outra moeda avisa ==");
+/*
+ * O adaptador RELATA a moeda e não a julga — e a asserção antiga exigia o
+ * contrário.
+ *
+ * Existia aqui um `if (moeda !== "BRL")` que soltava aviso. Fazia sentido
+ * enquanto toda loja fosse brasileira, e passou a errar dos dois lados quando
+ * deixou de ser: numa loja em libra, a conta em libra disparava o alerta e a
+ * conta em real passava calada. A comparação mudou para
+ * core/sincronizar-gasto.ts, que é o único lugar que sabe a moeda da LOJA.
+ *
+ * O teste ficou exigindo a regra removida. Como estava fora da suíte, ninguém
+ * viu — ele reprovaria a correção que consertou o problema.
+ */
+console.log("\n== conta em outra moeda: relata, não julga ==");
 globalThis.fetch = async (url) => {
-  if (String(url).includes("fields=currency")) return { ok: true, json: async () => ({ currency: "USD" }) };
-  return { ok: true, json: async () => ({ data: [] }) };
+  if (String(url).includes("fields=currency")) return resposta({ currency: "USD" });
+  return resposta({ data: [] });
 };
 const r2 = await metaAdsAdapter.buscarGasto("act_9", { accessToken: "t" }, { de: "2026-08-01", ate: "2026-08-02" });
-eq("avisa sobre moeda diferente", r2.avisos.some((a) => a.includes("USD")), true);
+eq("devolve a moeda que a conta reporta", r2.moeda, "USD");
+eq("não opina sobre a moeda — quem compara é a sincronização",
+  r2.avisos.some((a) => a.includes("USD")), false);
 eq("avisa sobre período vazio", r2.avisos.some((a) => a.includes("nenhum gasto")), true);
 
 console.log("\n== token expirado tem mensagem própria ==");
 globalThis.fetch = async (url) => {
-  if (String(url).includes("fields=currency")) return { ok: true, json: async () => ({ currency: "BRL" }) };
-  return { ok: false, status: 400, text: async () => '{"error":{"code":190,"message":"expired"}}' };
+  if (String(url).includes("fields=currency")) return resposta({ currency: "BRL" });
+  /* Recusa: headers também, porque o adaptador os lê antes de olhar o status. */
+  return { ok: false, status: 400, headers: cabecalhos(null),
+    text: async () => '{"error":{"code":190,"message":"expired"}}' };
 };
 try {
   await metaAdsAdapter.buscarGasto("act_9", { accessToken: "t" }, { de: "2026-08-01", ate: "2026-08-02" });
