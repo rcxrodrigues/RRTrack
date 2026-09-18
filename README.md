@@ -96,6 +96,33 @@ requisição chegou ao `graph.facebook.com` e foi recusada por credencial, não 
 
 Nenhuma delas vai para o git. Em produção vivem nas variáveis de ambiente da Vercel.
 
+## O que o `npm audit` acusa, e por quê fica
+
+Seis avisos permanecem, e nenhum é alcançável nesta instalação. Ficam
+registrados aqui para ninguém refazer a investigação.
+
+**Quatro são da cadeia `esbuild` → `@esbuild-kit` → `drizzle-kit`.** Não têm
+correção: o `drizzle-kit@0.31.10`, que o próprio `npm audit` indica como a
+solução, continua dependendo do `@esbuild-kit/esm-loader@2.6.5`. A falha é o
+servidor de desenvolvimento do esbuild aceitar requisição de qualquer site — e
+o drizzle-kit usa esbuild só para transpilar o arquivo de configuração, sem
+subir servidor nenhum. **Revisar quando o drizzle-kit largar essa dependência.**
+
+**Duas são `postcss` e o `next` que depende dela.** XSS na escrita de CSS. O
+CSS deste projeto é um arquivo estático escrito à mão; nada de fora passa pelo
+PostCSS. Fechá-las exigiria subir o Next uma versão maior — risco de quebrar o
+que funciona para resolver o que não atinge. **Revisar quando houver outro
+motivo para subir o Next.**
+
+O que **foi** corrigido, porque era real: a execução remota de código do Next
+(crítica, embora só em servidor Windows, e o deploy é Linux) e a injeção de SQL
+do drizzle-orm. Esta última também não era alcançável — os três `sql.raw` do
+projeto usam só constantes — mas é dependência de produção, e aí o critério é
+outro.
+
+A regra ao avaliar um aviso novo: **pergunte por onde entrada de usuário
+chegaria até ele.** Se não houver caminho, anote aqui em vez de subir versão.
+
 ## Decisões que não são óbvias
 
 **Dinheiro é sempre inteiro em centavos.** Ponto flutuante em faturamento acumula erro
