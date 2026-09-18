@@ -10,7 +10,7 @@
  *   RR_BASE=http://localhost:3000 ...  contra o servidor local
  */
 import { execFileSync } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
 
@@ -23,17 +23,64 @@ const COMPILAR = [
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
   "src/gateways/shopify.ts",
   "src/core/janela.ts", "src/core/robos.ts", "src/core/redes.ts", "src/core/normalizar.ts",
+  "src/core/utm.ts", "src/ads/meta.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];
 
-/* Unitários: falam com o banco e com APIs simuladas, nunca com a rede real. */
-const UNITARIOS = [
-  "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
-  "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
+/*
+ * Unitários, separados pelo que EXIGEM para rodar.
+ *
+ * A divisão existe por causa de máquina nova. O `.env` não vem no clone — de
+ * propósito, e o RECUPERACAO.md explica por quê — então quem acabou de clonar
+ * não tem `DATABASE_URL` nem `CREDENTIALS_KEY` até ir buscar nos painéis. Sem
+ * a separação, a suíte inteira morria na primeira linha e não dizia nada sobre
+ * um código que talvez estivesse perfeito.
+ *
+ * Os puros simulam a API e não abrem conexão nenhuma: rodam num clone recém
+ * feito, sem segredo nenhum. É o que `--sem-banco` roda.
+ */
+const UNITARIOS_PUROS = [
+  "taxas", "confirmacao", "tiktok", "google", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
-  "robos",
+  "robos", "utm", "ads-meta",
 ];
+
+/* Estes abrem conexão com o Postgres: precisam do `.env` preenchido. */
+const UNITARIOS_BANCO = [
+  "metricas", "resumo", "faturamento", "limites", "custos",
+  "reenvio", "reconciliacao",
+];
+
+/*
+ * `--sem-banco` roda só o que dispensa credencial.
+ *
+ * Não substitui a suíte: as agregações do painel, a fila de reenvio e a
+ * reconciliação ficam de fora, e são justamente as que mexem em número. Serve
+ * para provar que o código compila e que a interpretação está certa enquanto
+ * o `.env` não chega.
+ */
+const SEM_BANCO = process.argv.includes("--sem-banco");
+
+const UNITARIOS = SEM_BANCO
+  ? UNITARIOS_PUROS
+  : [...UNITARIOS_PUROS, ...UNITARIOS_BANCO];
+
+/*
+ * O arquivo de um teste, seja `.cjs` ou `.mjs`.
+ *
+ * Os dois formatos convivem porque a diferença é de como cada teste foi
+ * escrito, não do que ele faz — `teste-ads-meta` usa `await` no topo, que só
+ * existe em ESM. Fixar a extensão em `.cjs` foi o que manteve ele e o
+ * `teste-utm` fora da suíte: existiam, passavam, e ninguém rodava.
+ */
+const arquivoDe = (nome) => {
+  for (const ext of ["cjs", "mjs"]) {
+    const caminho = `scripts/teste-${nome}.${ext}`;
+    if (existsSync(caminho)) return caminho;
+  }
+  throw new Error(`teste "${nome}" não encontrado em scripts/`);
+};
 
 /* De ponta a ponta: batem no servidor de verdade, e precisam de uma semente. */
 const PONTA = ["e2e", "gateways", "eventos", "enriquecimento", "api-entrada", "taxas-e2e"];
@@ -77,13 +124,18 @@ const rodar = (nome, args) => {
 };
 
 console.log("\n== unitários ==");
-for (const t of UNITARIOS) rodar(t, [`scripts/teste-${t}.cjs`]);
+for (const t of UNITARIOS) rodar(t, [arquivoDe(t)]);
 
-console.log(`\n== ponta a ponta contra ${BASE} ==`);
-for (const t of PONTA) {
+if (SEM_BANCO) {
+  console.log(`\n(pulando ${UNITARIOS_BANCO.length} unitários e ${PONTA.length} de ponta a ponta:`
+    + " precisam de DATABASE_URL no .env)");
+}
+
+for (const t of SEM_BANCO ? [] : PONTA) {
+  if (t === PONTA[0]) console.log(`\n== ponta a ponta contra ${BASE} ==`);
   const semente = execFileSync("node", ["scripts/seed.mjs"], { encoding: "utf8" });
   /* Compacta: o teste so precisa do objeto, e uma linha so viaja inteira. */
-  rodar(t, [`scripts/teste-${t}.mjs`, JSON.stringify(JSON.parse(semente))]);
+  rodar(t, [arquivoDe(t), JSON.stringify(JSON.parse(semente))]);
 }
 
 rmSync("_tmp", { recursive: true, force: true });
@@ -102,7 +154,8 @@ const DESCARTAVEIS = [
   "loja-de-teste", "metricas-teste", "faturamento-teste", "faturamento-outro",
 ];
 
-try {
+/* Sem banco nada foi criado, então não há o que limpar. */
+if (!SEM_BANCO) try {
   /*
    * O runner nunca precisou do banco — quem falava com ele eram os testes
    * filhos, cada um carregando o .env por conta. A limpeza é a primeira coisa
@@ -121,5 +174,15 @@ try {
   console.log(`\naviso: não deu para limpar as lojas de teste (${e.message})`);
 }
 
-console.log(`\n${falhas === 0 ? "SUÍTE INTEIRA PASSOU" : falhas + " SUÍTE(S) COM FALHA"}\n`);
+/*
+ * O veredito diz o que REALMENTE rodou.
+ *
+ * "SUÍTE INTEIRA PASSOU" com treze testes pulados seria a pior mensagem
+ * possível: ela afirma cobertura que não houve, e quem lê vai embora achando
+ * que as agregações do painel foram conferidas quando nem foram tocadas.
+ */
+const pulados = SEM_BANCO ? UNITARIOS_BANCO.length + PONTA.length : 0;
+console.log(`\n${falhas > 0 ? falhas + " SUÍTE(S) COM FALHA"
+  : pulados > 0 ? `os ${UNITARIOS.length} sem banco passaram — ${pulados} NÃO RODARAM`
+  : "SUÍTE INTEIRA PASSOU"}\n`);
 process.exit(falhas === 0 ? 0 : 1);

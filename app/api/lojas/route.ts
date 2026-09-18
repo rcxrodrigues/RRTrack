@@ -20,7 +20,11 @@ export const runtime = "nodejs";
 
 /** "Oferta Carimbo 2" -> "oferta-carimbo-2" */
 function apelido(nome: string): string {
-  return nome.normalize("NFD").replace(/[̀-ͯ]/g, "")
+  return nome.normalize("NFD")
+    /* Escapado, e nao com os combinantes crus: escritos literalmente eles
+       dependem de o arquivo sobreviver a toda ferramenta que o tocar, e um
+       salvamento em outra codificacao mata o filtro sem erro nenhum. */
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")

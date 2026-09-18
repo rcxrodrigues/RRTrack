@@ -14,7 +14,8 @@
     "seed": "node scripts/seed.mjs",
     "test:e2e": "node scripts/teste-e2e.mjs",
     "cadastrar": "node scripts/cadastrar.mjs",
-    "test": "node scripts/testar.mjs"
+    "test": "node scripts/testar.mjs",
+    "test:sem-banco": "node scripts/testar.mjs --sem-banco"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

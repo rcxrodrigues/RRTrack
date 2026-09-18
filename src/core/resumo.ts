@@ -173,7 +173,22 @@ export async function indicadores(p: Periodo): Promise<Indicadores> {
     pendenteCents: Number(linha?.pendente_valor ?? 0),
     reembolsadas: Number(linha?.reembolsadas ?? 0),
     ticketMedioCents: aprovadas ? Math.round(bruto / aprovadas) : null,
-    roas: gasto ? liquido / gasto : null,
+    /*
+     * ROAS é BRUTO sobre gasto — a mesma conta de core/metricas.ts.
+     *
+     * As duas telas mostravam números diferentes com o mesmo nome: aqui era
+     * líquido/gasto, lá era faturamento/gasto. Quem abrisse o Resumo e a aba
+     * da Meta na mesma loja, no mesmo período, via dois ROAS e não tinha como
+     * saber em qual acreditar — que é exatamente o que core/faturamento.ts
+     * existe para impedir, e o tipo de divergência que derruba a confiança no
+     * painel inteiro sem nunca virar um erro reproduzível.
+     *
+     * Bruto, e não líquido, porque é o que Meta, Google e Utmify chamam de
+     * ROAS: o operador compara este número com o do gerenciador aberto ao
+     * lado. A leitura descontada não se perde — ela tem nome próprio em
+     * metricas.ts, o ROI, que divide o LUCRO pelo gasto.
+     */
+    roas: gasto ? bruto / gasto : null,
     /*
      * Em pontos percentuais (0 a 100), como toda taxa deste módulo — a do
      * funil e a de aprovação também multiplicam por 100. Devolver a proporção
