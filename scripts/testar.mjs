@@ -28,13 +28,43 @@ const COMPILAR = [
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];
 
-/* Unitários: falam com o banco e com APIs simuladas, nunca com a rede real. */
-const UNITARIOS = [
-  "metricas", "resumo", "faturamento", "taxas", "limites", "custos",
-  "confirmacao", "tiktok", "google", "reenvio", "reconciliacao", "generico",
+/*
+ * Unitários, separados pelo que EXIGEM para rodar.
+ *
+ * A divisão existe por causa de máquina nova. O `.env` não vem no clone — de
+ * propósito, e o RECUPERACAO.md explica por quê — então quem acabou de clonar
+ * não tem `DATABASE_URL` nem `CREDENTIALS_KEY` até ir buscar nos painéis. Sem
+ * a separação, a suíte inteira morria na primeira linha e não dizia nada sobre
+ * um código que talvez estivesse perfeito.
+ *
+ * Os puros simulam a API e não abrem conexão nenhuma: rodam num clone recém
+ * feito, sem segredo nenhum. É o que `--sem-banco` roda.
+ */
+const UNITARIOS_PUROS = [
+  "taxas", "confirmacao", "tiktok", "google", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
   "robos", "utm", "ads-meta",
 ];
+
+/* Estes abrem conexão com o Postgres: precisam do `.env` preenchido. */
+const UNITARIOS_BANCO = [
+  "metricas", "resumo", "faturamento", "limites", "custos",
+  "reenvio", "reconciliacao",
+];
+
+/*
+ * `--sem-banco` roda só o que dispensa credencial.
+ *
+ * Não substitui a suíte: as agregações do painel, a fila de reenvio e a
+ * reconciliação ficam de fora, e são justamente as que mexem em número. Serve
+ * para provar que o código compila e que a interpretação está certa enquanto
+ * o `.env` não chega.
+ */
+const SEM_BANCO = process.argv.includes("--sem-banco");
+
+const UNITARIOS = SEM_BANCO
+  ? UNITARIOS_PUROS
+  : [...UNITARIOS_PUROS, ...UNITARIOS_BANCO];
 
 /*
  * O arquivo de um teste, seja `.cjs` ou `.mjs`.
@@ -96,8 +126,13 @@ const rodar = (nome, args) => {
 console.log("\n== unitários ==");
 for (const t of UNITARIOS) rodar(t, [arquivoDe(t)]);
 
-console.log(`\n== ponta a ponta contra ${BASE} ==`);
-for (const t of PONTA) {
+if (SEM_BANCO) {
+  console.log(`\n(pulando ${UNITARIOS_BANCO.length} unitários e ${PONTA.length} de ponta a ponta:`
+    + " precisam de DATABASE_URL no .env)");
+}
+
+for (const t of SEM_BANCO ? [] : PONTA) {
+  if (t === PONTA[0]) console.log(`\n== ponta a ponta contra ${BASE} ==`);
   const semente = execFileSync("node", ["scripts/seed.mjs"], { encoding: "utf8" });
   /* Compacta: o teste so precisa do objeto, e uma linha so viaja inteira. */
   rodar(t, [arquivoDe(t), JSON.stringify(JSON.parse(semente))]);
@@ -119,7 +154,8 @@ const DESCARTAVEIS = [
   "loja-de-teste", "metricas-teste", "faturamento-teste", "faturamento-outro",
 ];
 
-try {
+/* Sem banco nada foi criado, então não há o que limpar. */
+if (!SEM_BANCO) try {
   /*
    * O runner nunca precisou do banco — quem falava com ele eram os testes
    * filhos, cada um carregando o .env por conta. A limpeza é a primeira coisa
@@ -138,5 +174,15 @@ try {
   console.log(`\naviso: não deu para limpar as lojas de teste (${e.message})`);
 }
 
-console.log(`\n${falhas === 0 ? "SUÍTE INTEIRA PASSOU" : falhas + " SUÍTE(S) COM FALHA"}\n`);
+/*
+ * O veredito diz o que REALMENTE rodou.
+ *
+ * "SUÍTE INTEIRA PASSOU" com treze testes pulados seria a pior mensagem
+ * possível: ela afirma cobertura que não houve, e quem lê vai embora achando
+ * que as agregações do painel foram conferidas quando nem foram tocadas.
+ */
+const pulados = SEM_BANCO ? UNITARIOS_BANCO.length + PONTA.length : 0;
+console.log(`\n${falhas > 0 ? falhas + " SUÍTE(S) COM FALHA"
+  : pulados > 0 ? `os ${UNITARIOS.length} sem banco passaram — ${pulados} NÃO RODARAM`
+  : "SUÍTE INTEIRA PASSOU"}\n`);
 process.exit(falhas === 0 ? 0 : 1);
