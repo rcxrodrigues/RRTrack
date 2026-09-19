@@ -19,7 +19,8 @@
     "cadastrar": "node scripts/cadastrar.mjs",
     "test": "node scripts/testar.mjs",
     "test:sem-banco": "node scripts/testar.mjs --sem-banco",
-    "conferir:credenciais": "node scripts/conferir-credenciais.mjs"
+    "conferir:credenciais": "node scripts/conferir-credenciais.mjs",
+    "faxina": "node scripts/faxina.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

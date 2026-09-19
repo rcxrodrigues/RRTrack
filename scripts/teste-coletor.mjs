@@ -90,6 +90,24 @@ eq("maiúscula", dominioDoSite("HTTPS://Loja.COM.BR"), "loja.com.br");
 /* Nada de barra no domínio do cookie — é o defeito que isto impede de voltar. */
 eq("nunca sobra barra", dominioRegistravel("https://transforlar.com/").includes("/"), false);
 
+console.log("\n  -- e a cópia de scripts/faxina.mjs concorda com a de produção --");
+/*
+ * A faxina é operação e não passa pelo build, então ela reimplementa
+ * dominioDoSite. Cópia que diverge já nos custou tempo uma vez (as listas de
+ * sufixo), e aqui a consequência seria pior: a faxina ESCREVE no banco. Uma
+ * normalização diferente gravaria domínio que a produção lê de outro jeito.
+ */
+const faxina = ler("scripts/faxina.mjs");
+const corpo = /function dominioDoSite\(guardado\) \{([\s\S]*?)\n\}/.exec(faxina)[1];
+const daFaxina = new Function("guardado", corpo + "\n");
+for (const caso of [
+  "https://transforlar.com/", "florecomesticos.store", "www.loja.com.br",
+  "HTTP://X.com:3000/a?b=1", "  Loja.COM.BR  ", "t.https://transforlar.com/",
+]) {
+  eq(`faxina e produção concordam em ${JSON.stringify(caso)}`,
+    daFaxina(caso), dominioDoSite(caso));
+}
+
 console.log("\n  -- e recusa o que não é hostname --");
 eq("vazio", normalizarHost("  "), null);
 eq("sem ponto", normalizarHost("localhost"), null);
