@@ -130,9 +130,14 @@ versão sem clicar é apostar.
   o repositório dizia v26.0 e produção rodava outra coisa. Essas variáveis são
   para testar versão nova SEM subir código; passado o teste, apague.
 - **Credencial ilegível ser tratada como "gateway não assina".** Em
-  `core/receber.ts`, chave de cifragem incompatível faz a verificação de
-  assinatura deixar de acontecer, e o webhook é aceito com 200. Está assim
-  ainda; o diagnóstico é `npm run conferir:credenciais`.
+  `core/receber.ts` havia um `catch` vazio: sem credencial, `verify` devolve
+  `sem_assinatura` — o MESMO sinal de um gateway que genuinamente não assina —
+  e a venda entrava com 200, marcada como não verificada. Chave de cifragem
+  incompatível DESLIGAVA a verificação de assinatura, em silêncio, para todos
+  os gateways de uma vez. **Corrigido**: agora é 500, e não 401 — 401 acusaria
+  quem assinou certo, e gateway não repete 401, então a venda sumiria por
+  defeito nosso. 5xx entra na fila de reentrega. Diagnóstico da causa:
+  `npm run conferir:credenciais`.
 
 ## Buracos conhecidos, de propósito
 

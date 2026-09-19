@@ -547,5 +547,72 @@ const [{ count: nVendas }] = await sql`
   SELECT count(*)::int FROM orders WHERE tenant_id = ${seed.tenantId}`;
 check("seis vendas, uma por integracao", nVendas === 6, String(nVendas));
 
+/* =============================== CREDENCIAL ILEGÍVEL ==================== */
+/*
+ * O defeito que isto trava: credencial que não decifra caía num catch vazio, e
+ * `verify` passava a devolver `sem_assinatura` — o MESMO sinal de um gateway
+ * que genuinamente não assina. O roteador aceitava com 200 e marcava a venda
+ * como não verificada. Ou seja: chave de cifragem incompatível DESLIGAVA a
+ * verificação de assinatura em silêncio, para todos os gateways de uma vez.
+ *
+ * Acontece sempre que a CREDENTIALS_KEY do ambiente deixa de ser a que cifrou
+ * as linhas: troca de chave, restauração de backup, ambiente novo.
+ *
+ * Tem de ser 500, e não 401: 401 acusaria quem assinou certo, e gateway não
+ * repete 401 — a venda sumiria por defeito nosso. 5xx entra na fila de
+ * reentrega e dá tempo de corrigir sem perder nada.
+ */
+console.log("\nCREDENCIAL ILEGÍVEL — a chave de cifragem não abre o que está gravado");
+
+const idMillions = seed.gateways.millions.connectionId;
+const [antes] = await sql`
+  SELECT credentials FROM gateway_connections WHERE id = ${idMillions}`;
+
+/* Estraga o texto cifrado mantendo o formato "iv.dados": é exatamente o que
+   uma chave trocada produz — o GCM falha na autenticação, não no parse. */
+const estragado = Object.fromEntries(
+  Object.entries(antes.credentials).map(([k, v]) => {
+    const [iv, dados] = String(v).split(".");
+    return [k, `${iv}.${dados.slice(0, -4)}AAAA`];
+  }),
+);
+await sql`
+  UPDATE gateway_connections SET credentials = ${JSON.stringify(estragado)}::jsonb
+   WHERE id = ${idMillions}`;
+
+/* Conta ANTES, para provar depois que nada entrou. Contar é mais robusto que
+   procurar por prefixo: não depende do formato do payload deste gateway. */
+const [{ count: vendasAntes }] = await sql`
+  SELECT count(*)::int FROM orders WHERE gateway_connection_id = ${idMillions}`;
+
+const corpoIlegivel = JSON.stringify({
+  ...JSON.parse(corpoMillions),
+  id: wc.randomUUID(),
+  charge: { ...JSON.parse(corpoMillions).charge, id: "ilegivel-" + wc.randomUUID().slice(0, 8) },
+});
+const rIlegivel = await enviar("millions", corpoIlegivel, {
+  "x-soarlabz-signature": assinar(corpoIlegivel, SEGREDO_MILLIONS),
+});
+check("credencial ilegível devolve 500, não 200", rIlegivel.status === 500, `status ${rIlegivel.status}`);
+check("e NÃO 401 — quem assinou fez certo", rIlegivel.status !== 401, `status ${rIlegivel.status}`);
+
+const jIlegivel = await rIlegivel.json().catch(() => ({}));
+check("a resposta diz que o erro é nosso",
+  String(jIlegivel.detalhe ?? "").includes("configuração nossa"), JSON.stringify(jIlegivel));
+
+/*
+ * E o que mais importa: NÃO entrou venda. Antes da correção entrava — marcada
+ * como não verificada, que é o carimbo que ninguém olha.
+ */
+const [{ count: vendasDepois }] = await sql`
+  SELECT count(*)::int FROM orders WHERE gateway_connection_id = ${idMillions}`;
+check("nenhuma venda entrou por essa porta", vendasDepois === vendasAntes,
+  `antes ${vendasAntes}, depois ${vendasDepois}`);
+
+/* Devolve a credencial boa: os testes seguintes e a limpeza contam com ela. */
+await sql`
+  UPDATE gateway_connections SET credentials = ${JSON.stringify(antes.credentials)}::jsonb
+   WHERE id = ${idMillions}`;
+
 console.log("\n" + (falhas === 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)") + "\n");
 process.exit(falhas === 0 ? 0 : 1);
