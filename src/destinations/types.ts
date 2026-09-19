@@ -81,6 +81,19 @@ export interface DispatchResult {
   retryable?: boolean;
 }
 
+/*
+ * O que uma verificação de credencial devolve.
+ *
+ * `detalhe` é o que a plataforma respondeu, em texto curto — o nome do pixel
+ * quando deu certo, a mensagem de erro dela quando não deu. Sem isso o botão
+ * diria só "falhou", e "falhou" não distingue token vencido de pixel que
+ * pertence a outra conta, que são problemas com soluções opostas.
+ */
+export interface ResultadoTeste {
+  ok: boolean;
+  detalhe: string;
+}
+
 export interface DestinationAdapter {
   platform: string;
   label: string;
@@ -97,4 +110,23 @@ export interface DestinationAdapter {
    * evento novo, em vez da mesma conversão que não passou.
    */
   reenviar?(corpo: unknown, cfg: DestinationConfig): Promise<DispatchResult>;
+
+  /*
+   * Confere a credencial sem enviar conversão nenhuma.
+   *
+   * Existe por causa de uma assimetria: cadastrar token errado não dá erro em
+   * lugar nenhum. A tela salva, o painel fica verde, e a descoberta acontece
+   * dias depois, quando alguém compara o número da plataforma com o nosso e
+   * não bate. A única forma de saber é perguntar à plataforma — e é isso que
+   * este método faz.
+   *
+   * Tem de ser uma chamada de LEITURA. Um teste que dispara evento suja o
+   * pixel com conversão que não existiu, e aí a ferramenta de diagnóstico vira
+   * fonte de erro nos dados.
+   *
+   * Também é o que torna seguro subir a versão da API em `core/versoes.ts`: a
+   * versão viaja na URL, então uma versão que a plataforma não reconhece falha
+   * exatamente aqui, na hora, e não no próximo disparo real.
+   */
+  testar?(cfg: DestinationConfig): Promise<ResultadoTeste>;
 }

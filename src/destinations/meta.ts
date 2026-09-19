@@ -21,6 +21,7 @@
  */
 
 import type {
+  ResultadoTeste,
   DestinationAdapter, DispatchInput, DestinationConfig, DispatchResult, ConversionEvent,
 } from "./types";
 import {
@@ -29,8 +30,7 @@ import {
   splitName, hashOrUndefined, sha256,
 } from "../core/hash";
 import { isValidFbc, isValidFbp } from "../core/identity";
-
-const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v23.0";
+import { META_GRAPH_URL } from "../core/versoes";
 
 /** Nossos nomes canônicos -> nomes padrão da Meta. */
 const EVENT_NAMES: Record<ConversionEvent, string> = {
@@ -218,7 +218,7 @@ export const metaAdapter: DestinationAdapter = {
       ...(cfg.testEventCode ? { test_event_code: cfg.testEventCode } : {}),
     };
 
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.externalId}/events`;
+    const url = `${META_GRAPH_URL}/${cfg.externalId}/events`;
 
     try {
       const res = await fetch(url, {
@@ -268,7 +268,7 @@ export const metaAdapter: DestinationAdapter = {
 
     try {
       const res = await fetch(
-        `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.externalId}/events`,
+        `${META_GRAPH_URL}/${cfg.externalId}/events`,
         {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -289,6 +289,44 @@ export const metaAdapter: DestinationAdapter = {
         ok: false, matchKeys: [],
         error: e instanceof Error ? e.message : String(e), retryable: true,
       };
+    }
+  },
+
+  /*
+   * Lê o próprio pixel. É a chamada mais barata que prova as três coisas de
+   * uma vez: a versão da URL existe, o token vale, e o token enxerga ESTE
+   * pixel — que é diferente de valer para a conta.
+   *
+   * O terceiro ponto é o que mais aparece na prática: token legítimo, de uma
+   * conta que não administra aquele pixel. A Meta devolve 200 no disparo e
+   * descarta o evento, então sem esta leitura o erro é invisível.
+   */
+  async testar(cfg: DestinationConfig): Promise<ResultadoTeste> {
+    const token = cfg.credentials.accessToken;
+    if (!token) return { ok: false, detalhe: "sem access token cadastrado" };
+
+    try {
+      const res = await fetch(
+        `${META_GRAPH_URL}/${cfg.externalId}?fields=id,name`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      const j = await res.json().catch(() => ({})) as {
+        name?: string; id?: string; error?: { message?: string; code?: number };
+      };
+
+      if (!res.ok || j.error) {
+        const msg = j.error?.message ?? `HTTP ${res.status}`;
+        /*
+         * O código 100 com subcódigo de versão é o sintoma de versão morta na
+         * URL, e ele NÃO se parece com erro de versão — a Meta diz "Unsupported
+         * get request", que se lê como pixel inexistente. Nomear aqui evita a
+         * caça ao pixel errado depois de uma troca em core/versoes.ts.
+         */
+        return { ok: false, detalhe: `${msg} (versão ${META_GRAPH_URL.split("/").pop()})` };
+      }
+      return { ok: true, detalhe: j.name ? `pixel "${j.name}"` : `pixel ${j.id ?? cfg.externalId}` };
+    } catch (e) {
+      return { ok: false, detalhe: e instanceof Error ? e.message : String(e) };
     }
   },
 };

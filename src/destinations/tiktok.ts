@@ -24,6 +24,7 @@
  */
 
 import type {
+  ResultadoTeste,
   DestinationAdapter, DispatchInput, DestinationConfig, DispatchResult, ConversionEvent,
 } from "./types";
 import {
@@ -260,6 +261,44 @@ export const tiktokAdapter: DestinationAdapter = {
         ok: false, matchKeys: [],
         error: e instanceof Error ? e.message : String(e), retryable: true,
       };
+    }
+  },
+
+  /*
+   * Confere o token, e SÓ o token.
+   *
+   * O ideal seria ler o pixel, como no adaptador da Meta. Não dá: o endpoint
+   * de pixel do TikTok exige `advertiser_id`, e um destino aqui guarda o
+   * código do pixel, não a conta de anúncio a que ele pertence — são tabelas
+   * diferentes, e a mesma loja pode ter uma sem a outra.
+   *
+   * Então este teste responde "o token vale" e não responde "o token enxerga
+   * este pixel". A diferença está dita no texto que volta, para ninguém ler um
+   * verde aqui como garantia que ele não dá.
+   */
+  async testar(cfg: DestinationConfig): Promise<ResultadoTeste> {
+    const token = cfg.credentials.accessToken;
+    if (!token) return { ok: false, detalhe: "sem access token cadastrado" };
+
+    try {
+      const res = await fetch("https://business-api.tiktok.com/open_api/v1.3/user/info/", {
+        headers: { "Access-Token": token },
+      });
+      const j = await res.json().catch(() => ({})) as {
+        code?: number; message?: string; data?: { display_name?: string; email?: string };
+      };
+
+      /*
+       * O TikTok responde 200 com `code` diferente de zero para erro de
+       * credencial. Conferir só o status HTTP daria verde para token vencido.
+       */
+      if (!res.ok || (j.code ?? 0) !== 0) {
+        return { ok: false, detalhe: j.message ?? `HTTP ${res.status}` };
+      }
+      const quem = j.data?.display_name ?? j.data?.email ?? "conta";
+      return { ok: true, detalhe: `token válido (${quem}) — não confere o vínculo com o pixel` };
+    } catch (e) {
+      return { ok: false, detalhe: e instanceof Error ? e.message : String(e) };
     }
   },
 };

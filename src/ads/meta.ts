@@ -24,8 +24,7 @@
 import type {
   AdSpendAdapter, CredenciaisAnuncio, JanelaData, LinhaGasto, ResultadoGasto,
 } from "./types";
-
-const VERSAO = process.env.META_GRAPH_VERSION ?? "v23.0";
+import { META_GRAPH_URL } from "../core/versoes";
 
 const CAMPOS = [
   "spend", "impressions", "clicks",
@@ -138,7 +137,7 @@ export const metaAdsAdapter: AdSpendAdapter = {
 
     try {
       const rConta = await fetch(
-        `https://graph.facebook.com/${VERSAO}/${conta}?fields=currency,timezone_name`,
+        `${META_GRAPH_URL}/${conta}?fields=currency,timezone_name`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       if (rConta.ok) {
@@ -174,7 +173,7 @@ export const metaAdsAdapter: AdSpendAdapter = {
 
     const linhas: LinhaGasto[] = [];
     let url: string | null =
-      `https://graph.facebook.com/${VERSAO}/${conta}/insights?${params}`;
+      `${META_GRAPH_URL}/${conta}/insights?${params}`;
     let paginas = 0;
     let usoPct: number | undefined;
     let bloqueadoAte: Date | undefined;

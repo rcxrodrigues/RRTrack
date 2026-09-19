@@ -24,9 +24,7 @@
  */
 
 import { createHmac } from "node:crypto";
-
-const VERSAO = process.env.META_GRAPH_VERSION ?? "v23.0";
-const GRAPH = `https://graph.facebook.com/${VERSAO}`;
+import { META_GRAPH as VERSAO, META_GRAPH_URL as GRAPH } from "../core/versoes";
 
 /*
  * `ads_read` traz o gasto; `ads_management` é o que permite ENVIAR evento para

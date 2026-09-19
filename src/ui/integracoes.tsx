@@ -311,6 +311,72 @@ function Selo({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   );
 }
 
+/*
+ * "Testar conexão": pergunta à plataforma se a credencial vale, e mostra o que
+ * ela respondeu.
+ *
+ * O resultado fica NA TELA, ao lado do botão, e não num alerta que some. Quem
+ * está conferindo credencial quase sempre tem outra aba aberta com o painel da
+ * plataforma, comparando id e permissão; um aviso que desaparece ao trocar de
+ * aba obriga a clicar de novo, e cada clique consome cota de API de verdade.
+ *
+ * O texto da resposta vem inteiro da plataforma. É ele que distingue token
+ * vencido de token válido apontando para o pixel de outra conta — dois
+ * problemas com soluções opostas que um "falhou" genérico confundiria.
+ */
+function BotaoTestar({ tenantId, tipo, id }: {
+  tenantId: string;
+  tipo: "pixel" | "conta_anuncio";
+  id: string;
+}) {
+  const [estado, setEstado] = useState<
+    { fase: "parado" } | { fase: "testando" } | { fase: "pronto"; ok: boolean; detalhe: string }
+  >({ fase: "parado" });
+
+  async function testar() {
+    setEstado({ fase: "testando" });
+    try {
+      const r = await fetch("/api/integracoes/testar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenantId, tipo, id }),
+      });
+      const j = await r.json() as { ok?: boolean; detalhe?: string; erro?: string };
+      setEstado({
+        fase: "pronto",
+        ok: j.ok === true,
+        detalhe: j.detalhe ?? j.erro ?? "sem resposta",
+      });
+    } catch {
+      setEstado({ fase: "pronto", ok: false, detalhe: "sem conexão com o servidor" });
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={testar}
+        disabled={estado.fase === "testando"}
+        style={{
+          background: "none", border: "1px solid var(--linha-forte)", borderRadius: 4,
+          color: "var(--ink-fraco)", fontSize: 11, padding: "3px 8px", whiteSpace: "nowrap",
+        }}>
+        {estado.fase === "testando" ? "testando…" : "testar conexão"}
+      </button>
+      {estado.fase === "pronto" && (
+        <div style={{
+          flexBasis: "100%", marginTop: 8, fontSize: 11.5, lineHeight: 1.5,
+          padding: "7px 10px", borderRadius: 5,
+          background: estado.ok ? "var(--positivo-fundo)" : "var(--negativo-fundo)",
+          color: estado.ok ? "var(--positivo)" : "var(--negativo)",
+        }}>
+          {estado.ok ? "✓ " : "✕ "}{estado.detalhe}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Copiavel({ valor, rotulo, multilinha }: {
   valor: string;
   rotulo?: string;
@@ -950,7 +1016,7 @@ export function Integracoes({
                             dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
                             {...campo("expiraEm")} />
 
-                          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                             <Botao disabled={salvando} onClick={() => salvar({
                               tipo: "conta_anuncio", plataforma: p.id,
                               externalId: form.externalId, label: form.label,
@@ -959,10 +1025,13 @@ export function Integracoes({
                             })}>{salvando ? "salvando…" : "Salvar"}</Botao>
                             <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                             {conta && (
-                              <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
-                                marginLeft: "auto", background: "none", border: "none",
-                                color: "var(--negativo)", fontSize: 11.5,
-                              }}>desconectar</button>
+                              <>
+                                <BotaoTestar tenantId={loja.id} tipo="conta_anuncio" id={conta.id} />
+                                <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
+                                  marginLeft: "auto", background: "none", border: "none",
+                                  color: "var(--negativo)", fontSize: 11.5,
+                                }}>desconectar</button>
+                              </>
                             )}
                           </div>
                         </>
@@ -1264,7 +1333,7 @@ export function Integracoes({
                   background: "var(--painel)", border: "1px solid var(--linha)",
                   borderRadius: 8, padding: "14px 18px",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
                     <div style={{ flexGrow: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
                       <div className="num" style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 2 }}>
@@ -1273,6 +1342,7 @@ export function Integracoes({
                     </div>
                     {p.codigoTeste && <Selo ok={false}>teste {p.codigoTeste}</Selo>}
                     <Selo ok>ativo</Selo>
+                    <BotaoTestar tenantId={loja.id} tipo="pixel" id={p.id} />
                     <button onClick={() => desativar("pixel", p.id)} style={{
                       background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
                     }}>remover</button>
