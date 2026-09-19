@@ -32,8 +32,16 @@ export default async function PaginaIntegracoes() {
     db.select().from(adAccounts).where(eq(adAccounts.tenantId, loja.id)),
     db.select().from(gatewayConnections).where(eq(gatewayConnections.tenantId, loja.id)),
     db.select().from(destinations).where(eq(destinations.tenantId, loja.id)),
+    /*
+     * TODOS os sites ativos, não `limit(1)`.
+     *
+     * A tela usa o primeiro, mas precisa SABER se há outros. Escolher um em
+     * silêncio foi o que fez o painel da Transforlar mostrar o coletor de
+     * `qa-trocado.exemplo.com` sem nada explicando — e a ordem alfabética,
+     * que é o que torna a escolha estável, punha o site de teste na frente.
+     */
     db.select().from(sites).where(and(eq(sites.tenantId, loja.id), eq(sites.active, true)))
-      .orderBy(sites.domain).limit(1),
+      .orderBy(sites.domain),
     /* Só o nome e o prazo: o token nunca sai do servidor. */
     db.select({ nome: metaProfiles.name, expiraEm: metaProfiles.tokenExpiresAt })
       .from(metaProfiles).where(eq(metaProfiles.tenantId, loja.id)).limit(1),
@@ -52,6 +60,8 @@ export default async function PaginaIntegracoes() {
         coletorVerificadoEm: site[0].collectorVerifiedAt?.toISOString() ?? null,
         config: site[0].config,
       } : null}
+      /* Os OUTROS, para a tela poder avisar em vez de escolher calada. */
+      outrosSites={site.slice(1).map((s) => s.domain)}
       contas={contas.map((c) => ({
         id: c.id, plataforma: c.platform, externalId: c.externalId,
         label: c.label, ativo: c.active,
