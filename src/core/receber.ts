@@ -19,6 +19,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index";
 import { gatewayConnections, webhookDeliveries } from "../db/schema";
 import { getGateway } from "../gateways/registry";
+import { ipDoCliente } from "./ip";
+import { TETOS, cabeNoLimite, contar, estourou, respostaDeEstouro } from "./contencao";
 import { reenviarPendentes } from "./dispatch";
 import { reconciliar } from "./reconciliacao";
 import { registrarPedido } from "./pedido";
@@ -51,6 +53,50 @@ export async function receberVenda(
   const adapter = getGateway(gateway);
   if (!adapter) return Response.json({ erro: "gateway desconhecido" }, { status: 404 });
 
+  /*
+   * Teto de corpo, antes de ler.
+   *
+   * `webhook_deliveries.raw_body` guarda o corpo inteiro e não tem retenção —
+   * então um POST de 50 MB não é um pico, é 50 MB no banco para sempre.
+   * Nenhum webhook de verdade chega perto: o maior deles, com dezenas de
+   * itens, fica em alguns kilobytes.
+   */
+  if (!cabeNoLimite(req.headers.get("content-length"))) {
+    return Response.json({ erro: "corpo grande demais" }, { status: 413 });
+  }
+
+  /*
+   * A contenção, e o cuidado que ela exige AQUI.
+   *
+   * Barrar coleta perde atribuição; barrar webhook perde VENDA. Por isso:
+   *
+   *   o teto é alto — gateway manda em rajada quando reentrega fila acumulada,
+   *   e isso é comportamento legítimo, não ataque;
+   *
+   *   a resposta é 429, que gateway trata como transitório e reentrega. Um 4xx
+   *   permanente faria ele DESISTIR, e a venda sumiria sem erro nenhum do lado
+   *   de cá;
+   *
+   *   e falha ABERTO: se a contagem não puder ser feita, a venda entra. Perder
+   *   venda por causa da defesa contra abuso é trocar um problema grande por
+   *   um problema pior.
+   */
+  const agoraMs = Date.now();
+  const ip = ipDoCliente(req);
+  try {
+    const [porConexao, porIp] = await db.batch([
+      contar({ ...TETOS.webhookPorConexao, quem: secret.slice(0, 80) }, agoraMs),
+      contar({ ...TETOS.webhookPorIp, quem: ip ?? "sem-ip" }, agoraMs),
+    ]);
+    if (estourou(porConexao[0]?.contagem, TETOS.webhookPorConexao.teto)
+      || estourou(porIp[0]?.contagem, TETOS.webhookPorIp.teto)) {
+      return respostaDeEstouro(agoraMs, TETOS.webhookPorConexao.segundos);
+    }
+  } catch (e) {
+    console.error("[receber] contenção indisponível, seguindo sem ela:",
+      e instanceof Error ? e.message : String(e));
+  }
+
   const [conexao] = await db
     .select()
     .from(gatewayConnections)
@@ -66,6 +112,15 @@ export async function receberVenda(
   if (!conexao) return Response.json({ erro: "não encontrado" }, { status: 404 });
 
   const rawBody = await req.text();
+  /*
+   * E de novo com o tamanho real, para o caso de não vir `content-length`
+   * (`Transfer-Encoding: chunked` não manda). Aqui já é tarde para economizar
+   * memória, mas ainda dá para não GRAVAR o corpo gigante — que é o estrago
+   * que fica.
+   */
+  if (!cabeNoLimite(null, rawBody.length)) {
+    return Response.json({ erro: "corpo grande demais" }, { status: 413 });
+  }
   const cabecalhos: Record<string, string> = {};
   req.headers.forEach((v, k) => { cabecalhos[k] = v; });
 

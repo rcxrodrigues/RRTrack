@@ -706,3 +706,31 @@ export const metaProfiles = pgTable("meta_profiles", {
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
   connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("meta_profiles_tenant_fb").on(t.tenantId, t.fbUserId)]);
+
+/*
+ * Contagem de chamadas nos endpoints públicos. Ver src/core/contencao.ts.
+ *
+ * A ÚNICA tabela sem `tenantId`, e a exceção é deliberada — vale explicar,
+ * porque a regra 1 diz o contrário e alguém vai vir conferir.
+ *
+ * Ela conta quem chega ANTES de se saber de que loja é a chamada: no
+ * `/api/collect` o IP é contado junto da busca do site, e no webhook o
+ * atacante nem tem segredo válido. Exigir `tenantId` aqui obrigaria a
+ * descobrir a loja primeiro — ou seja, a fazer o trabalho que a contenção
+ * existe para evitar.
+ *
+ * Também não é dado de negócio: nenhuma tela lê daqui, nada soma, e a linha
+ * morre em dois minutos. A `chave` já carrega o escopo, então contagem de uma
+ * loja não se mistura com a de outra.
+ *
+ * SEM `id` PRÓPRIO. A `chave` é a chave primária porque o upsert precisa
+ * colidir nela — e colidir é o mecanismo inteiro: duas funções simultâneas
+ * somam na mesma linha em vez de criarem duas.
+ */
+export const rateLimits = pgTable("rate_limits", {
+  /* "escopo:quem:janela" — ver chaveDe() em core/contencao.ts. */
+  chave: text("chave").primaryKey(),
+  contagem: integer("contagem").notNull().default(0),
+  /* Quem apaga é a rotina de retenção; o índice é o que faz a varredura sair barata. */
+  expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+}, (t) => [index("rate_limits_expira").on(t.expiraEm)]);
