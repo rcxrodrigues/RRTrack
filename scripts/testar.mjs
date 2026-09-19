@@ -228,7 +228,19 @@ const rodar = (nome, args) => {
       return;
     }
     falhas++;
-    console.log(`\n  FALHA | ${nome}\n${saida.split("\n").filter((l) => l.includes("FALHA")).join("\n")}`);
+    const linhasDeFalha = saida.split("\n").filter((l) => l.includes("FALHA"));
+    /*
+     * Sem nenhuma linha de FALHA, o teste não reprovou: ele TRAVOU antes de
+     * chegar a asserção nenhuma. Aí o que interessa é o erro, e ele não contém
+     * a palavra "FALHA" — filtrar por ela imprimia o nome do teste e mais nada.
+     *
+     * Aconteceu nesta faxina: uma remoção levou junto uma função que o teste
+     * importava, e o relatório disse só "FALHA | taxas". O MODULE_NOT_FOUND que
+     * explicava tudo ficou no stderr capturado, invisível.
+     */
+    console.log(`\n  FALHA | ${nome}\n` + (linhasDeFalha.length
+      ? linhasDeFalha.join("\n")
+      : saida.trim().split("\n").slice(-12).map((l) => "    " + l).join("\n")));
   }
   console.log(`  ${passou ? "ok  " : "FALHA"} | ${nome.padEnd(16)} ${veredito}`);
 };

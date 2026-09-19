@@ -11,6 +11,3 @@ export function getAdSpend(plataforma: string): AdSpendAdapter | undefined {
   return porPlataforma.get(plataforma);
 }
 
-export function listAdSpend(): AdSpendAdapter[] {
-  return [...adapters];
-}

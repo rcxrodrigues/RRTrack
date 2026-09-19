@@ -106,17 +106,3 @@ export function tabelaConfigurada(t: TabelaTaxas | null | undefined): boolean {
   if (!t) return false;
   return !!(t.pix || t.boleto || t.debit_card || t.outros || t.credit_card?.length);
 }
-
-/*
- * Ponto de partida para quem está cadastrando: as faixas que os gateways
- * brasileiros praticam com mais frequência. São chute informado, não verdade —
- * a tela deixa claro que é para conferir no extrato e corrigir.
- */
-export const SUGESTAO: TabelaTaxas = {
-  pix: { percentual: 0.99, fixoCents: 0 },
-  credit_card: [
-    { ateParcelas: 1, percentual: 3.99, fixoCents: 49 },
-    { ateParcelas: 6, percentual: 4.99, fixoCents: 49 },
-    { ateParcelas: 12, percentual: 5.99, fixoCents: 49 },
-  ],
-};

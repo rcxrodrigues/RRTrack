@@ -13,7 +13,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index";
-import { orderItems, orders, productCosts } from "../db/schema";
+import { orderItems, orders } from "../db/schema";
 
 async function linhasDe<T>(consulta: Promise<{ rows: T[] }>): Promise<T[]> {
   return (await consulta).rows;

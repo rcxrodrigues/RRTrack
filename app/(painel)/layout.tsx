@@ -21,9 +21,6 @@ export default async function PainelLayout({ children }: { children: React.React
    * O placar é acumulado de sempre, então não depende do período escolhido em
    * nenhuma tela — pode viver no layout e ser calculado uma vez por navegação.
    */
-  const regra = loja
-    ? { countShipping: loja.countShipping, countInterest: loja.countInterest }
-    : null;
   const placar = loja ? await placarDaLoja(loja.id) : null;
 
   /*
