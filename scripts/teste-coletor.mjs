@@ -271,6 +271,40 @@ eq("origem que só PARECE o domínio", caso({ origem: "https://loja.com.br.evil.
 eq("origem quebrada", caso({ origem: "nao-e-url" }), null);
 eq("sem origem (mesma origem) passa", caso({ origem: null }) !== null, true);
 
+/* ------------------------------- os nomes de coluna escritos à mão -- */
+
+console.log("\n== todo EXCLUDED.<coluna> existe mesmo em click_sessions ==");
+
+/*
+ * O upsert de `/api/collect` monta o `COALESCE(EXCLUDED.x, …)` com `x` escrito
+ * como TEXTO dentro de `sql`. Do lado esquerdo do COALESCE o TypeScript não
+ * enxerga nada: `EXCLUDED.ga_client_id` e `EXCLUDED.gaClientId` compilam
+ * iguais, e o segundo só falha quando o Postgres recebe a consulta — ou seja,
+ * em produção, com 500 em TODO beacon do site.
+ *
+ * O erro nem precisa ser de digitação: basta renomear uma coluna no schema e
+ * esquecer de acompanhar aqui. São 25 ocorrências hoje; conferir uma a uma na
+ * revisão é exatamente o tipo de coisa que passa.
+ *
+ * A lista de colunas vem do OBJETO do drizzle, não de uma cópia: é a mesma
+ * definição que gera a migração.
+ */
+const { getTableColumns } = await import("../node_modules/drizzle-orm/index.js");
+const { clickSessions } = await import("../_tmp/db/schema.js");
+
+const colunas = new Set(Object.values(getTableColumns(clickSessions)).map((c) => c.name));
+eq("o schema tem as colunas do GA4",
+  colunas.has("ga_client_id") && colunas.has("ga_session_id"), true);
+
+const citadas = [...new Set(
+  [...ler("app/api/collect/route.ts").matchAll(/EXCLUDED\.([A-Za-z_][A-Za-z0-9_]*)/g)]
+    .map((m) => m[1]),
+)];
+eq("a rota cita colunas de verdade", citadas.length > 20, true);
+
+const inventadas = citadas.filter((c) => !colunas.has(c));
+eq(`nenhuma das ${citadas.length} é inventada`, inventadas, []);
+
 /* ------------------------------------------- as duas metades ligadas -- */
 
 console.log("\n== as duas metades estão realmente ligadas ==");

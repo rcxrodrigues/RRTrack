@@ -81,6 +81,12 @@ const COMPILAR = [
   "src/core/utm.ts", "src/core/versoes.ts", "src/core/dominio.ts", "src/ads/meta.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts", "src/destinations/ga4.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
+  /*
+   * O schema entra aqui sem ter teste próprio: ele é a LISTA DE COLUNAS de
+   * verdade, e `teste-coletor` confere contra ela os nomes que as rotas
+   * escrevem à mão dentro de `sql`. Não abre conexão — são só definições.
+   */
+  "src/db/schema.ts",
 ];
 
 /*
