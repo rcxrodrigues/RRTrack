@@ -43,7 +43,7 @@ const lista = (texto) => [...texto.matchAll(/"([a-z]{2,4}\.[a-z]{2,3})"/g)].map(
 
 const doNavegador = lista(/var COMPOSTOS = \[(.*?)\];/s.exec(ler("public/rr.js"))[1]);
 const doServidor = lista(
-  /const COMPOSTOS = new Set\(\[(.*?)\]\);/s.exec(ler("app/api/collect/route.ts"))[1],
+  /export const COMPOSTOS = new Set\(\[(.*?)\]\);/s.exec(ler("src/core/dominio.ts"))[1],
 );
 
 eq("o navegador conhece sufixos", doNavegador.length > 10, true);
@@ -52,17 +52,12 @@ eq("as duas listas batem", [...doServidor].sort(), [...doNavegador].sort());
 /* ------------------------------------------------ domínio registrável -- */
 
 /*
- * A mesma função dos dois lados, reimplementada aqui a partir da lista lida do
- * arquivo — para que o teste falhe se a lista mudar, e não só se o código
- * mudar.
+ * A função DE VERDADE, não uma cópia. A primeira versão deste teste
+ * reimplementava a lógica aqui, e uma cópia que concorda consigo mesma não
+ * prova nada sobre o que roda em produção.
  */
-const COMPOSTOS = new Set(doNavegador);
-function dominioRegistravel(host) {
-  const partes = host.toLowerCase().split(".");
-  if (partes.length <= 2) return partes.join(".");
-  const dois = partes.slice(-2).join(".");
-  return COMPOSTOS.has(dois) ? partes.slice(-3).join(".") : dois;
-}
+const { dominioDoSite, dominioRegistravel, mesmoSite, normalizarHost } =
+  await import("../_tmp/core/dominio.js");
 
 console.log("\n== domínio registrável ==");
 eq("subdomínio simples", dominioRegistravel("www.loja.com"), "loja.com");
@@ -73,6 +68,33 @@ eq("já registrável passa igual", dominioRegistravel("loja.com.br"), "loja.com.
 /* Se esta falhar, o cookie sai como Domain=.me.uk e o navegador recusa. */
 eq("me.uk é sufixo, não domínio", dominioRegistravel("loja.me.uk"), "loja.me.uk");
 eq("com.co idem", dominioRegistravel("loja.com.co"), "loja.com.co");
+
+console.log("\n  -- e o valor SUJO que está no banco de produção --");
+/*
+ * `sites.domain` não tem um formato só. Convivem "florecomesticos.store" e
+ * "https://transforlar.com/", a segunda com esquema e barra final porque
+ * alguém colou a URL inteira no campo e nada reclamou.
+ *
+ * Custou duas falhas silenciosas: a verificação do coletor comparava
+ * "https://transforlar.com/" com "transforlar.com" e RECUSAVA um subdomínio
+ * legítimo; e o cookie saía `Domain=.transforlar.com/`, com barra, que o
+ * navegador descarta sem avisar. Nenhuma das duas dá erro em lugar nenhum.
+ */
+eq("URL inteira vira domínio", dominioDoSite("https://transforlar.com/"), "transforlar.com");
+eq("e o registrável também", dominioRegistravel("https://transforlar.com/"), "transforlar.com");
+eq("o coletor bate com a URL suja", mesmoSite("track.transforlar.com", "https://transforlar.com/"), true);
+eq("com caminho", dominioDoSite("https://loja.com.br/checkout?x=1"), "loja.com.br");
+eq("com porta", dominioDoSite("http://loja.com.br:3000"), "loja.com.br");
+eq("com www", dominioDoSite("https://www.loja.com.br/"), "loja.com.br");
+eq("maiúscula", dominioDoSite("HTTPS://Loja.COM.BR"), "loja.com.br");
+/* Nada de barra no domínio do cookie — é o defeito que isto impede de voltar. */
+eq("nunca sobra barra", dominioRegistravel("https://transforlar.com/").includes("/"), false);
+
+console.log("\n  -- e recusa o que não é hostname --");
+eq("vazio", normalizarHost("  "), null);
+eq("sem ponto", normalizarHost("localhost"), null);
+eq("ponto solto", normalizarHost("loja..com.br"), null);
+eq("hostname bom passa", normalizarHost("  TRACK.Transforlar.com/  "), "track.transforlar.com");
 
 /* --------------------------------------------- o endereço do snippet -- */
 
@@ -127,14 +149,13 @@ console.log("\n== o coletor só devolve cookie quando ele COLA ==");
  * Reimplementa cookieDoClickId. As três condições são de segurança, e cada uma
  * fecha um buraco diferente — estão nomeadas no comentário do route.ts.
  */
-function cookieDePrimeiraParte({ host, origem, dominioDoSite, nome = "_rr_cid", valor }) {
-  const registravel = dominioRegistravel(dominioDoSite.replace(/^https?:\/\//, ""));
-  if (!host) return null;
-  const hostSemPorta = host.split(":")[0] ?? "";
-  if (dominioRegistravel(hostSemPorta) !== registravel) return null;
+function cookieDePrimeiraParte({ host, origem, dominioDoSite: guardado, nome = "_rr_cid", valor }) {
+  const registravel = dominioRegistravel(guardado);
+  if (!registravel) return null;
+  if (!host || !mesmoSite(host, registravel)) return null;
   if (origem) {
     try {
-      if (dominioRegistravel(new URL(origem).hostname) !== registravel) return null;
+      if (!mesmoSite(new URL(origem).hostname, registravel)) return null;
     } catch { return null; }
   }
   return `${nome}=${encodeURIComponent(valor)}`

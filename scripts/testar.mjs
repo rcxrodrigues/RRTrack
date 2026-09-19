@@ -78,7 +78,7 @@ const COMPILAR = [
   "src/gateways/appmax.ts", "src/gateways/pagou.ts", "src/gateways/generico.ts",
   "src/gateways/shopify.ts",
   "src/core/janela.ts", "src/core/robos.ts", "src/core/redes.ts", "src/core/normalizar.ts",
-  "src/core/utm.ts", "src/core/versoes.ts", "src/ads/meta.ts",
+  "src/core/utm.ts", "src/core/versoes.ts", "src/core/dominio.ts", "src/ads/meta.ts",
   "src/destinations/google.ts", "src/destinations/tiktok.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];

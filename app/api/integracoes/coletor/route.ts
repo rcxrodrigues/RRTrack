@@ -25,36 +25,12 @@ import { db } from "@/db/index";
 import { sites } from "@/db/schema";
 import { exigirSessao } from "@/core/sessao";
 import { acessoALoja } from "@/core/auth";
+import { dominioDoSite, dominioRegistravel, mesmoSite, normalizarHost } from "@/core/dominio";
 
 export const runtime = "nodejs";
 
 function texto(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
-}
-
-/*
- * A mesma lista de public/rr.js e de app/api/collect/route.ts. Ver o comentário
- * de lá sobre por que a duplicata existe e o que a vigia.
- */
-const COMPOSTOS = new Set([
-  "com.br", "net.br", "org.br", "com.pt",
-  "co.uk", "org.uk", "me.uk", "ac.uk",
-  "com.au", "net.au", "org.au",
-  "co.jp", "co.nz", "co.za", "co.in", "com.mx", "com.ar", "com.co",
-]);
-
-function dominioRegistravel(host: string): string {
-  const partes = host.toLowerCase().split(".");
-  if (partes.length <= 2) return partes.join(".");
-  const dois = partes.slice(-2).join(".");
-  return COMPOSTOS.has(dois) ? partes.slice(-3).join(".") : dois;
-}
-
-/** Limpa o que a pessoa digitou: aceita URL colada, devolve hostname. */
-function normalizarHost(bruto: string): string | null {
-  const limpo = bruto.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (!limpo || !/^[a-z0-9.-]+$/.test(limpo) || !limpo.includes(".")) return null;
-  return limpo;
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -86,7 +62,7 @@ export async function POST(req: Request): Promise<Response> {
   if (proposto) {
     const limpo = normalizarHost(proposto);
     if (!limpo) return Response.json({ erro: "endereço inválido" }, { status: 400 });
-    if (dominioRegistravel(limpo) !== dominioRegistravel(site.domain)) {
+    if (!mesmoSite(limpo, site.domain)) {
       return Response.json({
         erro: `o coletor tem de ser um subdomínio de ${dominioRegistravel(site.domain)}`,
       }, { status: 400 });
@@ -141,7 +117,16 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const pre = await fetch(`https://${host}/rr/collect`, {
       method: "OPTIONS",
-      headers: { origin: `https://${site.domain}`, "access-control-request-method": "POST" },
+      /*
+       * `dominioDoSite` e não `site.domain` cru: parte das linhas guarda a URL
+       * inteira ("https://transforlar.com/"), e concatenar isso produziria
+       * `Origin: https://https://transforlar.com/` — um cabeçalho inválido que
+       * faria a verificação reprovar um coletor perfeitamente configurado.
+       */
+      headers: {
+        origin: `https://${dominioDoSite(site.domain)}`,
+        "access-control-request-method": "POST",
+      },
       signal: AbortSignal.timeout(8000),
     });
     if (!pre.ok) return falhar(`o script carrega, mas /rr/collect devolveu HTTP ${pre.status}`);

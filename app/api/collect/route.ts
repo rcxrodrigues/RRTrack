@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/index";
 import { clickSessions, events, sites } from "@/db/schema";
+import { dominioRegistravel, mesmoSite } from "@/core/dominio";
 import { dispatchBrowserEvent, normalizarEvento } from "@/core/dispatch";
 import { ehRobo } from "@/core/robos";
 import { ehRedeDaMeta } from "@/core/redes";
@@ -51,36 +52,6 @@ function corsHeaders(origin: string | null): Record<string, string> {
 }
 
 /*
- * O domínio registrável de um host: "www.loja.com.br" -> "loja.com.br".
- *
- * Existe a versão do navegador em public/rr.js, e as duas precisam concordar —
- * é o mesmo cookie. Sufixo composto ("com.br", "co.uk") leva três partes; o
- * resto leva duas. Errar isso por baixo faz o navegador RECUSAR o cookie em
- * silêncio, porque ninguém pode gravar em sufixo público.
- *
- * A LISTA É COPIADA de public/rr.js de propósito: aquele arquivo é servido
- * estático ao navegador do visitante e não pode importar daqui. A cópia é
- * perigosa — quando as duas divergiram, o servidor mandava `Domain=.me.uk`,
- * o navegador recusava por ser sufixo público, e o cookie simplesmente não
- * existia para aquelas lojas, sem erro em canto nenhum. Por isso
- * scripts/teste-coletor.mjs compara as duas listas e reprova se saírem do ar.
- */
-const COMPOSTOS = new Set([
-  "com.br", "net.br", "org.br", "com.pt",
-  "co.uk", "org.uk", "me.uk", "ac.uk",
-  "com.au", "net.au", "org.au", "co.jp",
-  "co.nz", "co.za", "co.in", "com.mx",
-  "com.ar", "com.co",
-]);
-
-function dominioRegistravel(host: string): string {
-  const partes = host.toLowerCase().split(".");
-  if (partes.length <= 2) return partes.join(".");
-  const doisUltimos = partes.slice(-2).join(".");
-  return COMPOSTOS.has(doisUltimos) ? partes.slice(-3).join(".") : doisUltimos;
-}
-
-/*
  * Devolve um cookie de verdade, quando isso ADIANTA alguma coisa.
  *
  * O problema que resolve: `_rr_cid` e `_rr_eid` são escritos por JavaScript em
@@ -116,17 +87,21 @@ function cookieDePrimeiraParte(
   nome: string,
   valor: string,
 ): string | null {
-  const registravel = dominioRegistravel(dominioDoSite.replace(/^https?:\/\//, ""));
+  /*
+   * `dominioRegistravel` limpa o valor antes de partir: `sites.domain` chega
+   * como "https://transforlar.com/" em parte das linhas, e a barra final ia
+   * parar dentro do `Domain=` do cookie — que o navegador descarta calado.
+   */
+  const registravel = dominioRegistravel(dominioDoSite);
+  if (!registravel) return null;
 
   const host = req.headers.get("host");
-  if (!host) return null;
-  const hostSemPorta = host.split(":")[0] ?? "";
-  if (dominioRegistravel(hostSemPorta) !== registravel) return null;
+  if (!host || !mesmoSite(host, registravel)) return null;
 
   const origem = req.headers.get("origin");
   if (origem) {
     try {
-      if (dominioRegistravel(new URL(origem).hostname) !== registravel) return null;
+      if (!mesmoSite(new URL(origem).hostname, registravel)) return null;
     } catch { return null; }
   }
 
