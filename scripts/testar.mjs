@@ -71,7 +71,7 @@ const COMPILAR = [
 const UNITARIOS_PUROS = [
   "taxas", "confirmacao", "tiktok", "google", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
-  "robos", "utm", "versoes", "ads-meta",
+  "robos", "utm", "versoes", "coletor", "ads-meta",
 ];
 
 /* Estes abrem conexão com o Postgres: precisam do `.env` preenchido. */

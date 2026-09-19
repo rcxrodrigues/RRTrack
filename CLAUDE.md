@@ -12,7 +12,7 @@ decidido, e o que quebra quando se decide diferente.
 
 ```bash
 npm run typecheck      # tsc --noEmit — rode SEMPRE antes de commitar
-npm test               # suíte inteira: 13 unitários + 6 de ponta a ponta + banco
+npm test               # suíte inteira: 14 unitários + 6 de ponta a ponta + banco
 npm run test:sem-banco # só o que dispensa .env — serve em clone novo
 npm run build          # o build da Vercel, rodando aqui
 npm run dev            # localhost:3000
@@ -101,11 +101,6 @@ versão sem clicar é apostar.
 
 ## Buracos conhecidos, de propósito
 
-- **`sites.collectorHost` é escrito e nunca lido.** Enquanto isso, `rr.js` é
-  script de terceiro, e no Safari com `?fbclid=` o cookie `_rr_cid` cai de 90
-  dias para 24 horas. É perda de atribuição silenciosa. Ao resolver: **some** o
-  subdomínio, não **substitua** o domínio — as URLs de webhook estão cadastradas
-  nos painéis dos gateways e parariam de entregar sem erro nenhum.
 - **Sem RLS.** O isolamento é por `tenantId` no código, que vale até alguém
   esquecer um `where`.
 - **Sem rate limiting** em `/api/collect` e `/api/webhook/[gateway]/[secret]`,
@@ -117,6 +112,37 @@ versão sem clicar é apostar.
   verdade. O comentário em `core/versoes.ts` diz o que conferir antes de subir.
 - **Seis avisos do `npm audit` que ficam.** O README explica um a um por que
   nenhum tem caminho de entrada, e qual condição faria revisitar.
+
+## O coletor de primeira parte
+
+O snippet pode carregar de um subdomínio da própria loja (`t.loja.com.br`) em
+vez do domínio do RRTrack. Vale por duas coisas: bloqueador de anúncio deixa de
+ter nome para casar, e o cookie do clickId para de morrer em 24 h no Safari.
+
+**São duas metades, e uma sem a outra não vale nada.** O limite do Safari é do
+cookie escrito por SCRIPT, não do script — então trocar o endereço do snippet
+sozinho não resolveria. O que levanta o limite é `Set-Cookie` numa resposta do
+mesmo site, e é por isso que `/api/collect` devolve `_rr_cid` e `_rr_eid`, e que
+`rr.js` **para de reescrevê-los** quando o coletor é do mesmo site.
+
+**O snippet só migra depois de VERIFICADO.** `collector_host` nasce como palpite
+(`"t." + domínio`) no cadastro da loja, antes de existir DNS. Apontar o snippet
+para ele na hora não pioraria a coleta: mataria a coleta, e a tela continuaria
+verde porque do lado de cá nada dá erro quando nada chega. Por isso existe
+`collector_verified_at`, gravado só quando `/api/integracoes/coletor` busca o
+script E o endpoint no endereço e os dois respondem. Falha **zera** a data, e o
+snippet volta sozinho para o domínio do RRTrack.
+
+**Some, não substitui.** O domínio do RRTrack continua servindo painel e
+webhook. As URLs de webhook estão cadastradas nos painéis dos gateways; trocá-las
+faria as vendas pararem de chegar sem erro nenhum aparecer.
+
+A lista de sufixo público está **duplicada** em `public/rr.js`,
+`app/api/collect/route.ts` e `app/api/integracoes/coletor/route.ts`, porque o
+primeiro é servido estático e não importa de `src/`. Quando as duas primeiras
+divergiram, o servidor mandava `Domain=.me.uk`, o navegador recusava por ser
+sufixo público, e o cookie não existia para aquelas lojas — calado.
+`scripts/teste-coletor.mjs` compara as listas e reprova se saírem do ar.
 
 ## Estilo
 

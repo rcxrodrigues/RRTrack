@@ -612,6 +612,10 @@ export function Integracoes({
   site: {
     dominio: string;
     chave: string;
+    /* Subdomínio próprio da loja que serve o coletor. Ver montarSnippet. */
+    coletor?: string | null;
+    /* Nulo enquanto ninguém confirmou que ele responde. Ver enderecoDoColetor. */
+    coletorVerificadoEm?: string | null;
     config: {
       viewContentOnLoad?: boolean;
       productId?: string;
@@ -910,6 +914,8 @@ export function Integracoes({
               que ainda dizem o apelido que a loja tinha quando nasceram.
             */}
             <Copiavel multilinha valor={montarSnippet(site, base)} />
+
+            <Coletor tenantId={loja.id} site={site} base={base} />
 
             <ProdutoDaPagina site={site} tenantId={loja.id} />
           </div>
@@ -1449,6 +1455,136 @@ export function Integracoes({
   );
 }
 
+/*
+ * Configuração do coletor de primeira parte.
+ *
+ * O ganho está em duas coisas que só acontecem quando o coletor mora num
+ * subdomínio da própria loja:
+ *
+ *   BLOQUEADOR DE ANÚNCIO deixa de ter nome para casar na lista de bloqueio.
+ *
+ *   COOKIE DO SAFARI deixa de morrer em 24 h. O `_rr_cid` é o clickId, e é ele
+ *   que faz a venda encontrar o anúncio; escrito por JavaScript ele é cortado
+ *   para 7 dias, ou 24 horas quando a pessoa chegou por link com `?fbclid=` —
+ *   ou seja, em todo tráfego pago, no navegador padrão do iPhone. Vindo por
+ *   `Set-Cookie` do mesmo site, ele vive os 90 dias combinados.
+ *
+ * O botão verifica de verdade antes de liberar: busca o script E o endpoint no
+ * endereço proposto. Sem isso, um snippet apontando para DNS inexistente
+ * pararia a coleta inteira, e a tela continuaria verde — porque do lado de cá
+ * nada dá erro quando nada chega.
+ */
+function Coletor({ tenantId, site, base }: {
+  tenantId: string;
+  site: { dominio: string; coletor?: string | null; coletorVerificadoEm?: string | null };
+  base: string;
+}) {
+  const router = useRouter();
+  const [host, setHost] = useState(site.coletor ?? `t.${site.dominio.replace(/^www\./, "")}`);
+  const [estado, setEstado] = useState<
+    { fase: "parado" } | { fase: "verificando" } | { fase: "pronto"; ok: boolean; detalhe: string }
+  >({ fase: "parado" });
+
+  const verificado = !!site.coletorVerificadoEm;
+  const alvo = base.replace(/^https?:\/\//, "");
+
+  async function verificar() {
+    setEstado({ fase: "verificando" });
+    try {
+      const r = await fetch("/api/integracoes/coletor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenantId, host }),
+      });
+      const j = await r.json() as { ok?: boolean; detalhe?: string; erro?: string };
+      setEstado({ fase: "pronto", ok: j.ok === true, detalhe: j.detalhe ?? j.erro ?? "sem resposta" });
+      if (j.ok) router.refresh();
+    } catch {
+      setEstado({ fase: "pronto", ok: false, detalhe: "sem conexão com o servidor" });
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--linha)",
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 6 }}>
+        <span style={{ fontWeight: 600, fontSize: 12.5 }}>Coletor no seu domínio</span>
+        <Selo ok={verificado}>{verificado ? "ativo" : "não configurado"}</Selo>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--ink-fraco)", lineHeight: 1.55, marginBottom: 10 }}>
+        {verificado ? (
+          <>
+            O script acima já sai apontando para <span className="num">{site.coletor}</span>.
+            Bloqueador de anúncio não tem o que bloquear, e o cookie do clickId vive
+            os 90 dias combinados até no Safari.
+          </>
+        ) : (
+          <>
+            Hoje o script carrega do domínio do RRTrack, e isso custa duas coisas:
+            bloqueador de anúncio derruba a requisição pelo nome do domínio, e o Safari
+            corta o cookie do clickId para <strong style={{ color: "var(--ink-medio)" }}>24 horas
+            </strong> quando a visita vem de link com <span className="num">?fbclid=</span> —
+            ou seja, em todo tráfego pago. Apontando um subdomínio seu para cá, os dois
+            somem.
+          </>
+        )}
+      </div>
+
+      {!verificado && (
+        <div style={{
+          fontSize: 11.5, color: "var(--ink-fraco)", lineHeight: 1.6,
+          background: "var(--painel-alto)", border: "1px solid var(--linha)",
+          borderRadius: 5, padding: "10px 12px", marginBottom: 10,
+        }}>
+          <div style={{ marginBottom: 6, color: "var(--ink-medio)" }}>Dois passos, uma vez só:</div>
+          <div style={{ marginBottom: 4 }}>
+            <strong>1.</strong> No seu DNS, crie um <span className="num">CNAME</span>:
+          </div>
+          <div className="num" style={{
+            fontSize: 11, padding: "6px 9px", borderRadius: 4, marginBottom: 7,
+            background: "var(--fundo)", color: "var(--ink-medio)",
+            overflowX: "auto", whiteSpace: "nowrap",
+          }}>
+            {host.split(".")[0]} &nbsp;CNAME&nbsp; {alvo}
+          </div>
+          <div>
+            <strong>2.</strong> Adicione <span className="num">{host}</span> como domínio
+            do projeto na Vercel, para o certificado sair.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={host}
+          onChange={(e) => setHost(e.target.value)}
+          spellCheck={false}
+          className="num"
+          style={{
+            flexGrow: 1, minWidth: 200, fontSize: 11.5, padding: "5px 9px",
+            background: "var(--fundo)", color: "var(--ink)",
+            border: "1px solid var(--linha-forte)", borderRadius: 4,
+          }} />
+        <Botao pequeno tipo="secundario" disabled={estado.fase === "verificando"} onClick={verificar}>
+          {estado.fase === "verificando" ? "verificando…" : verificado ? "verificar de novo" : "verificar"}
+        </Botao>
+      </div>
+
+      {estado.fase === "pronto" && (
+        <div style={{
+          marginTop: 8, fontSize: 11.5, lineHeight: 1.5, padding: "7px 10px", borderRadius: 5,
+          background: estado.ok ? "var(--positivo-fundo)" : "var(--negativo-fundo)",
+          color: estado.ok ? "var(--positivo)" : "var(--negativo)",
+        }}>
+          {estado.ok ? "✓ " : "✕ "}{estado.detalhe}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------- gerador de UTM -- */
 
 function GeradorUtm() {
@@ -1513,11 +1649,61 @@ type ConfigDoSite = {
  * de configuração — e enquanto não acrescentasse, a etapa "viu o produto"
  * ficaria zerada parecendo campanha ruim.
  */
-export function montarSnippet(
-  site: { dominio: string; chave: string; config: ConfigDoSite },
+/*
+ * O endereço de onde o snippet carrega e para onde ele manda.
+ *
+ * Prefere o subdomínio da própria loja (`t.loja.com.br`) e cai no domínio do
+ * RRTrack quando não houver. A diferença não é cosmética:
+ *
+ *   BLOQUEADOR DE ANÚNCIO. Lista de bloqueio derruba requisição para domínio
+ *   de terceiro por nome. Do subdomínio da loja, não há o que casar.
+ *
+ *   COOKIE NO SAFARI. Cookie escrito por JavaScript vive 7 dias, ou 24 HORAS
+ *   quando a pessoa chegou por link com parâmetro de rastreamento — que é
+ *   exatamente o caso de tráfego pago com `?fbclid=`. O `_rr_cid` é o clickId,
+ *   pensado para 90 dias, e é ele que faz a venda encontrar o anúncio.
+ *
+ *   Só que trocar o endereço NÃO basta para o segundo: o limite é do cookie
+ *   escrito por script, não do script. Quem o levanta é o cabeçalho
+ *   `Set-Cookie` numa resposta do MESMO SITE — e é por isso que o coletor
+ *   também passou a devolver o cookie (ver app/api/collect/route.ts). Uma
+ *   metade sem a outra não resolve nada.
+ *
+ * SOMA, não substitui: o domínio do RRTrack continua servindo painel e
+ * webhook. As URLs de webhook estão cadastradas nos painéis dos gateways, e
+ * trocá-las faria as vendas pararem de chegar sem erro nenhum aparecer.
+ */
+export function enderecoDoColetor(
+  site: { coletor?: string | null; coletorVerificadoEm?: string | null },
   base: string,
 ): string {
-  const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${base}/rr/collect"`];
+  const c = site.coletor?.trim();
+
+  /*
+   * VERIFICADO, e não apenas preenchido.
+   *
+   * `collector_host` é gerado sozinho no cadastro da loja, como palpite
+   * ("t." + domínio), muito antes de existir DNS. Emitir o snippet apontando
+   * para o palpite não pioraria a coleta: mataria a coleta — o navegador não
+   * resolveria o host, nenhum evento sairia, e a tela seguiria verde porque do
+   * lado de cá nada dá erro quando nada chega.
+   *
+   * A data só é gravada depois de /api/integracoes/coletor buscar o script E o
+   * endpoint no endereço proposto. Enquanto ela não existe, o snippet continua
+   * no domínio do RRTrack, que é o que já funciona hoje.
+   */
+  if (!c || !site.coletorVerificadoEm) return base;
+
+  /* Guardado como hostname puro ("t.loja.com.br"); a URL precisa do esquema. */
+  return c.startsWith("http") ? c.replace(/\/$/, "") : `https://${c}`;
+}
+
+export function montarSnippet(
+  site: { dominio: string; chave: string; coletor?: string | null; coletorVerificadoEm?: string | null; config: ConfigDoSite },
+  base: string,
+): string {
+  const origem = enderecoDoColetor(site, base);
+  const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${origem}/rr/collect"`];
 
   if (site.config.viewContentOnLoad) cfg.push("viewContentOnLoad:true");
 
@@ -1534,7 +1720,7 @@ export function montarSnippet(
 
   return `<!-- RRTrack · ${site.dominio} -->\n`
     + `<script>window.RRTrackConfig={${cfg.join(",")}}</script>\n`
-    + `<script src="${base}/rr.js" async></script>`;
+    + `<script src="${origem}/rr.js" async></script>`;
 }
 
 /*
@@ -1553,7 +1739,7 @@ export function montarSnippet(
  * que se quer de campanha de venda.
  */
 export function ProdutoDaPagina({ site, tenantId }: {
-  site: { dominio: string; chave: string; config: ConfigDoSite };
+  site: { dominio: string; chave: string; coletor?: string | null; coletorVerificadoEm?: string | null; config: ConfigDoSite };
   tenantId: string;
 }) {
   const router = useRouter();

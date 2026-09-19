@@ -111,6 +111,26 @@ export const sites = pgTable("sites", {
   domain: text("domain").notNull(),
   /* Subdomínio próprio do coletor, p.ex. "t.minhaloja.com.br". */
   collectorHost: text("collector_host"),
+
+  /*
+   * Quando o subdomínio do coletor foi CONFIRMADO respondendo.
+   *
+   * Existe porque `collectorHost` é preenchido sozinho no cadastro da loja,
+   * como palpite ("t." + domínio), muito antes de alguém criar o registro de
+   * DNS. Enquanto o palpite não vira realidade, apontar o snippet para ele
+   * não degradaria a coleta: mataria a coleta inteira — o navegador não
+   * resolveria o host, nenhum evento sairia, e a tela continuaria verde
+   * porque do lado de cá nada dá erro quando nada chega.
+   *
+   * Então o snippet só migra depois que esta data existe, e ela só é gravada
+   * quando o servidor busca https://<coletor>/rr.js e recebe o script de
+   * volta. É a diferença entre "configuramos" e "funciona".
+   *
+   * Nulo também quando o DNS caiu depois: reverificar é um clique, e o
+   * snippet volta sozinho para o domínio do RRTrack enquanto isso.
+   */
+  collectorVerifiedAt: timestamp("collector_verified_at", { withTimezone: true }),
+
   publicKey: text("public_key").notNull(),
 
   /*

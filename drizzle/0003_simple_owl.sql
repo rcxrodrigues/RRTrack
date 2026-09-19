@@ -1,0 +1,1 @@
+ALTER TABLE "sites" ADD COLUMN "collector_verified_at" timestamp with time zone;

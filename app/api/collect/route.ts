@@ -34,8 +34,107 @@ function corsHeaders(origin: string | null): Record<string, string> {
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-max-age": "86400",
+    /*
+     * Sem isto o `Set-Cookie` da resposta é DESCARTADO pelo navegador quando a
+     * requisição vem de outra origem — que é o caso normal aqui, com a página
+     * em www.loja.com.br e o coletor em t.loja.com.br. O cabeçalho sairia,
+     * o navegador o ignoraria, e o cookie continuaria valendo 24 h no Safari
+     * sem nada indicar por quê.
+     *
+     * O par obrigatório é `allow-origin` com a origem EXATA, nunca "*" —
+     * a especificação recusa a combinação de "*" com credencial. É por isso
+     * que a linha acima ecoa a origem em vez de fixar o curinga.
+     */
+    "access-control-allow-credentials": "true",
     vary: "origin",
   };
+}
+
+/*
+ * O domínio registrável de um host: "www.loja.com.br" -> "loja.com.br".
+ *
+ * Existe a versão do navegador em public/rr.js, e as duas precisam concordar —
+ * é o mesmo cookie. Sufixo composto ("com.br", "co.uk") leva três partes; o
+ * resto leva duas. Errar isso por baixo faz o navegador RECUSAR o cookie em
+ * silêncio, porque ninguém pode gravar em sufixo público.
+ *
+ * A LISTA É COPIADA de public/rr.js de propósito: aquele arquivo é servido
+ * estático ao navegador do visitante e não pode importar daqui. A cópia é
+ * perigosa — quando as duas divergiram, o servidor mandava `Domain=.me.uk`,
+ * o navegador recusava por ser sufixo público, e o cookie simplesmente não
+ * existia para aquelas lojas, sem erro em canto nenhum. Por isso
+ * scripts/teste-coletor.mjs compara as duas listas e reprova se saírem do ar.
+ */
+const COMPOSTOS = new Set([
+  "com.br", "net.br", "org.br", "com.pt",
+  "co.uk", "org.uk", "me.uk", "ac.uk",
+  "com.au", "net.au", "org.au", "co.jp",
+  "co.nz", "co.za", "co.in", "com.mx",
+  "com.ar", "com.co",
+]);
+
+function dominioRegistravel(host: string): string {
+  const partes = host.toLowerCase().split(".");
+  if (partes.length <= 2) return partes.join(".");
+  const doisUltimos = partes.slice(-2).join(".");
+  return COMPOSTOS.has(doisUltimos) ? partes.slice(-3).join(".") : doisUltimos;
+}
+
+/*
+ * Devolve um cookie de verdade, quando isso ADIANTA alguma coisa.
+ *
+ * O problema que resolve: `_rr_cid` e `_rr_eid` são escritos por JavaScript em
+ * rr.js, e o
+ * Safari limita cookie escrito por script a 7 dias — ou 24 HORAS quando a
+ * pessoa chegou por link com parâmetro de rastreamento, que é precisamente o
+ * tráfego pago com `?fbclid=`. O cookie é pensado para 90 dias e é ele que faz
+ * a venda encontrar o anúncio; expirando em 24 h, a atribuição some sem erro
+ * em lugar nenhum.
+ *
+ * O que levanta esse limite não é de onde o SCRIPT vem, é de onde o COOKIE vem:
+ * `Set-Cookie` numa resposta do mesmo site não é cortado. Por isso a troca de
+ * endereço do snippet sozinha não resolveria nada — as duas metades andam
+ * juntas.
+ *
+ * TRÊS CONDIÇÕES, e cada uma fecha um buraco:
+ *
+ * 1. O domínio do cookie vem de `sites.domain`, do BANCO — nunca do pedido.
+ *    Tirá-lo do host da requisição deixaria quem tivesse uma chave de site
+ *    gravar cookie em qualquer domínio.
+ *
+ * 2. A requisição tem de ter CHEGADO num host dentro desse domínio. Fora dele
+ *    o navegador recusa o cookie de qualquer jeito; mandar o cabeçalho seria
+ *    só gastar bytes e esconder que o subdomínio não está configurado.
+ *
+ * 3. A ORIGEM tem de ser do mesmo domínio. Sem esta, uma página qualquer na
+ *    internet poderia fixar o clickId de um visitante da loja — e toda venda
+ *    dele passaria a ser creditada ao anúncio que o atacante escolhesse.
+ */
+function cookieDePrimeiraParte(
+  req: Request,
+  dominioDoSite: string,
+  nome: string,
+  valor: string,
+): string | null {
+  const registravel = dominioRegistravel(dominioDoSite.replace(/^https?:\/\//, ""));
+
+  const host = req.headers.get("host");
+  if (!host) return null;
+  const hostSemPorta = host.split(":")[0] ?? "";
+  if (dominioRegistravel(hostSemPorta) !== registravel) return null;
+
+  const origem = req.headers.get("origin");
+  if (origem) {
+    try {
+      if (dominioRegistravel(new URL(origem).hostname) !== registravel) return null;
+    } catch { return null; }
+  }
+
+  /* 90 dias, o mesmo COOKIE_DAYS de rr.js. Lax para sobreviver à volta do
+     gateway; Strict o esconderia justamente na volta, que é quando serve. */
+  return `${nome}=${encodeURIComponent(valor)}`
+    + `; Domain=.${registravel}; Path=/; Max-Age=${90 * 86400}`
+    + "; SameSite=Lax; Secure";
 }
 
 export async function OPTIONS(req: Request): Promise<Response> {
@@ -80,7 +179,11 @@ function str(v: unknown): string | null {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const headers = corsHeaders(req.headers.get("origin"));
+  /*
+   * `Headers`, e não objeto simples: são DOIS cookies, e chave repetida num
+   * objeto sobrescreve em vez de somar — o segundo cookie sumiria calado.
+   */
+  const headers = new Headers(corsHeaders(req.headers.get("origin")));
 
   let body: Record<string, unknown>;
   try {
@@ -130,6 +233,26 @@ export async function POST(req: Request): Promise<Response> {
    */
   const [site] = await db.select().from(sites).where(eq(sites.publicKey, siteKey)).limit(1);
   if (!site || !site.active) return new Response(null, { status: 403, headers });
+
+  /*
+   * Daqui para baixo TODA resposta carrega o cookie, inclusive o 204 do pulso.
+   * É de propósito: o pulso é o que mantém o prazo rolando em quem ficou na
+   * página sem clicar em nada, e é também o único evento que chega de uma aba
+   * aberta há horas — justo a visita que o limite de 24 h mataria.
+   */
+  const externalId = str(body.external_id);
+  const cookies = [
+    cookieDePrimeiraParte(req, site.domain, "_rr_cid", clickId),
+    /*
+     * O external_id entra junto, e não é detalhe. Ele vai hasheado no CAPI
+     * como chave de correspondência; renascendo a cada 24 h, a Meta vê uma
+     * pessoa NOVA por dia — a correspondência despenca e a otimização da
+     * campanha piora, sem nada no painel indicando por quê. Mesmo remédio,
+     * mesma linha.
+     */
+    externalId ? cookieDePrimeiraParte(req, site.domain, "_rr_eid", externalId) : null,
+  ].filter((c): c is string => c !== null);
+  for (const c of cookies) headers.append("set-cookie", c);
 
   const attr = (body.attribution ?? {}) as Record<string, unknown>;
   const agora = new Date();
