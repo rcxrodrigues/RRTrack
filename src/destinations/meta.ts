@@ -30,7 +30,7 @@ import {
   splitName, hashOrUndefined, sha256,
 } from "../core/hash";
 import { isValidFbc, isValidFbp } from "../core/identity";
-import { META_GRAPH_URL } from "../core/versoes";
+import { META_GRAPH, META_GRAPH_URL } from "../core/versoes";
 
 /** Nossos nomes canônicos -> nomes padrão da Meta. */
 const EVENT_NAMES: Record<ConversionEvent, string> = {
@@ -322,9 +322,19 @@ export const metaAdapter: DestinationAdapter = {
          * get request", que se lê como pixel inexistente. Nomear aqui evita a
          * caça ao pixel errado depois de uma troca em core/versoes.ts.
          */
-        return { ok: false, detalhe: `${msg} (versão ${META_GRAPH_URL.split("/").pop()})` };
+        return { ok: false, detalhe: `${msg} (versão ${META_GRAPH})` };
       }
-      return { ok: true, detalhe: j.name ? `pixel "${j.name}"` : `pixel ${j.id ?? cfg.externalId}` };
+      /*
+       * A VERSÃO sai junto no sucesso, não só no erro.
+       *
+       * Ela é a única forma de responder "qual versão a produção está usando
+       * agora?" sem abrir o painel da Vercel — e a pergunta aparece toda vez
+       * que alguém desconfia de um número. A constante do repositório diz o
+       * padrão; uma variável de ambiente esquecida a sobrepõe em silêncio, e
+       * daí só a resposta da plataforma sabe a verdade.
+       */
+      const quem = j.name ? `pixel "${j.name}"` : `pixel ${j.id ?? cfg.externalId}`;
+      return { ok: true, detalhe: `${quem} — Graph ${META_GRAPH}` };
     } catch (e) {
       return { ok: false, detalhe: e instanceof Error ? e.message : String(e) };
     }

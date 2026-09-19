@@ -29,6 +29,7 @@ import { acessoALoja } from "@/core/auth";
 import { decryptRecord } from "@/core/crypto";
 import { getDestination } from "@/destinations/registry";
 import { getAdSpend } from "@/ads/registry";
+import { META_GRAPH } from "@/core/versoes";
 
 export const runtime = "nodejs";
 
@@ -132,7 +133,11 @@ export async function POST(req: Request): Promise<Response> {
       const credenciais = await decryptRecord(conta.credentials);
       const r = await adaptador.buscarGasto(conta.externalId, credenciais, { de: dia, ate: dia });
 
-      const partes = [`moeda ${r.moeda}`, `${r.linhas.length} linha(s) em ${dia}`];
+      const partes = [
+        conta.platform === "meta" ? `Graph ${META_GRAPH}` : null,
+        `moeda ${r.moeda}`,
+        `${r.linhas.length} linha(s) em ${dia}`,
+      ].filter((x): x is string => x !== null);
       if (r.usoPct != null) partes.push(`cota em ${Math.round(r.usoPct)}%`);
       const avisos = r.avisos.length ? ` — ${r.avisos.join("; ")}` : "";
 
