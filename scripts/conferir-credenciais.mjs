@@ -118,9 +118,23 @@ if (falharam === 0 && abriram > 0) {
 `);
 } else if (falharam > 0) {
   console.log(`
-  ABRIU PARTE, e é o caso mais informativo dos três: houve troca de chave
-  em algum momento, e as linhas gravadas antes dela ficaram órfãs. Elas
-  precisam ser recadastradas pelo painel — não há como recuperá-las.
+  ABRIU PARTE — e há DUAS explicações possíveis. Não são a mesma coisa e
+  levam a ações opostas, então vale olhar QUAIS linhas abriram antes de
+  concluir:
+
+  (a) Este .env tem chave diferente da produção. É o caso quando as que
+      abrem são as semeadas por teste (rótulo de teste, valor curto) e as
+      que falham são as cadastradas pelo painel. A chave CERTA é a da
+      Vercel, porque foi ela que cifrou o que vale. Corrija o .env local,
+      nunca o contrário.
+
+  (b) Houve troca de chave no passado, e as linhas antigas ficaram órfãs.
+      É o caso quando as que abrem são credenciais REAIS, recentes, e as
+      que falham são reais e antigas. Aí não há recuperação: as antigas
+      precisam ser recadastradas pelo painel.
+
+  O script não tem como distinguir as duas sozinho — quem sabe qual linha
+  é de teste e qual é de verdade é você.
 `);
 } else {
   console.log(`
