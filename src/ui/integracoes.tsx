@@ -605,7 +605,7 @@ function ChaveDeApi({
 }
 
 export function Integracoes({
-  loja, base, site, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm, perfilMeta,
+  loja, base, site, outrosSites, contas, conexoes, pixels, gatewaysDisponiveis, modelosUtm, perfilMeta,
 }: {
   perfilMeta: { nome: string; expiraEm: string | null } | null;
   loja: LojaDoUsuario;
@@ -624,6 +624,11 @@ export function Integracoes({
       productPriceCents?: number;
     };
   } | null;
+  /*
+   * Os demais sites ativos desta loja, se houver. A tela usa o primeiro e
+   * AVISA sobre os outros — escolher em silêncio já custou uma manhã.
+   */
+  outrosSites?: string[];
   contas: Conta[];
   conexoes: Conexao[];
   pixels: Pixel[];
@@ -914,6 +919,33 @@ export function Integracoes({
               credencial envelhece — foi o que aconteceu com as chaves antigas,
               que ainda dizem o apelido que a loja tinha quando nasceram.
             */}
+            {/*
+              Mais de um site ativo: a tela DIZ qual escolheu.
+
+              Ela usa o primeiro em ordem alfabética, e a ordem é o que torna a
+              escolha estável entre requisições — sem ela, o painel mostrava um
+              site e a verificação do coletor gravava em outro, e clicar em
+              verificar nunca "pegava". Mas estável não é o mesmo que certo:
+              "qa-trocado.exemplo.com" vem antes de "transforlar.com" no
+              alfabeto, e foi assim que a loja real ficou com a tela do site de
+              teste, sem nada explicando.
+
+              Escolher continua sendo do painel. Esconder a escolha é que não.
+            */}
+            {outrosSites && outrosSites.length > 0 && (
+              <div style={{
+                marginBottom: 12, padding: "9px 12px", borderRadius: 5,
+                background: "var(--alerta-fundo)", color: "var(--alerta)",
+                fontSize: 11.5, lineHeight: 1.55,
+              }}>
+                Esta loja tem <strong>{outrosSites.length + 1} sites ativos</strong>. O código
+                acima é o de <span className="num">{site.dominio}</span> —{" "}
+                {outrosSites.length === 1 ? "o outro é" : "os outros são"}{" "}
+                <span className="num">{outrosSites.join(", ")}</span>. Se não for esse o site
+                que você quer medir, desative os demais para a tela parar de escolher por você.
+              </div>
+            )}
+
             <Copiavel multilinha valor={montarSnippet(site, base)} />
 
             {/*

@@ -197,6 +197,64 @@ for (const s of sites) {
   console.log(`  AJUSTOU| ${acoes.join("; ")}`);
 }
 
+/* --------------------------------- 3b. site em domínio reservado -------- */
+
+/*
+ * `exemplo.com` e `example.com` são RESERVADOS pela RFC 2606 justamente para
+ * documentação e teste. Ninguém vende por eles, então um site ativo ali é
+ * resto de QA — e não é palpite: é o que o registro desses domínios significa.
+ *
+ * Isto importa mais do que parece. O painel escolhe UM site por loja, e
+ * ordenar por domínio (que é o que o torna estável) faz
+ * "qa-trocado.exemplo.com" vir ANTES de "transforlar.com" no alfabeto. A loja
+ * real fica com a tela do site de teste, e a verificação do coletor grava no
+ * lugar errado.
+ *
+ * DESATIVA, não apaga: `click_sessions.site_id` aponta para cá, e mesmo sendo
+ * `set null` a coluna guarda de onde a visita veio. Desativado some da escolha
+ * do painel e o histórico fica.
+ */
+const RESERVADOS = ["exemplo.com", "example.com", "example.org", "example.net"];
+const reservado = (d) => RESERVADOS.some((r) => d === r || d.endsWith("." + r))
+  || /\.(test|invalid|localhost)$/.test(d);
+
+const deQa = sites.filter((s) => s.active && reservado(dominioDoSite(s.domain)));
+if (deQa.length) {
+  console.log("\n== sites em domínio reservado (RFC 2606) ==");
+  for (const s of deQa) {
+    mudancas++;
+    if (!APLICAR) {
+      console.log(`  desativa | ${s.domain}: domínio reservado não é loja de verdade`);
+      continue;
+    }
+    await sql("UPDATE sites SET active = false WHERE id = $1", [s.id]);
+    console.log(`  DESATIVOU| ${s.domain}`);
+  }
+}
+
+/* ------------------------------ 3c. loja com mais de um site ativo ------ */
+
+/*
+ * Depois de desativar o que é de teste, ainda pode sobrar loja com dois sites
+ * de verdade. Aqui o script NÃO decide: o painel escolhe um por ordem
+ * alfabética, e qual dos dois é "o certo" só quem conhece a operação sabe.
+ * Mas avisa, porque escolher em silêncio foi o que produziu a tela confusa.
+ */
+const porLoja = await sql(`
+  SELECT t.name AS loja, count(*)::int AS n,
+         string_agg(s.domain, ', ' ORDER BY s.domain) AS dominios
+    FROM sites s JOIN tenants t ON t.id = s.tenant_id
+   WHERE s.active GROUP BY t.name HAVING count(*) > 1`);
+
+if (porLoja.length) {
+  console.log("\n== lojas com MAIS DE UM site ativo ==");
+  for (const l of porLoja) {
+    console.log(`  ATENÇÃO| ${l.loja}: ${l.n} sites — ${l.dominios}`);
+    console.log(`         | o painel usa o PRIMEIRO em ordem alfabética.`);
+    console.log(`         | Se não for o certo, desative o outro pelo painel.`);
+  }
+}
+
 /* ------------------------------------- 4. comprador em claro (só avisa) -- */
 
 /*

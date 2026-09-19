@@ -90,6 +90,35 @@ eq("maiúscula", dominioDoSite("HTTPS://Loja.COM.BR"), "loja.com.br");
 /* Nada de barra no domínio do cookie — é o defeito que isto impede de voltar. */
 eq("nunca sobra barra", dominioRegistravel("https://transforlar.com/").includes("/"), false);
 
+console.log("\n  -- e domínio reservado (RFC 2606) não é loja de verdade --");
+/*
+ * `orderBy(domain)` tornou a escolha do site ESTÁVEL, mas estável não é certo:
+ * "qa-trocado.exemplo.com" vem antes de "transforlar.com" no alfabeto, então a
+ * loja real ficava com a tela do site de teste. RFC 2606 reserva esses
+ * domínios justamente para documentação e teste — desativá-los não é palpite.
+ */
+const fx = ler("scripts/faxina.mjs");
+const listaRes = /const RESERVADOS = (\[[^\]]*\]);/.exec(fx)[1];
+const corpoRes = /const reservado = \(d\) =>([\s\S]*?);\n/.exec(fx)[1];
+const reservado = new Function("d", `const RESERVADOS = ${listaRes}; return (${corpoRes});`);
+for (const [d, esperado] of [
+  ["qa-trocado.exemplo.com", true], ["exemplo.com", true], ["example.com", true],
+  ["algo.test", true], ["x.invalid", true],
+  ["transforlar.com", false], ["florecomesticos.store", false],
+  /* Estes dois são domínios de VERDADE e não podem cair na regra. */
+  ["exemplo.com.br", false], ["meuexemplo.com", false],
+]) {
+  eq(`reservado(${d}) = ${esperado}`, reservado(d), esperado);
+}
+
+console.log("\n  -- e o painel AVISA quando há mais de um site ativo --");
+/* Escolher em silêncio foi o que produziu a tela confusa. */
+eq("a página busca todos os sites ativos, não limit(1)",
+  /eq\(sites\.active, true\)\)\)\n\s*\.orderBy\(sites\.domain\),/
+    .test(ler("app/(painel)/integracoes/page.tsx")), true);
+eq("e a tela mostra quais são os outros",
+  ler("src/ui/integracoes.tsx").includes("outrosSites.length + 1} sites ativos"), true);
+
 console.log("\n  -- e a faxina nunca grava o apex como coletor --");
 /*
  * "t.https://transforlar.com/" é o que estava gravado de verdade. O limpador
