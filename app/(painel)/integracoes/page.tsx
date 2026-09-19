@@ -32,7 +32,8 @@ export default async function PaginaIntegracoes() {
     db.select().from(adAccounts).where(eq(adAccounts.tenantId, loja.id)),
     db.select().from(gatewayConnections).where(eq(gatewayConnections.tenantId, loja.id)),
     db.select().from(destinations).where(eq(destinations.tenantId, loja.id)),
-    db.select().from(sites).where(and(eq(sites.tenantId, loja.id), eq(sites.active, true))).limit(1),
+    db.select().from(sites).where(and(eq(sites.tenantId, loja.id), eq(sites.active, true)))
+      .orderBy(sites.domain).limit(1),
     /* Só o nome e o prazo: o token nunca sai do servidor. */
     db.select({ nome: metaProfiles.name, expiraEm: metaProfiles.tokenExpiresAt })
       .from(metaProfiles).where(eq(metaProfiles.tenantId, loja.id)).limit(1),

@@ -25,7 +25,8 @@ export default async function Pagina({ searchParams }: {
     eventosRecentes(loja.id),
     entregasRecentes(loja.id),
     db.select({ id: sites.id }).from(sites)
-      .where(and(eq(sites.tenantId, loja.id), eq(sites.active, true))).limit(1),
+      .where(and(eq(sites.tenantId, loja.id), eq(sites.active, true)))
+      .orderBy(sites.domain).limit(1),
   ]);
 
   return (
