@@ -156,7 +156,25 @@ export const sites = pgTable("sites", {
   }>().notNull().default({}),
 
   active: boolean("active").notNull().default(true),
-}, (t) => [uniqueIndex("sites_domain").on(t.domain)]);
+}, (t) => [
+  uniqueIndex("sites_domain").on(t.domain),
+  /*
+   * A CHAVE PÚBLICA É ÚNICA NO BANCO INTEIRO, e o índice é quem garante.
+   *
+   * É por ela que `/api/collect` descobre de que loja é o beacon — uma busca
+   * sem `tenantId`, porque o tenant é justamente o que ela responde. Havendo
+   * duas linhas com a mesma chave, o `limit(1)` escolhe uma das duas e o
+   * evento entra na loja errada. Sem erro, e com o painel da outra loja
+   * mostrando visita que não teve.
+   *
+   * Não era colisão aleatória que preocupava — são 96 bits. Era não haver nada
+   * IMPEDINDO uma duplicata: `regerar_chave` não confere, uma restauração
+   * pode repetir, e clonar a configuração de uma oferta para outra (que é o
+   * plano) copiaria a chave junto. O índice transforma isso em erro na hora
+   * de gravar, em vez de tráfego desviado em silêncio.
+   */
+  uniqueIndex("sites_public_key").on(t.publicKey),
+]);
 
 /* ------------------------------------------------------------- conexões -- */
 
@@ -199,7 +217,17 @@ export const gatewayConnections = pgTable("gateway_connections", {
 
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("gateway_conn_tenant").on(t.tenantId)]);
+}, (t) => [
+  index("gateway_conn_tenant").on(t.tenantId),
+  /*
+   * O SEGREDO DO WEBHOOK TAMBÉM É ÚNICO, e pelo mesmo motivo que a chave de
+   * site acima: ele está no caminho da URL que cada gateway tem cadastrada, e
+   * é por ele que `receberVenda` descobre a loja. Duas conexões com o mesmo
+   * segredo fariam a venda entrar na loja errada — dinheiro no faturamento de
+   * quem não vendeu, e faltando em quem vendeu.
+   */
+  uniqueIndex("gateway_conn_secret").on(t.webhookSecret),
+]);
 
 /*
  * Destinos de conversão: para onde as vendas são enviadas.

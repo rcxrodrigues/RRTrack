@@ -43,6 +43,13 @@
       "when": 1789844312915,
       "tag": "0005_colorful_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789845034102,
+      "tag": "0006_absurd_shaman",
+      "breakpoints": true
     }
   ]
 }

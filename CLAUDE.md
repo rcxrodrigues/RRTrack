@@ -12,7 +12,7 @@ decidido, e o que quebra quando se decide diferente.
 
 ```bash
 npm run typecheck      # tsc --noEmit — rode SEMPRE antes de commitar
-npm test               # tudo: 22 unitários (15 sem banco + 7 com) + 6 de ponta a ponta
+npm test               # tudo: 25 unitários (18 sem banco + 7 com) + 6 de ponta a ponta
 npm run test:sem-banco # só o que dispensa .env — serve em clone novo
 npm run build          # o build da Vercel, rodando aqui
 npm run dev            # localhost:3000
@@ -93,7 +93,7 @@ src/gateways/    Appmax, pagou.ai, Shopify, Millions, genérico (Hotmart/Kiwify/
 src/destinations/ para onde a conversão vai: meta, google (Ads), tiktok, ga4
 src/ads/         de onde o gasto vem: meta, google, tiktok — do outro lado
                  (o GA4 não tem gasto: ele recebe conversão e não vende anúncio)
-src/db/schema.ts as 19 tabelas
+src/db/schema.ts as 20 tabelas
 src/ui/          componentes do painel
 app/api/         rotas
 public/rr.js     o script que roda no site do cliente
@@ -155,12 +155,16 @@ versão sem clicar é apostar.
 
 ## Buracos conhecidos, de propósito
 
-- **Sem RLS.** O isolamento é por `tenantId` no código, que vale até alguém
-  esquecer um `where`.
-- **Sem rate limiting** em `/api/collect` e `/api/webhook/[gateway]/[secret]`,
-  que são públicos.
-- **Sem retenção**: `dispatches.request_body` e `webhook_deliveries.raw_body`
-  crescem para sempre.
+- **Sem RLS.** O isolamento é por `tenantId` no código. O plano continua de pé,
+  mas o caminho é mais caro do que parecia e está medido em `teste-isolamento`:
+  `db.transaction()` **lança erro** no driver HTTP do Neon, e `SET LOCAL` não
+  cola porque ele não mantém conexão entre statements. O que existe é
+  `db.batch()`, que manda tudo num pedido HTTP dentro de uma transação — então
+  cada uma das **77 consultas** a tabela de negócio viraria um batch com
+  `set_config('app.tenant_id', …, true)` na frente. Enquanto isso não acontece,
+  a proteção é em tempo de COMMIT: `scripts/teste-isolamento.mjs` reprova
+  qualquer consulta nova que não filtre por `tenantId`, não aja por chave
+  primária, nem busque por coluna com índice único global.
 - **`src/destinations/google.ts` é Google Ads**, não Analytics. O GA4 é
   `ga4.ts`, ao lado — nomes parecidos, APIs sem nada em comum.
 - **Google Ads na v21**, deliberadamente atrás — versão maior lá quebra de
@@ -198,6 +202,55 @@ primeiro é servido estático e não importa de `src/`. Quando as duas primeiras
 divergiram, o servidor mandava `Domain=.me.uk`, o navegador recusava por ser
 sufixo público, e o cookie não existia para aquelas lojas — calado.
 `scripts/teste-coletor.mjs` compara as listas e reprova se saírem do ar.
+
+## Os endpoints públicos: contenção e retenção
+
+`/api/collect` e `/api/webhook/<gateway>/<segredo>` são abertos para a internet
+inteira, sem credencial. `src/core/contencao.ts` conta quem chega.
+
+**Os tetos erram para o lado do cliente, e isso é o desenho.** Beacon barrado é
+atribuição perdida em silêncio; webhook barrado é venda que não entra. Então os
+números são folgados (600/min por IP, 6.000/min por loja, 600/min por conexão),
+o estouro responde **429 com `Retry-After`** — o único 4xx que gateway trata
+como transitório e reentrega — e **falha ABERTO**: contagem que não pôde ser
+feita deixa passar.
+
+**Janela FIXA, não deslizante**, e a diferença é assumida: deslizante exigiria
+um carimbo por requisição, mais escrita no caminho mais quente. O custo é o
+dobro do teto na virada, que para teto de abuso não muda nada.
+
+**Não custa uma ida a mais ao banco**: `db.batch()` manda os contadores junto
+da busca do site. É também o único caminho transacional que existe aqui —
+`db.transaction()` lança "No transactions support" no driver HTTP do Neon.
+
+**Retenção** (`src/core/retencao.ts`, Vercel Cron às 4:17 UTC via `vercel.json`)
+**zera o corpo, não apaga a linha**: data, evento, status e chaves de
+correspondência ficam. Duas coisas que ela NUNCA pode zerar, e as duas
+custariam caro:
+
+- disparo com `next_attempt_at` marcado está **na fila de reenvio**, e o reenvio
+  reconstrói o pedido a partir do `request_body` guardado;
+- `raw_body` é `NOT NULL` — UPDATE para NULL estoura a restrição e derruba a
+  rotina inteira. Vai para string vazia.
+
+A rota precisa de `CRON_SECRET` no ambiente; **sem ela, a porta do cron não
+existe** (comparar contra variável vazia deixaria "Bearer undefined" entrar).
+`?conferir=1` diz quanto de corpo velho ainda sobrou — a resposta honesta para
+"a rotina está dando conta?".
+
+## As chaves que descobrem a loja sozinhas
+
+`sites.public_key` e `gateway_connections.webhook_secret` são buscados **sem
+`tenantId`**, porque o tenant é justamente o que eles respondem. Isso só é
+seguro com **índice único** — sem ele, duas linhas com o mesmo valor fazem o
+`limit(1)` escolher uma, e o evento (ou a VENDA) entra na loja errada, sem erro.
+
+Não era colisão aleatória que preocupava: são 96 bits. Era não haver nada
+IMPEDINDO a duplicata — `regerar_chave` não conferia, uma restauração pode
+repetir, e **clonar a configuração de uma oferta para outra, que é o plano,
+copiaria a chave junto**. A migração `0006` põe os dois índices; `npm run faxina`
+avisa se já houver duplicata, porque criar índice único em cima de uma FALHA e
+a mensagem do Postgres não diz quais linhas são.
 
 ## O GA4, e as duas portas que não se substituem
 

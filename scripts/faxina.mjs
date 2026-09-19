@@ -293,6 +293,52 @@ if (!compradores.length) {
   console.log("         | A faxina não faz isso sozinha — cifrar mexe em dado pessoal.");
 }
 
+/* ------------------------------ chaves que identificam a loja sozinhas -- */
+
+/*
+ * `sites.public_key` e `gateway_connections.webhook_secret` são chaves de
+ * busca GLOBAIS: o coletor e o webhook descobrem a loja por elas, sem
+ * `tenant_id` na consulta, porque o tenant é justamente o que elas respondem.
+ * Duas linhas com o mesmo valor fazem o evento — ou a VENDA — entrar na loja
+ * errada, com o `limit(1)` escolhendo uma das duas. Sem erro nenhum.
+ *
+ * A migração 0006 põe índice único nas duas, e é por isso que esta conferência
+ * existe aqui: criar índice único em cima de duplicata FALHA, e a mensagem do
+ * Postgres não diz quais linhas são. Rodar a faxina antes do `db:push` diz.
+ */
+console.log("\n== chaves que identificam a loja sozinhas ==");
+
+const duplicadas = [
+  ["sites.public_key", await sql(
+    "SELECT public_key AS valor, count(*)::int AS n, array_agg(domain) AS onde"
+    + " FROM sites GROUP BY public_key HAVING count(*) > 1")],
+  ["gateway_connections.webhook_secret", await sql(
+    "SELECT webhook_secret AS valor, count(*)::int AS n, array_agg(label) AS onde"
+    + " FROM gateway_connections GROUP BY webhook_secret HAVING count(*) > 1")],
+];
+
+let houveDuplicata = false;
+for (const [coluna, linhas] of duplicadas) {
+  if (!linhas.length) {
+    console.log(`  ok     | ${coluna}: sem repetição`);
+    continue;
+  }
+  houveDuplicata = true;
+  console.log(`  ATENÇÃO| ${coluna}: ${plural(linhas.length, "valor repetido", "valores repetidos")}`);
+  for (const l of linhas) {
+    /* O VALOR NÃO É IMPRESSO: é segredo de webhook e chave de site. O que
+       identifica a linha para quem for consertar é onde ela está. */
+    console.log(`         | ${l.n}x em ${(l.onde ?? []).join(", ")}`);
+  }
+  console.log("         | A migração 0006 vai FALHAR enquanto isso existir.");
+  console.log("         | Conserto: regere a chave da linha duplicada pelo painel.");
+}
+if (houveDuplicata) {
+  console.log("         | A faxina não regera sozinha — trocar a chave de um site");
+  console.log("         | derruba o snippet já publicado, e trocar o segredo do");
+  console.log("         | webhook derruba a URL cadastrada no painel do gateway.");
+}
+
 console.log("\n" + "-".repeat(62));
 if (!mudancas) {
   console.log("  Nada a fazer — a base já está limpa.\n");
