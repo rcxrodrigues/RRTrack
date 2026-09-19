@@ -915,7 +915,7 @@ export function Integracoes({
             */}
             <Copiavel multilinha valor={montarSnippet(site, base)} />
 
-            <Coletor tenantId={loja.id} site={site} base={base} />
+            <Coletor tenantId={loja.id} site={site} />
 
             <ProdutoDaPagina site={site} tenantId={loja.id} />
           </div>
@@ -1474,10 +1474,9 @@ export function Integracoes({
  * pararia a coleta inteira, e a tela continuaria verde — porque do lado de cá
  * nada dá erro quando nada chega.
  */
-function Coletor({ tenantId, site, base }: {
+function Coletor({ tenantId, site }: {
   tenantId: string;
   site: { dominio: string; coletor?: string | null; coletorVerificadoEm?: string | null };
-  base: string;
 }) {
   const router = useRouter();
   const [host, setHost] = useState(site.coletor ?? `t.${site.dominio.replace(/^www\./, "")}`);
@@ -1486,7 +1485,6 @@ function Coletor({ tenantId, site, base }: {
   >({ fase: "parado" });
 
   const verificado = !!site.coletorVerificadoEm;
-  const alvo = base.replace(/^https?:\/\//, "");
 
   async function verificar() {
     setEstado({ fase: "verificando" });
@@ -1538,20 +1536,43 @@ function Coletor({ tenantId, site, base }: {
           background: "var(--painel-alto)", border: "1px solid var(--linha)",
           borderRadius: 5, padding: "10px 12px", marginBottom: 10,
         }}>
-          <div style={{ marginBottom: 6, color: "var(--ink-medio)" }}>Dois passos, uma vez só:</div>
-          <div style={{ marginBottom: 4 }}>
-            <strong>1.</strong> No seu DNS, crie um <span className="num">CNAME</span>:
+          <div style={{ marginBottom: 7, color: "var(--ink-medio)" }}>
+            Na ordem, que importa:
           </div>
-          <div className="num" style={{
-            fontSize: 11, padding: "6px 9px", borderRadius: 4, marginBottom: 7,
-            background: "var(--fundo)", color: "var(--ink-medio)",
-            overflowX: "auto", whiteSpace: "nowrap",
+
+          <div style={{ marginBottom: 6 }}>
+            <strong>1.</strong> Na Vercel, <span className="num">Settings → Domains → Add</span>,
+            e informe <span className="num">{host}</span>. Ela devolve o valor exato do CNAME —
+            costuma ser <span className="num">cname.vercel-dns.com</span>, mas
+            <strong style={{ color: "var(--ink-medio)" }}> use o que ela mostrar</strong>:
+            o alvo varia por conta e por região.
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <strong>2.</strong> No seu DNS, crie o <span className="num">CNAME</span> de{" "}
+            <span className="num">{host.split(".")[0]}</span> com esse valor.
+          </div>
+
+          {/*
+            O erro nº 1 de quem usa Cloudflare, e ele não se parece com erro de
+            DNS: a Vercel diz "Invalid Configuration" e o navegador entra em
+            laço de redirecionamento. Com a nuvem laranja, a Cloudflare esconde
+            o CNAME e termina o TLS com o certificado dela, então a Vercel não
+            consegue validar o domínio nem emitir o dela.
+          */}
+          <div style={{
+            marginBottom: 6, padding: "7px 9px", borderRadius: 4,
+            background: "var(--alerta-fundo)", color: "var(--alerta)",
           }}>
-            {host.split(".")[0]} &nbsp;CNAME&nbsp; {alvo}
+            <strong>Cloudflare:</strong> deixe esse registro como{" "}
+            <span className="num">DNS only</span> — nuvem <strong>cinza</strong>, não laranja.
+            Proxiando, a Vercel não valida o domínio, o certificado não sai e o navegador
+            entra em laço de redirecionamento. O resto do seu domínio pode seguir proxiado.
           </div>
+
           <div>
-            <strong>2.</strong> Adicione <span className="num">{host}</span> como domínio
-            do projeto na Vercel, para o certificado sair.
+            <strong>3.</strong> Espere a Vercel emitir o certificado (costuma ser
+            menos de um minuto) e clique em verificar aqui embaixo.
           </div>
         </div>
       )}
