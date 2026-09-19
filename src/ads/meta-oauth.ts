@@ -32,7 +32,7 @@ import { META_GRAPH as VERSAO, META_GRAPH_URL as GRAPH } from "../core/versoes";
  * todo disparo volta 401. `business_management` é o que deixa listar os
  * pixels que pertencem à empresa, não só os da conta de anúncio.
  */
-export const ESCOPOS = ["ads_read", "ads_management", "business_management"];
+const ESCOPOS = ["ads_read", "ads_management", "business_management"];
 
 export interface AppMeta {
   appId: string;

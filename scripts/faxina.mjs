@@ -176,6 +176,44 @@ for (const s of sites) {
   console.log(`  AJUSTOU| ${acoes.join("; ")}`);
 }
 
+/* ------------------------------------- 4. comprador em claro (só avisa) -- */
+
+/*
+ * `orders.customer` sempre teve o comentário "cifrado em repouso". Nem sempre
+ * esteve: quem gravou venda antes da correção tem nome, e-mail, telefone, CPF e
+ * endereço legíveis no jsonb. Um dump de suporte ou um backup mal guardado sai
+ * com o cadastro inteiro.
+ *
+ * Aqui só CONTA, nunca conserta — cifrar exige a chave e é trabalho do
+ * scripts/cifrar-compradores.cjs, que é idempotente. Misturar as duas coisas
+ * faria uma faxina de rotina mexer em dado pessoal sem ninguém pedir.
+ *
+ * A detecção é pelo FORMATO do cifrado ("iv.texto", ambos em base64), e não por
+ * tentativa de decifrar: a faxina não precisa da chave para responder
+ * "sobrou algo em claro?".
+ */
+const CIFRADO = /^[A-Za-z0-9+/=]{12,}\.[A-Za-z0-9+/=]{16,}$/;
+
+const compradores = await sql(
+  "SELECT id, customer FROM orders WHERE customer IS NOT NULL AND customer::text <> '{}'",
+);
+const emClaro = compradores.filter((o) =>
+  Object.values(o.customer ?? {}).some((v) => typeof v === "string" && v && !CIFRADO.test(v)),
+);
+
+console.log("\n== compradores guardados em orders.customer ==");
+if (!compradores.length) {
+  console.log("  --     | nenhuma venda com comprador guardado");
+} else if (!emClaro.length) {
+  console.log(`  ok     | ${plural(compradores.length, "venda", "vendas")}, todas cifradas`);
+  console.log("         | scripts/cifrar-compradores.cjs já cumpriu o papel e pode sair do repositório");
+} else {
+  console.log(`  ATENÇÃO| ${plural(emClaro.length, "venda", "vendas")} com dado pessoal EM CLARO`);
+  console.log(`         | de ${plural(compradores.length, "venda", "vendas")} com comprador guardado.`);
+  console.log("         | Conserto: node scripts/cifrar-compradores.cjs (idempotente).");
+  console.log("         | A faxina não faz isso sozinha — cifrar mexe em dado pessoal.");
+}
+
 console.log("\n" + "-".repeat(62));
 if (!mudancas) {
   console.log("  Nada a fazer — a base já está limpa.\n");

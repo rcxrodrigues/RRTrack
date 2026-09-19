@@ -11,6 +11,3 @@ export function getDestination(platform: string): DestinationAdapter | undefined
   return byPlatform.get(platform);
 }
 
-export function listDestinations(): DestinationAdapter[] {
-  return [...adapters];
-}

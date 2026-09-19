@@ -60,7 +60,7 @@ export function normalizePhone(raw: string, defaultCountry = "55"): string | nul
 }
 
 /** Nomes: minúsculas, sem acento, só letras. */
-export function normalizeName(raw: string): string | null {
+function normalizeName(raw: string): string | null {
   const v = semAcento(raw.trim().toLowerCase()).replace(/[^a-z]/g, "");
   return v || null;
 }

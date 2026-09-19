@@ -14,7 +14,7 @@
 
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "../db/index";
-import { destinations, dispatches, orderItems, orders } from "../db/schema";
+import { destinations, dispatches } from "../db/schema";
 import { getDestination } from "../destinations/registry";
 import type { ConversionEvent, DispatchInput } from "../destinations/types";
 import { decryptRecord } from "./crypto";
@@ -146,24 +146,6 @@ export async function dispatchOrder(
   }
 
   return resultados;
-}
-
-/**
- * Soma o custo dos itens de uma venda, para o lucro.
- * Devolve `null` quando nenhum item tem custo — zero seria mentira, e um lucro
- * calculado sobre custo zero é pior que lucro nenhum.
- */
-export async function computeCogs(orderRowId: string): Promise<number | null> {
-  const itens = await db.select().from(orderItems).where(eq(orderItems.orderId, orderRowId));
-  const comCusto = itens.filter((i) => i.unitCostCents !== null);
-  if (comCusto.length === 0) return null;
-  return comCusto.reduce((s, i) => s + (i.unitCostCents ?? 0) * i.quantity, 0);
-}
-
-/** Carrega uma venda pelo id, para reprocessamento. */
-export async function loadOrder(orderRowId: string) {
-  const [row] = await db.select().from(orders).where(eq(orders.id, orderRowId)).limit(1);
-  return row ?? null;
 }
 
 /* ================================================ eventos de navegação == */

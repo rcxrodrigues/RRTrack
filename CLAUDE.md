@@ -30,6 +30,24 @@ cifrada com a `CREDENTIALS_KEY` LOCAL, a produção decifra com a DELA, e todas 
 defesas de assinatura falharam em cascata. O relatório parecia buraco de
 segurança em produção; era o teste escrevendo onde não sabia ler.
 
+## Ferramentas de operação
+
+Rodadas à mão, não pela suíte. Ficaram anos sem aparecer em lugar nenhum e por
+isso quase foram apagadas numa faxina — estão aqui para serem encontradas.
+
+```bash
+npm run usuario         # cria pessoa e dá acesso. NÃO há tela de convite:
+                        # a primeira conta de qualquer sistema nasce fora dele
+npm run redes:meta      # regera as faixas de IP da Meta (AS32934, via RIPE)
+                        # para o filtro de robô. Rodar a cada poucos meses
+npm run teste:purchase  # encena uma venda contra o pixel REAL usando
+                        # test_event_code. Roda ANTES de ligar tráfego: o
+                        # purchase só nasce de webhook, e descobrir que a Meta
+                        # recusa o payload na primeira venda de verdade é caro
+npm run conferir:credenciais   # a CREDENTIALS_KEY do .env abre o que está no banco?
+npm run faxina                 # mostra o que há de cadastro abandonado (--aplicar executa)
+```
+
 Use `npm ci`, não `npm install`. O `install` reescreve o `package-lock.json` em
 versões diferentes do npm e o conflito trava o `git pull` de quem vier depois.
 

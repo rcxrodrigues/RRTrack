@@ -12,7 +12,7 @@
  * navegador serve — e é por isso que ele precisa valer pouco tempo e uma vez só.
  */
 
-import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db/index";
 import { metaLinks, metaProfiles } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
@@ -100,50 +100,6 @@ export async function acharPeloSegredo(secret: string): Promise<Vinculo | null> 
 }
 
 /*
- * O vínculo pronto mais recente desta pessoa nesta loja.
- *
- * É como a tela de escolha reencontra o token depois que o consentimento
- * aconteceu em OUTRO navegador: ela não tem o segredo, mas tem a sessão.
- */
-export async function vinculoPronto(tenantId: string, userId: string): Promise<Vinculo | null> {
-  const [linha] = await db.select().from(metaLinks)
-    .where(and(
-      eq(metaLinks.tenantId, tenantId),
-      eq(metaLinks.userId, userId),
-      isNotNull(metaLinks.token),
-      gt(metaLinks.expiresAt, new Date()),
-    ))
-    /*
-     * Do mais novo para o mais velho. Sem o `desc`, `orderBy` é ascendente e
-     * isto devolvia o vínculo mais ANTIGO — o oposto do que o nome promete.
-     * Quem tentasse de novo depois de um consentimento que falhou reencontrava
-     * a tentativa velha, e não a que acabou de dar certo.
-     */
-    .orderBy(desc(metaLinks.createdAt))
-    .limit(1);
-
-  if (!linha) return null;
-
-  return {
-    id: linha.id,
-    tenantId: linha.tenantId,
-    secret: linha.secret,
-    token: linha.token ? await decryptValue(linha.token) : null,
-    tokenExpiresAt: linha.tokenExpiresAt,
-  };
-}
-
-export async function guardarToken(
-  id: string,
-  token: string,
-  expiraEm: Date | null,
-): Promise<void> {
-  await db.update(metaLinks)
-    .set({ token: await encryptValue(token), tokenExpiresAt: expiraEm })
-    .where(eq(metaLinks.id, id));
-}
-
-/*
  * Uso único: o vínculo some assim que as escolhas viram linhas de verdade.
  *
  * Deixar a linha viva depois disso manteria um token de 60 dias guardado num
@@ -201,8 +157,4 @@ export async function perfilDaLoja(tenantId: string): Promise<Perfil | null> {
     token: await decryptValue(linha.token),
     expiraEm: linha.tokenExpiresAt,
   };
-}
-
-export async function esquecerPerfil(tenantId: string): Promise<void> {
-  await db.delete(metaProfiles).where(eq(metaProfiles.tenantId, tenantId));
 }
