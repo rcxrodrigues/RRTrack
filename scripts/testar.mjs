@@ -40,7 +40,34 @@ if (versao[0] < NODE_MINIMO[0]
   process.exit(1);
 }
 
-const BASE = process.env.RR_BASE ?? "https://rr-track.vercel.app";
+/*
+ * Contra QUEM os testes de ponta a ponta rodam.
+ *
+ * O padrão era produção, e isso custou uma tarde. `npm test` num clone novo
+ * disparava webhook de verdade no servidor de verdade e semeava lojas de teste
+ * no banco de verdade — sem pedir nada a ninguém. Como a semente é cifrada com
+ * a CREDENTIALS_KEY LOCAL e a produção decifra com a DELA, todas as defesas de
+ * assinatura falharam em cascata e o relatório parecia buraco de segurança em
+ * produção. Não era: era o teste escrevendo num lugar que não sabia ler.
+ *
+ * Agora o padrão é a máquina de quem roda, e sair dela exige dizer que quer:
+ * `--remoto`. Não é burocracia — é que mandar evento para produção precisa ser
+ * uma decisão, não o que acontece quando ninguém decidiu nada.
+ */
+const LOCAL = "http://localhost:3000";
+const BASE = process.env.RR_BASE ?? LOCAL;
+const REMOTO = process.argv.includes("--remoto");
+
+if (!BASE.startsWith("http://localhost") && !BASE.startsWith("http://127.0.0.1") && !REMOTO) {
+  console.error(
+    `\nRR_BASE aponta para ${BASE}, que não é esta máquina.`
+    + "\n\nOs testes de ponta a ponta gravam lojas de teste no banco e disparam"
+    + "\nwebhook no endereço alvo. Contra produção isso mexe em dado real."
+    + "\n\nSe é isso mesmo que você quer:   npm test -- --remoto"
+    + "\nSe não é, tire o RR_BASE do .env e suba o servidor com npm run dev.\n",
+  );
+  process.exit(1);
+}
 
 /* Os que precisam de compilação, com o módulo que cada um exige. */
 const COMPILAR = [

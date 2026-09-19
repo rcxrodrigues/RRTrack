@@ -22,6 +22,14 @@ npm run dev            # localhost:3000
 testes não rodam e a saída **diz isso em vez de mentir que passou** — foi feita
 assim de propósito.
 
+Os de ponta a ponta rodam contra **esta máquina** (`npm run dev` em outro
+terminal). Mirar outro endereço exige `npm test -- --remoto`, e isso é proteção,
+não burocracia: eles gravam lojas de teste no banco e disparam webhook no alvo.
+O padrão já foi produção, e o estrago não foi o que se espera — a semente é
+cifrada com a `CREDENTIALS_KEY` LOCAL, a produção decifra com a DELA, e todas as
+defesas de assinatura falharam em cascata. O relatório parecia buraco de
+segurança em produção; era o teste escrevendo onde não sabia ler.
+
 Use `npm ci`, não `npm install`. O `install` reescreve o `package-lock.json` em
 versões diferentes do npm e o conflito trava o `git pull` de quem vier depois.
 
@@ -98,6 +106,15 @@ versão sem clicar é apostar.
 - **Reimportar módulo com query para furar cache, nos testes.** A suíte compila
   para CommonJS, cujo cache ignora a query. O teste passa sem testar nada.
   Exporte a função pura e teste ela.
+- **Deixar a suíte de ponta a ponta mirar produção por padrão.** Ver acima.
+- **Definir na Vercel uma variável que o código já resolve.** `META_GRAPH_VERSION`
+  ficou lá esquecida e anulava em silêncio a constante de `core/versoes.ts` —
+  o repositório dizia v26.0 e produção rodava outra coisa. Essas variáveis são
+  para testar versão nova SEM subir código; passado o teste, apague.
+- **Credencial ilegível ser tratada como "gateway não assina".** Em
+  `core/receber.ts`, chave de cifragem incompatível faz a verificação de
+  assinatura deixar de acontecer, e o webhook é aceito com 200. Está assim
+  ainda; o diagnóstico é `npm run conferir:credenciais`.
 
 ## Buracos conhecidos, de propósito
 
