@@ -182,6 +182,9 @@ export function mergeClickContext(
     ttclid: s?.ttclid ?? a.ttclid,
     fbp: s?.fbp ?? a.fbp,
     fbc: s?.fbc ?? a.fbc,
+    /* Só da sessão: o gateway não faz ideia do que é um cookie do GA4. */
+    gaClientId: s?.gaClientId ?? undefined,
+    gaSessionId: s?.gaSessionId ?? undefined,
     ip: s?.ip ?? undefined,
     userAgent: s?.userAgent ?? undefined,
     landingUrl: s?.landingUrl ?? a.landingUrl,

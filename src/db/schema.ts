@@ -300,6 +300,21 @@ export const clickSessions = pgTable("click_sessions", {
   fbc: text("fbc"),
 
   /*
+   * Identificadores do GA4, lidos dos cookies que o gtag.js cria na página.
+   *
+   * Guardados na sessão e não derivados na hora do disparo porque a compra
+   * nasce HORAS depois, no webhook, quando o navegador já fechou. Sem eles a
+   * venda chega ao GA4 como usuário novo, sem origem — e o funil quebra no
+   * último passo, justamente o que se queria medir.
+   *
+   * NÃO são gerados por nós, ao contrário do `_fbp`. O gtag roda na página e
+   * cria o `_ga` sozinho; inventar um aqui criaria um segundo usuário para a
+   * mesma pessoa e o relatório contaria cada visitante duas vezes.
+   */
+  gaClientId: text("ga_client_id"),
+  gaSessionId: text("ga_session_id"),
+
+  /*
    * Identificadores da estrutura do anúncio, extraídos das UTMs.
    *
    * Esta é a ponte entre as duas metades do painel. O gasto vem da API da

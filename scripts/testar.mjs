@@ -69,6 +69,33 @@ if (!BASE.startsWith("http://localhost") && !BASE.startsWith("http://127.0.0.1")
   process.exit(1);
 }
 
+/*
+ * EM QUE BANCO a suíte mexe.
+ *
+ * O `--remoto` acima protege o ENDEREÇO do webhook. Não protege o banco — e o
+ * banco é a outra metade do mesmo estrago: a semente cria loja, conexão de
+ * gateway e destino, e os de ponta a ponta gravam venda. Há limpeza no fim
+ * (`DESCARTAVEIS`, lá embaixo), mas ela só roda se a suíte chegar ao fim; um
+ * travamento no meio deixa tudo lá.
+ *
+ * Com `DATABASE_URL_TESTE` no `.env`, é ELE que a suíte usa — a produção nem é
+ * tocada. No Neon isso é um branch, que se cria em segundos e não duplica dado.
+ *
+ * Definir aqui basta para tudo: a semente e cada teste herdam o ambiente deste
+ * processo, e `process.loadEnvFile` NÃO sobrescreve variável já definida — quem
+ * mandar aqui manda em todos.
+ *
+ * Sem a variável nada muda, e é de propósito: fazer `npm test` parar de
+ * funcionar em quem já usa seria trocar um risco por uma quebra.
+ */
+if (existsSync(".env")) process.loadEnvFile(".env");
+
+const BANCO_DE_TESTE = process.env.DATABASE_URL_TESTE?.trim();
+if (BANCO_DE_TESTE) process.env.DATABASE_URL = BANCO_DE_TESTE;
+
+/* Só o host: a string inteira tem usuário e senha dentro. */
+const hostDoBanco = (u) => { try { return new URL(u ?? "").host; } catch { return "?"; } };
+
 /* Os que precisam de compilação, com o módulo que cada um exige. */
 const COMPILAR = [
   "src/core/resumo.ts", "src/core/rastreio.ts", "src/core/custos.ts",
@@ -79,8 +106,14 @@ const COMPILAR = [
   "src/gateways/shopify.ts",
   "src/core/janela.ts", "src/core/robos.ts", "src/core/redes.ts", "src/core/normalizar.ts",
   "src/core/utm.ts", "src/core/versoes.ts", "src/core/dominio.ts", "src/ads/meta.ts",
-  "src/destinations/google.ts", "src/destinations/tiktok.ts",
+  "src/destinations/google.ts", "src/destinations/tiktok.ts", "src/destinations/ga4.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
+  /*
+   * O schema entra aqui sem ter teste próprio: ele é a LISTA DE COLUNAS de
+   * verdade, e `teste-coletor` confere contra ela os nomes que as rotas
+   * escrevem à mão dentro de `sql`. Não abre conexão — são só definições.
+   */
+  "src/db/schema.ts",
 ];
 
 /*
@@ -98,7 +131,7 @@ const COMPILAR = [
 const UNITARIOS_PUROS = [
   "taxas", "confirmacao", "tiktok", "google", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
-  "robos", "utm", "versoes", "coletor", "ads-meta",
+  "robos", "utm", "versoes", "coletor", "ga4", "ads-meta",
 ];
 
 /* Estes abrem conexão com o Postgres: precisam do `.env` preenchido. */
@@ -120,6 +153,19 @@ const SEM_BANCO = process.argv.includes("--sem-banco");
 const UNITARIOS = SEM_BANCO
   ? UNITARIOS_PUROS
   : [...UNITARIOS_PUROS, ...UNITARIOS_BANCO];
+
+/*
+ * Diz em que banco vai mexer ANTES de mexer — ver a escolha lá em cima.
+ *
+ * Só o host, nunca a string: ela tem usuário e senha dentro, e um terminal com
+ * senha de produção rolando é uma cópia dela em lugar nenhum combinado.
+ */
+if (!SEM_BANCO) {
+  console.log(BANCO_DE_TESTE
+    ? `\nbanco de teste: ${hostDoBanco(BANCO_DE_TESTE)}`
+    : `\nbanco: ${hostDoBanco(process.env.DATABASE_URL)} — é o do .env, e a suíte ESCREVE nele.`
+      + "\n       Para não mexer nele, ponha um branch em DATABASE_URL_TESTE no .env.");
+}
 
 /*
  * O arquivo de um teste, seja `.cjs` ou `.mjs`.
@@ -318,11 +364,11 @@ const DESCARTAVEIS = [
 /* Sem banco nada foi criado, então não há o que limpar. */
 if (!SEM_BANCO) try {
   /*
-   * O runner nunca precisou do banco — quem falava com ele eram os testes
-   * filhos, cada um carregando o .env por conta. A limpeza é a primeira coisa
-   * que ele faz sozinho, e por isso precisa carregar também.
+   * O `.env` já foi carregado lá em cima, junto da escolha do banco — então a
+   * limpeza apaga no MESMO banco em que a semente escreveu, inclusive quando
+   * é o de `DATABASE_URL_TESTE`. Recarregar aqui seria pior que redundante:
+   * daria para as duas pontas divergirem no dia em que a escolha mudasse.
    */
-  process.loadEnvFile(".env");
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(process.env.DATABASE_URL);
   const apagadas = await sql`

@@ -13,8 +13,7 @@
  *
  *   node scripts/teste-produto-pagina.cjs
  */
-const fs = require("node:fs");
-const path = require("node:path");
+const { carregar } = require("./dom-falso.cjs");
 
 let f = 0;
 const eq = (l, got, want) => {
@@ -23,113 +22,6 @@ const eq = (l, got, want) => {
   console.log(`  ${ok ? "ok  " : "FALHA"} | ${l}`
     + (ok ? "" : `  obtido ${JSON.stringify(got)}, esperado ${JSON.stringify(want)}`));
 };
-
-const fonte = fs.readFileSync(path.join(__dirname, "..", "public", "rr.js"), "utf8");
-
-/* Monta um DOM mínimo e roda o script dentro dele, como um navegador faria. */
-function carregar({ html = "", url = "https://loja.exemplo.com/products/x", globais = {} }) {
-  const metas = [];
-  const scripts = [];
-  for (const m of html.matchAll(/<meta ([^>]+)>/g)) metas.push(m[1]);
-  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
-    scripts.push(m[1]);
-  }
-
-  const atributo = (bruto, nome) => {
-    const m = new RegExp(`${nome}="([^"]*)"`).exec(bruto);
-    return m ? m[1] : null;
-  };
-
-  const doc = {
-    querySelector(sel) {
-      let m = /^meta\[(property|name)="([^"]+)"\]$/.exec(sel);
-      if (m) {
-        const achou = metas.find((x) => atributo(x, m[1]) === m[2]);
-        return achou ? { getAttribute: (n) => atributo(achou, n) } : null;
-      }
-      return null;
-    },
-    querySelectorAll(sel) {
-      if (sel.includes("ld+json")) return scripts.map((t) => ({ textContent: t }));
-      return [];
-    },
-    addEventListener() {}, removeEventListener() {},
-    readyState: "complete", referrer: "",
-    /* Acumula o que o script grava, para o teste do dominio conferir. */
-    _cookies: "",
-    get cookie() { return this._cookies; },
-    set cookie(v) { this._cookies += (this._cookies ? "; " : "") + v; },
-    title: "", documentElement: {}, body: {},
-  };
-
-  const u = new URL(url);
-  const enviados = [];
-  const ouvintes = {};
-
-  const loc = { href: url, search: u.search, pathname: u.pathname, hostname: u.hostname };
-
-  /* Navegacao sem recarregar, como um tema com JavaScript faria. */
-  const hist = {
-    state: null,
-    pushState(_e, _t, destino) {
-      const d = new URL(destino, loc.href);
-      loc.href = d.href; loc.pathname = d.pathname; loc.search = d.search;
-    },
-    replaceState(...a) { hist.pushState(...a); },
-  };
-
-  const janela = {
-    document: doc,
-    location: loc,
-    history: hist,
-    navigator: {
-      userAgent: "node",
-      sendBeacon: (_url, corpo) => {
-        /* O script manda um Blob; aqui so precisamos do nome do evento. */
-        enviados.push(corpo);
-        return true;
-      },
-    },
-    addEventListener(nome, fn) { (ouvintes[nome] = ouvintes[nome] || []).push(fn); },
-    removeEventListener() {},
-    setTimeout, clearTimeout, encodeURIComponent, decodeURIComponent,
-    /* Nao dispara de verdade: so precisa existir para o script terminar de carregar. */
-    setInterval: () => 0, clearInterval: () => {},
-    URL, URLSearchParams, JSON, Math, Date, parseFloat, parseInt, isFinite, String, Number,
-    /* Registra o que o script postou, para o teste do carrinho conferir. */
-    fetch: async (url, opcoes) => {
-      janela.__posts.push({ url, corpo: opcoes && opcoes.body });
-      return { ok: true };
-    },
-    sessionStorage: {
-      _d: {},
-      getItem(k) { return this._d[k] ?? null; },
-      setItem(k, v) { this._d[k] = String(v); },
-    },
-    crypto: { getRandomValues: (a) => a.fill(7) },
-    /* O que um navegador tem e o vm nao: o script le os dois ao montar evento. */
-    screen: { width: 390, height: 844 },
-    Blob,
-    Intl: { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: "America/Sao_Paulo" }) }) },
-    RRTrackConfig: { siteKey: "pk_teste", endpoint: "https://x/rr/collect" },
-    ...globais,
-  };
-  janela.__posts = [];
-  janela.window = janela;
-  janela.self = janela;
-
-  const vm = require("node:vm");
-  const ctx = vm.createContext(janela);
-  vm.runInContext(fonte, ctx);
-
-  /*
-   * O corpo vai dentro de um Blob, que o vm nao sabe ler de volta. Em vez de
-   * remontar isso, o teste conta OS DISPAROS e usa `rr('context')` para o
-   * resto — o que importa aqui e quantas vezes cada navegacao dispara, nao o
-   * conteudo, que os outros blocos ja cobrem.
-   */
-  return { rr: janela.rr, enviados, janela, loc, hist, ouvintes, posts: janela.__posts };
-}
 
 (async () => {
   console.log("\n== Shopify: preço vem em CENTAVOS no objeto dela ==");
