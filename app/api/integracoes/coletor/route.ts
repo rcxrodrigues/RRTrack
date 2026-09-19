@@ -45,7 +45,8 @@ export async function POST(req: Request): Promise<Response> {
   if (!loja) return Response.json({ erro: "não encontrado" }, { status: 404 });
 
   const [site] = await db.select().from(sites)
-    .where(and(eq(sites.tenantId, tenantId), eq(sites.active, true))).limit(1);
+    .where(and(eq(sites.tenantId, tenantId), eq(sites.active, true)))
+    .orderBy(sites.domain).limit(1);
   if (!site) return Response.json({ erro: "site não cadastrado" }, { status: 404 });
 
   /*

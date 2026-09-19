@@ -300,7 +300,7 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         const [existente] = await db.select({ id: sites.id, chave: sites.publicKey })
-          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+          .from(sites).where(eq(sites.tenantId, tenantId)).orderBy(sites.domain).limit(1);
 
         if (existente) {
           await db.update(sites).set({
@@ -334,7 +334,7 @@ export async function POST(req: Request): Promise<Response> {
        */
       case "produto": {
         const [site] = await db.select({ id: sites.id })
-          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+          .from(sites).where(eq(sites.tenantId, tenantId)).orderBy(sites.domain).limit(1);
 
         if (!site) {
           return Response.json({ erro: "cadastre o endereço do site primeiro" }, { status: 400 });
@@ -370,7 +370,7 @@ export async function POST(req: Request): Promise<Response> {
        */
       case "regerar_chave": {
         const [site] = await db.select({ id: sites.id })
-          .from(sites).where(eq(sites.tenantId, tenantId)).limit(1);
+          .from(sites).where(eq(sites.tenantId, tenantId)).orderBy(sites.domain).limit(1);
 
         if (!site) return Response.json({ erro: "nenhum site cadastrado" }, { status: 404 });
 
