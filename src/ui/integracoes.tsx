@@ -1550,7 +1550,19 @@ function Coletor({ tenantId, site }: {
 
           <div style={{ marginBottom: 6 }}>
             <strong>2.</strong> No seu DNS, crie o <span className="num">CNAME</span> de{" "}
-            <span className="num">{host.split(".")[0]}</span> com esse valor.
+            <span className="num">{host.split(".")[0]}</span> com esse valor.{" "}
+            {/*
+              O engano mais comum, e ele não parece engano: copiar o registro do
+              domínio principal, que costuma ser um A apontando para onde a
+              oferta está hospedada. O subdomínio passa a resolver, ninguém vê
+              erro de DNS, e a Vercel simplesmente não é quem atende ali.
+            */}
+            <span style={{ color: "var(--ink-tenue)" }}>
+              Se já existir um registro com esse nome do tipo <span className="num">A</span>,
+              troque o tipo para <span className="num">CNAME</span> — copiar o registro do
+              domínio principal faz o endereço resolver para o lugar errado, sem erro nenhum
+              aparecer.
+            </span>
           </div>
 
           {/*
