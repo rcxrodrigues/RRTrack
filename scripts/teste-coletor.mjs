@@ -223,6 +223,21 @@ eq("o rr.js sai da frente quando o coletor é do mesmo site",
 eq("o snippet usa o endereço do coletor, não a base",
   tsx.includes('src="${origem}/rr.js"'), true);
 eq("e o endpoint também", tsx.includes('endpoint:"${origem}/rr/collect"'), true);
+/*
+ * Trocar de loja no seletor tem de REMONTAR os dois componentes que guardam
+ * texto digitado. Sem `key`, o inicializador do useState não roda de novo e o
+ * campo segue mostrando o valor da loja anterior — no coletor isso faz
+ * verificar o host de uma loja estando em outra; no produto, salvar grava a
+ * oferta errada na configuração da outra.
+ */
+eq("o coletor remonta ao trocar de loja",
+  /<Coletor key=\{site\.chave\}/.test(tsx), true);
+eq("o produto da página também",
+  /<ProdutoDaPagina key=\{site\.chave\}/.test(tsx), true);
+/* O palpite do campo precisa sair limpo mesmo com domínio guardado como URL. */
+eq("o palpite do coletor passa pelo limpador",
+  /const sugestao = `t\.\$\{dominioDoSite\(site\.dominio\)\}`;/.test(tsx), true);
+
 eq("o snippet exige verificação, não só o campo preenchido",
   /if \(!c \|\| !site\.coletorVerificadoEm\) return base;/.test(tsx), true);
 /* Verificação que falha tem de ZERAR a data, ou a loja fica apontando para um

@@ -7,6 +7,7 @@ import { TaxasDoGateway } from "./taxas-gateway";
 import { LogoPlataforma } from "./logos";
 import { MetaVincular } from "./meta-vincular";
 import { Confirmacao, useConfirmacao } from "./confirmacao";
+import { dominioDoSite, normalizarHost } from "@/core/dominio";
 
 /*
  * Tela de Integrações.
@@ -915,9 +916,25 @@ export function Integracoes({
             */}
             <Copiavel multilinha valor={montarSnippet(site, base)} />
 
-            <Coletor tenantId={loja.id} site={site} />
+            {/*
+              `key` com a chave do site, nos DOIS, e isso não é enfeite.
 
-            <ProdutoDaPagina site={site} tenantId={loja.id} />
+              Os dois guardam o que a pessoa digitou em `useState`, e o
+              inicializador de `useState` roda UMA VEZ. Trocar de loja no
+              seletor troca as props, mas o React reaproveita o componente —
+              então o campo continuava mostrando o valor da loja anterior.
+
+              No coletor isso levava a verificar o host de uma loja estando em
+              outra. No produto era pior: id, nome e preço da loja anterior
+              ficavam no formulário, e salvar gravaria o produto de uma oferta
+              na configuração de outra, sem nada avisando.
+
+              Mudando a `key`, o React desmonta e remonta — e o estado nasce
+              das props certas.
+            */}
+            <Coletor key={site.chave} tenantId={loja.id} site={site} />
+
+            <ProdutoDaPagina key={site.chave} site={site} tenantId={loja.id} />
           </div>
         </div>
       )}
@@ -1479,7 +1496,19 @@ function Coletor({ tenantId, site }: {
   site: { dominio: string; coletor?: string | null; coletorVerificadoEm?: string | null };
 }) {
   const router = useRouter();
-  const [host, setHost] = useState(site.coletor ?? `t.${site.dominio.replace(/^www\./, "")}`);
+  /*
+   * O palpite e o valor guardado passam os DOIS pelo mesmo limpador.
+   *
+   * `sites.domain` nem sempre é hostname: parte das linhas guarda a URL
+   * inteira, e `t.` + "https://transforlar.com/" dá `t.https://transforlar.com/`
+   * — que não é endereço nenhum. O `collector_host` no banco foi gerado no
+   * cadastro com essa mesma conta, então o valor guardado pode estar igualmente
+   * torto; limpar só o palpite deixaria metade do problema de pé.
+   */
+  const sugestao = `t.${dominioDoSite(site.dominio)}`;
+  const [host, setHost] = useState(
+    site.coletor ? (normalizarHost(site.coletor) ?? sugestao) : sugestao,
+  );
   const [estado, setEstado] = useState<
     { fase: "parado" } | { fase: "verificando" } | { fase: "pronto"; ok: boolean; detalhe: string }
   >({ fase: "parado" });
