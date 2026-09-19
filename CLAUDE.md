@@ -12,7 +12,7 @@ decidido, e o que quebra quando se decide diferente.
 
 ```bash
 npm run typecheck      # tsc --noEmit — rode SEMPRE antes de commitar
-npm test               # suíte inteira: 14 unitários + 6 de ponta a ponta + banco
+npm test               # tudo: 21 unitários (14 sem banco + 7 com) + 6 de ponta a ponta
 npm run test:sem-banco # só o que dispensa .env — serve em clone novo
 npm run build          # o build da Vercel, rodando aqui
 npm run dev            # localhost:3000
