@@ -125,6 +125,18 @@ for (const k of ["em", "ph", "fn", "ln", "fbp", "fbc", "external_id", "ip", "use
 
 /* Confere que a normalização foi aplicada antes do hash. */
 const ud = disp?.request_body?.data?.[0]?.user_data;
+
+/*
+ * Este check vem ANTES dos outros de propósito, e nasceu de uma execução em
+ * que ele não existia: sem corpo de requisição, a linha do `JSON.stringify`
+ * lá embaixo derrubou o processo com TypeError, e o processo morrendo levou
+ * junto as SEIS seções seguintes do teste. O relatório culpou "e2e" inteiro,
+ * quando o que havia era uma causa só, aqui.
+ *
+ * Nomear a ausência transforma um acidente de leitura numa falha que se lê.
+ */
+check("o disparo tem corpo de requisição", !!ud,
+  ud ? "" : `status do disparo: ${disp?.status ?? "disparo não existe"}`);
 const esperadoEmail = Buffer.from(
   await wc.subtle.digest("SHA-256", new TextEncoder().encode("jose.silva@gmail.com")),
 ).toString("hex");
@@ -134,7 +146,9 @@ const esperadoTel = Buffer.from(
   await wc.subtle.digest("SHA-256", new TextEncoder().encode("5511987654321")),
 ).toString("hex");
 check("telefone com DDI antes do hash", ud?.ph?.[0] === esperadoTel);
-check("nenhum dado pessoal em claro", JSON.stringify(ud).indexOf("gmail") === -1);
+/* `ud` ausente REPROVA, e não passa por omissão: payload que não existe não é
+   prova de que não vazou nada. E `?? {}` aqui silenciaria exatamente isso. */
+check("nenhum dado pessoal em claro", !!ud && !JSON.stringify(ud).includes("gmail"));
 check("falhou no envio (token falso, esperado)", disp?.status === "failed", disp?.error ?? "");
 
 /* -------------------------------------------------- 5. reentregas ------- */

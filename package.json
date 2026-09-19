@@ -18,7 +18,8 @@
     "test:e2e": "node scripts/teste-e2e.mjs",
     "cadastrar": "node scripts/cadastrar.mjs",
     "test": "node scripts/testar.mjs",
-    "test:sem-banco": "node scripts/testar.mjs --sem-banco"
+    "test:sem-banco": "node scripts/testar.mjs --sem-banco",
+    "conferir:credenciais": "node scripts/conferir-credenciais.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

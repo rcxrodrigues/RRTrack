@@ -91,6 +91,33 @@
     return m ? decodeURIComponent(m[2]) : null;
   }
 
+  /*
+   * O coletor está no mesmo site que esta página?
+   *
+   * Disso depende QUEM escreve o cookie do clickId, e a diferença vale 89 dias.
+   *
+   * Cookie escrito por JavaScript o Safari corta em 7 dias — ou em 24 HORAS
+   * quando a pessoa chegou por link com parâmetro de rastreamento, que é todo
+   * tráfego pago com `?fbclid=`. Cookie que chega por `Set-Cookie` numa
+   * resposta do mesmo site não é cortado.
+   *
+   * Então, quando o coletor é do mesmo site, quem manda o cookie é ele, e este
+   * script SAI DA FRENTE: reescrevê-lo aqui a cada página trocaria o cookie de
+   * 90 dias do servidor por um de 24 horas, desfazendo em silêncio justamente
+   * o que a configuração do subdomínio foi feita para resolver.
+   *
+   * Sem subdomínio, nada muda: o script continua escrevendo, como sempre.
+   */
+  var coletorMesmoSite = (function () {
+    try {
+      /* Endpoint relativo é o mesmo site por definição. */
+      if (endpoint.indexOf("http") !== 0) return true;
+      var alvo = document.createElement("a");
+      alvo.href = endpoint;
+      return dominioRegistravel(alvo.hostname) === dominioRegistravel(location.hostname);
+    } catch (e) { return false; }
+  })();
+
   function load() {
     try { return JSON.parse(window.localStorage.getItem(STORE) || "{}"); }
     catch (e) { return {}; }
@@ -142,12 +169,36 @@
    * página de pagamento, e não ao anúncio que trouxe a pessoa. No site do
    * lojista `cfg.clickId` não existe, e nada muda.
    */
-  state.click_id = cfg.clickId || state.click_id || getCookie("_rr_cid") || uuid();
-  setCookie("_rr_cid", state.click_id, COOKIE_DAYS);
+  var cidNoCookie = getCookie("_rr_cid");
+  state.click_id = cfg.clickId || state.click_id || cidNoCookie || uuid();
 
-  /* Identificador de primeira parte, enviado hasheado como external_id. */
-  state.external_id = state.external_id || getCookie("_rr_eid") || uuid();
-  setCookie("_rr_eid", state.external_id, COOKIE_DAYS);
+  /*
+   * Escreve só quando ainda NÃO existe cookie, ou quando o servidor não vai
+   * escrever por nós.
+   *
+   * A primeira visita precisa do cookie na hora: se a requisição ao coletor
+   * falhar por rede, a próxima página geraria outro clickId e a sessão
+   * rachava em duas. Da segunda em diante, com coletor do mesmo site, o
+   * `Set-Cookie` da resposta já renovou o prazo, e reescrever aqui só faria
+   * o Safari cortá-lo de volta para 24 h.
+   */
+  if (!cidNoCookie || !coletorMesmoSite) {
+    setCookie("_rr_cid", state.click_id, COOKIE_DAYS);
+  }
+
+  /*
+   * Identificador de primeira parte, enviado hasheado como external_id.
+   *
+   * Mesma regra do clickId acima, e pelo mesmo motivo: com coletor do mesmo
+   * site, quem renova é o `Set-Cookie` da resposta. Reescrever aqui a cada
+   * página faria o Safari cortá-lo para 24 h — e external_id que renasce todo
+   * dia faz a Meta ver uma pessoa nova por dia, derrubando a correspondência.
+   */
+  var eidNoCookie = getCookie("_rr_eid");
+  state.external_id = state.external_id || eidNoCookie || uuid();
+  if (!eidNoCookie || !coletorMesmoSite) {
+    setCookie("_rr_eid", state.external_id, COOKIE_DAYS);
+  }
 
   /*
    * _fbp — criado aqui, antes de o fbevents.js chegar. Quando o pixel carrega
@@ -316,6 +367,14 @@
     try {
       fetch(endpoint, {
         method: "POST", body: json, keepalive: true, mode: "cors",
+        /*
+         * Sem "include", o navegador DESCARTA o `Set-Cookie` da resposta entre
+         * origens — e a página está em www.loja.com.br enquanto o coletor está
+         * em t.loja.com.br, que são origens diferentes ainda que o mesmo site.
+         * O sendBeacon acima já manda credencial por conta própria; este
+         * caminho de reserva precisa pedir.
+         */
+        credentials: "include",
         headers: { "content-type": "text/plain;charset=UTF-8" }
       });
     } catch (e) {}

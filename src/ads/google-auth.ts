@@ -88,8 +88,13 @@ export async function accessToken(cred: CredenciaisAnuncio): Promise<string> {
   return j.access_token;
 }
 
-/** Versão da API na URL. O Google aposenta versão a cada poucos meses. */
-export const VERSAO = process.env.GOOGLE_ADS_VERSION ?? "v21";
+/*
+ * Versão da API na URL. O Google aposenta versão a cada poucos meses.
+ *
+ * O valor mora em `core/versoes.ts`, junto com o da Meta; aqui fica só o
+ * reexport, para que quem já importava `VERSAO` daqui continue funcionando.
+ */
+export { GOOGLE_ADS as VERSAO } from "../core/versoes";
 
 /**
  * Cabeçalhos comuns.

@@ -29,6 +29,7 @@
  */
 
 import type {
+  ResultadoTeste,
   DestinationAdapter, DispatchInput, DestinationConfig, DispatchResult, ConversionEvent,
 } from "./types";
 import {
@@ -263,6 +264,37 @@ export const googleAdapter: DestinationAdapter = {
         ok: false, matchKeys: [],
         error: e instanceof Error ? e.message : String(e), retryable: true,
       };
+    }
+  },
+
+  /*
+   * Renova o token. Parece pouco, e é o teste mais valioso dos três.
+   *
+   * O Google é a única das três integrações que NÃO funciona no dia em que se
+   * cadastra — precisa de developer token aprovado por eles — e a única cuja
+   * credencial morre sozinha: `invalid_grant` chega quando alguém troca a senha
+   * da conta Google ou revoga o consentimento, sem nada avisar por aqui.
+   *
+   * Confere também o `conversionAction`. Sem ele o upload é recusado inteiro, e
+   * é o campo que mais some, porque é o único que a pessoa tem de copiar à mão
+   * de dentro da interface do Google Ads.
+   */
+  async testar(cfg: DestinationConfig): Promise<ResultadoTeste> {
+    const faltando = (["developerToken", "clientId", "clientSecret", "refreshToken"] as const)
+      .filter((k) => !cfg.credentials[k]);
+    if (faltando.length) return { ok: false, detalhe: `faltam credenciais: ${faltando.join(", ")}` };
+    if (!cfg.credentials.conversionAction) {
+      return { ok: false, detalhe: "falta a ação de conversão (conversionAction)" };
+    }
+
+    try {
+      await accessToken(cfg.credentials);
+      return {
+        ok: true,
+        detalhe: `autorização válida (API ${VERSAO}) — conversão sobe para a conta ${cfg.externalId}`,
+      };
+    } catch (e) {
+      return { ok: false, detalhe: e instanceof Error ? e.message : String(e) };
     }
   },
 };

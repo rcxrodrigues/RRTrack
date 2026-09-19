@@ -311,6 +311,72 @@ function Selo({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   );
 }
 
+/*
+ * "Testar conexão": pergunta à plataforma se a credencial vale, e mostra o que
+ * ela respondeu.
+ *
+ * O resultado fica NA TELA, ao lado do botão, e não num alerta que some. Quem
+ * está conferindo credencial quase sempre tem outra aba aberta com o painel da
+ * plataforma, comparando id e permissão; um aviso que desaparece ao trocar de
+ * aba obriga a clicar de novo, e cada clique consome cota de API de verdade.
+ *
+ * O texto da resposta vem inteiro da plataforma. É ele que distingue token
+ * vencido de token válido apontando para o pixel de outra conta — dois
+ * problemas com soluções opostas que um "falhou" genérico confundiria.
+ */
+function BotaoTestar({ tenantId, tipo, id }: {
+  tenantId: string;
+  tipo: "pixel" | "conta_anuncio";
+  id: string;
+}) {
+  const [estado, setEstado] = useState<
+    { fase: "parado" } | { fase: "testando" } | { fase: "pronto"; ok: boolean; detalhe: string }
+  >({ fase: "parado" });
+
+  async function testar() {
+    setEstado({ fase: "testando" });
+    try {
+      const r = await fetch("/api/integracoes/testar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenantId, tipo, id }),
+      });
+      const j = await r.json() as { ok?: boolean; detalhe?: string; erro?: string };
+      setEstado({
+        fase: "pronto",
+        ok: j.ok === true,
+        detalhe: j.detalhe ?? j.erro ?? "sem resposta",
+      });
+    } catch {
+      setEstado({ fase: "pronto", ok: false, detalhe: "sem conexão com o servidor" });
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={testar}
+        disabled={estado.fase === "testando"}
+        style={{
+          background: "none", border: "1px solid var(--linha-forte)", borderRadius: 4,
+          color: "var(--ink-fraco)", fontSize: 11, padding: "3px 8px", whiteSpace: "nowrap",
+        }}>
+        {estado.fase === "testando" ? "testando…" : "testar conexão"}
+      </button>
+      {estado.fase === "pronto" && (
+        <div style={{
+          flexBasis: "100%", marginTop: 8, fontSize: 11.5, lineHeight: 1.5,
+          padding: "7px 10px", borderRadius: 5,
+          background: estado.ok ? "var(--positivo-fundo)" : "var(--negativo-fundo)",
+          color: estado.ok ? "var(--positivo)" : "var(--negativo)",
+        }}>
+          {estado.ok ? "✓ " : "✕ "}{estado.detalhe}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Copiavel({ valor, rotulo, multilinha }: {
   valor: string;
   rotulo?: string;
@@ -546,6 +612,10 @@ export function Integracoes({
   site: {
     dominio: string;
     chave: string;
+    /* Subdomínio próprio da loja que serve o coletor. Ver montarSnippet. */
+    coletor?: string | null;
+    /* Nulo enquanto ninguém confirmou que ele responde. Ver enderecoDoColetor. */
+    coletorVerificadoEm?: string | null;
     config: {
       viewContentOnLoad?: boolean;
       productId?: string;
@@ -845,6 +915,8 @@ export function Integracoes({
             */}
             <Copiavel multilinha valor={montarSnippet(site, base)} />
 
+            <Coletor tenantId={loja.id} site={site} />
+
             <ProdutoDaPagina site={site} tenantId={loja.id} />
           </div>
         </div>
@@ -950,7 +1022,7 @@ export function Integracoes({
                             dica="Avisamos com 15 dias de antecedência, na tela de Saúde."
                             {...campo("expiraEm")} />
 
-                          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                             <Botao disabled={salvando} onClick={() => salvar({
                               tipo: "conta_anuncio", plataforma: p.id,
                               externalId: form.externalId, label: form.label,
@@ -959,10 +1031,13 @@ export function Integracoes({
                             })}>{salvando ? "salvando…" : "Salvar"}</Botao>
                             <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                             {conta && (
-                              <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
-                                marginLeft: "auto", background: "none", border: "none",
-                                color: "var(--negativo)", fontSize: 11.5,
-                              }}>desconectar</button>
+                              <>
+                                <BotaoTestar tenantId={loja.id} tipo="conta_anuncio" id={conta.id} />
+                                <button onClick={() => desativar("conta_anuncio", conta.id)} style={{
+                                  marginLeft: "auto", background: "none", border: "none",
+                                  color: "var(--negativo)", fontSize: 11.5,
+                                }}>desconectar</button>
+                              </>
                             )}
                           </div>
                         </>
@@ -1264,7 +1339,7 @@ export function Integracoes({
                   background: "var(--painel)", border: "1px solid var(--linha)",
                   borderRadius: 8, padding: "14px 18px",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
                     <div style={{ flexGrow: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
                       <div className="num" style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 2 }}>
@@ -1273,6 +1348,7 @@ export function Integracoes({
                     </div>
                     {p.codigoTeste && <Selo ok={false}>teste {p.codigoTeste}</Selo>}
                     <Selo ok>ativo</Selo>
+                    <BotaoTestar tenantId={loja.id} tipo="pixel" id={p.id} />
                     <button onClick={() => desativar("pixel", p.id)} style={{
                       background: "none", border: "none", color: "var(--ink-tenue)", fontSize: 11,
                     }}>remover</button>
@@ -1379,6 +1455,169 @@ export function Integracoes({
   );
 }
 
+/*
+ * Configuração do coletor de primeira parte.
+ *
+ * O ganho está em duas coisas que só acontecem quando o coletor mora num
+ * subdomínio da própria loja:
+ *
+ *   BLOQUEADOR DE ANÚNCIO deixa de ter nome para casar na lista de bloqueio.
+ *
+ *   COOKIE DO SAFARI deixa de morrer em 24 h. O `_rr_cid` é o clickId, e é ele
+ *   que faz a venda encontrar o anúncio; escrito por JavaScript ele é cortado
+ *   para 7 dias, ou 24 horas quando a pessoa chegou por link com `?fbclid=` —
+ *   ou seja, em todo tráfego pago, no navegador padrão do iPhone. Vindo por
+ *   `Set-Cookie` do mesmo site, ele vive os 90 dias combinados.
+ *
+ * O botão verifica de verdade antes de liberar: busca o script E o endpoint no
+ * endereço proposto. Sem isso, um snippet apontando para DNS inexistente
+ * pararia a coleta inteira, e a tela continuaria verde — porque do lado de cá
+ * nada dá erro quando nada chega.
+ */
+function Coletor({ tenantId, site }: {
+  tenantId: string;
+  site: { dominio: string; coletor?: string | null; coletorVerificadoEm?: string | null };
+}) {
+  const router = useRouter();
+  const [host, setHost] = useState(site.coletor ?? `t.${site.dominio.replace(/^www\./, "")}`);
+  const [estado, setEstado] = useState<
+    { fase: "parado" } | { fase: "verificando" } | { fase: "pronto"; ok: boolean; detalhe: string }
+  >({ fase: "parado" });
+
+  const verificado = !!site.coletorVerificadoEm;
+
+  async function verificar() {
+    setEstado({ fase: "verificando" });
+    try {
+      const r = await fetch("/api/integracoes/coletor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenantId, host }),
+      });
+      const j = await r.json() as { ok?: boolean; detalhe?: string; erro?: string };
+      setEstado({ fase: "pronto", ok: j.ok === true, detalhe: j.detalhe ?? j.erro ?? "sem resposta" });
+      if (j.ok) router.refresh();
+    } catch {
+      setEstado({ fase: "pronto", ok: false, detalhe: "sem conexão com o servidor" });
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--linha)",
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 6 }}>
+        <span style={{ fontWeight: 600, fontSize: 12.5 }}>Coletor no seu domínio</span>
+        <Selo ok={verificado}>{verificado ? "ativo" : "não configurado"}</Selo>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--ink-fraco)", lineHeight: 1.55, marginBottom: 10 }}>
+        {verificado ? (
+          <>
+            O script acima já sai apontando para <span className="num">{site.coletor}</span>.
+            Bloqueador de anúncio não tem o que bloquear, e o cookie do clickId vive
+            os 90 dias combinados até no Safari.
+          </>
+        ) : (
+          <>
+            Hoje o script carrega do domínio do RRTrack, e isso custa duas coisas:
+            bloqueador de anúncio derruba a requisição pelo nome do domínio, e o Safari
+            corta o cookie do clickId para <strong style={{ color: "var(--ink-medio)" }}>24 horas
+            </strong> quando a visita vem de link com <span className="num">?fbclid=</span> —
+            ou seja, em todo tráfego pago. Apontando um subdomínio seu para cá, os dois
+            somem.
+          </>
+        )}
+      </div>
+
+      {!verificado && (
+        <div style={{
+          fontSize: 11.5, color: "var(--ink-fraco)", lineHeight: 1.6,
+          background: "var(--painel-alto)", border: "1px solid var(--linha)",
+          borderRadius: 5, padding: "10px 12px", marginBottom: 10,
+        }}>
+          <div style={{ marginBottom: 7, color: "var(--ink-medio)" }}>
+            Na ordem, que importa:
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <strong>1.</strong> Na Vercel, <span className="num">Settings → Domains → Add</span>,
+            e informe <span className="num">{host}</span>. Ela devolve o valor exato do CNAME —
+            costuma ser <span className="num">cname.vercel-dns.com</span>, mas
+            <strong style={{ color: "var(--ink-medio)" }}> use o que ela mostrar</strong>:
+            o alvo varia por conta e por região.
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <strong>2.</strong> No seu DNS, crie o <span className="num">CNAME</span> de{" "}
+            <span className="num">{host.split(".")[0]}</span> com esse valor.{" "}
+            {/*
+              O engano mais comum, e ele não parece engano: copiar o registro do
+              domínio principal, que costuma ser um A apontando para onde a
+              oferta está hospedada. O subdomínio passa a resolver, ninguém vê
+              erro de DNS, e a Vercel simplesmente não é quem atende ali.
+            */}
+            <span style={{ color: "var(--ink-tenue)" }}>
+              Se já existir um registro com esse nome do tipo <span className="num">A</span>,
+              troque o tipo para <span className="num">CNAME</span> — copiar o registro do
+              domínio principal faz o endereço resolver para o lugar errado, sem erro nenhum
+              aparecer.
+            </span>
+          </div>
+
+          {/*
+            O erro nº 1 de quem usa Cloudflare, e ele não se parece com erro de
+            DNS: a Vercel diz "Invalid Configuration" e o navegador entra em
+            laço de redirecionamento. Com a nuvem laranja, a Cloudflare esconde
+            o CNAME e termina o TLS com o certificado dela, então a Vercel não
+            consegue validar o domínio nem emitir o dela.
+          */}
+          <div style={{
+            marginBottom: 6, padding: "7px 9px", borderRadius: 4,
+            background: "var(--alerta-fundo)", color: "var(--alerta)",
+          }}>
+            <strong>Cloudflare:</strong> deixe esse registro como{" "}
+            <span className="num">DNS only</span> — nuvem <strong>cinza</strong>, não laranja.
+            Proxiando, a Vercel não valida o domínio, o certificado não sai e o navegador
+            entra em laço de redirecionamento. O resto do seu domínio pode seguir proxiado.
+          </div>
+
+          <div>
+            <strong>3.</strong> Espere a Vercel emitir o certificado (costuma ser
+            menos de um minuto) e clique em verificar aqui embaixo.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={host}
+          onChange={(e) => setHost(e.target.value)}
+          spellCheck={false}
+          className="num"
+          style={{
+            flexGrow: 1, minWidth: 200, fontSize: 11.5, padding: "5px 9px",
+            background: "var(--fundo)", color: "var(--ink)",
+            border: "1px solid var(--linha-forte)", borderRadius: 4,
+          }} />
+        <Botao pequeno tipo="secundario" disabled={estado.fase === "verificando"} onClick={verificar}>
+          {estado.fase === "verificando" ? "verificando…" : verificado ? "verificar de novo" : "verificar"}
+        </Botao>
+      </div>
+
+      {estado.fase === "pronto" && (
+        <div style={{
+          marginTop: 8, fontSize: 11.5, lineHeight: 1.5, padding: "7px 10px", borderRadius: 5,
+          background: estado.ok ? "var(--positivo-fundo)" : "var(--negativo-fundo)",
+          color: estado.ok ? "var(--positivo)" : "var(--negativo)",
+        }}>
+          {estado.ok ? "✓ " : "✕ "}{estado.detalhe}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------- gerador de UTM -- */
 
 function GeradorUtm() {
@@ -1443,11 +1682,61 @@ type ConfigDoSite = {
  * de configuração — e enquanto não acrescentasse, a etapa "viu o produto"
  * ficaria zerada parecendo campanha ruim.
  */
-export function montarSnippet(
-  site: { dominio: string; chave: string; config: ConfigDoSite },
+/*
+ * O endereço de onde o snippet carrega e para onde ele manda.
+ *
+ * Prefere o subdomínio da própria loja (`t.loja.com.br`) e cai no domínio do
+ * RRTrack quando não houver. A diferença não é cosmética:
+ *
+ *   BLOQUEADOR DE ANÚNCIO. Lista de bloqueio derruba requisição para domínio
+ *   de terceiro por nome. Do subdomínio da loja, não há o que casar.
+ *
+ *   COOKIE NO SAFARI. Cookie escrito por JavaScript vive 7 dias, ou 24 HORAS
+ *   quando a pessoa chegou por link com parâmetro de rastreamento — que é
+ *   exatamente o caso de tráfego pago com `?fbclid=`. O `_rr_cid` é o clickId,
+ *   pensado para 90 dias, e é ele que faz a venda encontrar o anúncio.
+ *
+ *   Só que trocar o endereço NÃO basta para o segundo: o limite é do cookie
+ *   escrito por script, não do script. Quem o levanta é o cabeçalho
+ *   `Set-Cookie` numa resposta do MESMO SITE — e é por isso que o coletor
+ *   também passou a devolver o cookie (ver app/api/collect/route.ts). Uma
+ *   metade sem a outra não resolve nada.
+ *
+ * SOMA, não substitui: o domínio do RRTrack continua servindo painel e
+ * webhook. As URLs de webhook estão cadastradas nos painéis dos gateways, e
+ * trocá-las faria as vendas pararem de chegar sem erro nenhum aparecer.
+ */
+export function enderecoDoColetor(
+  site: { coletor?: string | null; coletorVerificadoEm?: string | null },
   base: string,
 ): string {
-  const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${base}/rr/collect"`];
+  const c = site.coletor?.trim();
+
+  /*
+   * VERIFICADO, e não apenas preenchido.
+   *
+   * `collector_host` é gerado sozinho no cadastro da loja, como palpite
+   * ("t." + domínio), muito antes de existir DNS. Emitir o snippet apontando
+   * para o palpite não pioraria a coleta: mataria a coleta — o navegador não
+   * resolveria o host, nenhum evento sairia, e a tela seguiria verde porque do
+   * lado de cá nada dá erro quando nada chega.
+   *
+   * A data só é gravada depois de /api/integracoes/coletor buscar o script E o
+   * endpoint no endereço proposto. Enquanto ela não existe, o snippet continua
+   * no domínio do RRTrack, que é o que já funciona hoje.
+   */
+  if (!c || !site.coletorVerificadoEm) return base;
+
+  /* Guardado como hostname puro ("t.loja.com.br"); a URL precisa do esquema. */
+  return c.startsWith("http") ? c.replace(/\/$/, "") : `https://${c}`;
+}
+
+export function montarSnippet(
+  site: { dominio: string; chave: string; coletor?: string | null; coletorVerificadoEm?: string | null; config: ConfigDoSite },
+  base: string,
+): string {
+  const origem = enderecoDoColetor(site, base);
+  const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${origem}/rr/collect"`];
 
   if (site.config.viewContentOnLoad) cfg.push("viewContentOnLoad:true");
 
@@ -1464,7 +1753,7 @@ export function montarSnippet(
 
   return `<!-- RRTrack · ${site.dominio} -->\n`
     + `<script>window.RRTrackConfig={${cfg.join(",")}}</script>\n`
-    + `<script src="${base}/rr.js" async></script>`;
+    + `<script src="${origem}/rr.js" async></script>`;
 }
 
 /*
@@ -1483,7 +1772,7 @@ export function montarSnippet(
  * que se quer de campanha de venda.
  */
 export function ProdutoDaPagina({ site, tenantId }: {
-  site: { dominio: string; chave: string; config: ConfigDoSite };
+  site: { dominio: string; chave: string; coletor?: string | null; coletorVerificadoEm?: string | null; config: ConfigDoSite };
   tenantId: string;
 }) {
   const router = useRouter();

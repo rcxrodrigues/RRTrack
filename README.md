@@ -92,7 +92,8 @@ requisição chegou ao `graph.facebook.com` e foi recusada por credencial, não 
 |---|---|
 | `DATABASE_URL` | Postgres (Neon), com `?sslmode=require` |
 | `CREDENTIALS_KEY` | 32 bytes em base64; cifra as credenciais guardadas no banco |
-| `META_GRAPH_VERSION` | versão da Graph API; padrão `v23.0` |
+| `META_GRAPH_VERSION` | sobrepõe a versão da Meta; vazio usa o padrão de `src/core/versoes.ts` |
+| `GOOGLE_ADS_VERSION` | sobrepõe a versão do Google Ads; mesmo arquivo |
 
 Nenhuma delas vai para o git. Em produção vivem nas variáveis de ambiente da Vercel.
 
