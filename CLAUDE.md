@@ -150,8 +150,8 @@ verde porque do lado de cá nada dá erro quando nada chega. Por isso existe
 script E o endpoint no endereço e os dois respondem. Falha **zera** a data, e o
 snippet volta sozinho para o domínio do RRTrack.
 
-**Some, não substitui.** O domínio do RRTrack continua servindo painel e
-webhook. As URLs de webhook estão cadastradas nos painéis dos gateways; trocá-las
+**Some, não substitui.** O domínio do RRTrack continua servindo webhook (e,
+enquanto durar a migração, painel). As URLs de webhook estão cadastradas nos painéis dos gateways; trocá-las
 faria as vendas pararem de chegar sem erro nenhum aparecer.
 
 A lista de sufixo público está **duplicada** em `public/rr.js`,
@@ -171,6 +171,35 @@ quando é da plataforma (`externalId`, `eventId`).
 Comentário longo não é enfeite: quase todo comentário grande aqui é a lápide de
 um defeito que custou caro. Ao mudar o código que ele descreve, **atualize-o** —
 comentário que virou mentira é pior que comentário nenhum.
+
+## Para onde os painéis vão
+
+Decisão do dono, setembro de 2026: **o domínio do RRTrack deixa de hospedar
+painel.** Cada oferta passa a ter o dela num subdomínio próprio
+(`track.transforlar.com` e afins). Clonagem de configuração entre ofertas fica
+para estudo posterior.
+
+**Isso já funciona sem código nenhum.** Todo domínio apontado para o projeto na
+Vercel serve o mesmo app, então `track.<oferta>/integracoes` abre o painel hoje.
+
+**O que NÃO se move junto** são três URLs que vivem cadastradas em painéis de
+TERCEIROS, e todas saem de `RR_BASE`:
+
+| URL | Cadastrada em |
+|---|---|
+| `${base}/api/webhook/<gateway>/<segredo>` | painel de cada gateway |
+| `${base}/api/pedidos` | checkout da loja |
+| `${base}/api/meta/retorno` | URIs de redirecionamento do app no Facebook |
+
+Enquanto o domínio do RRTrack responder, as três funcionam — mesmo que ninguém
+nunca mais abra o painel por ele. **Desligar o domínio é outra conversa**: cada
+uma precisa migrar com janela de sobreposição, e webhook não avisa quando para
+de chegar. O gateway tenta, falha e desiste, em silêncio.
+
+E há um item de trabalho de verdade escondido aqui: `RR_BASE` é **uma variável,
+um valor**. Para a URL de webhook sair no domínio de cada oferta, ela precisa
+virar coluna por site. Enquanto não for, o painel mostra a mesma base para
+todas as lojas — o que está certo hoje e deixa de estar no dia da migração.
 
 ## Uma oferta nova, do zero
 
