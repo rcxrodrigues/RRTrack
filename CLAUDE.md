@@ -22,9 +22,17 @@ npm run dev            # localhost:3000
 testes não rodam e a saída **diz isso em vez de mentir que passou** — foi feita
 assim de propósito.
 
+**`DATABASE_URL_TESTE` no `.env` manda a suíte inteira para outro banco** — no
+Neon, um branch, que sai em segundos e não duplica dado. Vazio, ela usa o
+`DATABASE_URL` normal e **avisa, dizendo o host**, antes de escrever nele. Vale
+a pena preencher: a semente cria loja, conexão e destino, e os de ponta a ponta
+gravam venda; a limpeza do fim só roda se a suíte chegar ao fim.
+
 Os de ponta a ponta rodam contra **esta máquina** (`npm run dev` em outro
 terminal). Mirar outro endereço exige `npm test -- --remoto`, e isso é proteção,
 não burocracia: eles gravam lojas de teste no banco e disparam webhook no alvo.
+(O `--remoto` cuida do ENDEREÇO; do banco cuida o `DATABASE_URL_TESTE` acima —
+são as duas metades do mesmo estrago.)
 O padrão já foi produção, e o estrago não foi o que se espera — a semente é
 cifrada com a `CREDENTIALS_KEY` LOCAL, a produção decifra com a DELA, e todas as
 defesas de assinatura falharam em cascata. O relatório parecia buraco de
