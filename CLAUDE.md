@@ -171,3 +171,37 @@ quando é da plataforma (`externalId`, `eventId`).
 Comentário longo não é enfeite: quase todo comentário grande aqui é a lápide de
 um defeito que custou caro. Ao mudar o código que ele descreve, **atualize-o** —
 comentário que virou mentira é pior que comentário nenhum.
+
+## Uma oferta nova, do zero
+
+O sistema é multi-loja desde a origem: **cada oferta é um tenant**, com site,
+gateways, pixels e contas de anúncio próprios, isolados por `tenantId` em toda
+consulta. O seletor no topo do painel troca entre elas. **Não se duplica nada** —
+nem deploy, nem banco, nem projeto na Vercel.
+
+O roteiro é sempre o mesmo, e a ordem importa em dois pontos:
+
+1. **Cadastrar a loja e o site** (`npm run cadastrar`, ou pelo painel). Guarde o
+   domínio LIMPO: `loja.com.br`, não `https://loja.com.br/`. Os dois formatos
+   funcionam — `core/dominio.ts` normaliza na leitura — mas o segundo já custou
+   duas falhas silenciosas, então não crie mais.
+
+2. **DNS**: `CNAME track` → o valor que a **Vercel** mostrar ao adicionar o
+   domínio. Ele identifica o projeto, então é o mesmo para todas as ofertas.
+   Na Cloudflare, **DNS only** (nuvem cinza): proxiando, a Vercel não valida o
+   domínio, o certificado não sai, e o navegador entra em laço de
+   redirecionamento — nenhum dos dois sintomas diz "proxy ligado".
+
+3. **Vercel** → Domains → `track.<dominio>`, em **Production**. Preview segue um
+   branch, e no dia em que o branch morrer a coleta morre junto.
+
+4. **Verificar** no cartão "Coletor no seu domínio", na tela de Integrações, com
+   a loja certa selecionada. Só depois disso o snippet migra.
+
+5. **Copiar o snippet** — ele muda depois da verificação — e colar no `<head>`.
+
+6. **Gateway, pixel e conta de anúncio**, cada um com "Testar conexão" clicado.
+   Credencial errada não dá erro em lugar nenhum; o botão é a única prova.
+
+7. **Registrar a URL do webhook** no painel da plataforma de vendas. É o passo
+   que mais se esquece, e o sintoma é venda que nunca chega, sem erro.
