@@ -166,12 +166,38 @@ execFileSync(process.execPath, [
 writeFileSync("_tmp/package.json", '{"type":"commonjs"}');
 
 let falhas = 0;
+let infra = 0;
 
 /*
  * Sem shell, de proposito. A semente e um JSON que vai por argumento, e passar
  * isso por linha de comando no Windows o entrega mutilado: as aspas somem e o
  * teste morre em JSON.parse antes de rodar a primeira asserção.
  */
+/*
+ * Infraestrutura caída NÃO é teste reprovado, e confundir as duas custa tempo.
+ *
+ * Quando a conexão com o Neon cai no meio da suíte, o driver estoura uma
+ * rejeição não tratada: o processo morre com pilha de erro, o orquestrador vê
+ * saída diferente de "PASSARAM" e anuncia FALHA. Quem lê presume que quebrou
+ * alguma coisa e vai procurar o defeito no código — onde não há nenhum.
+ *
+ * Aconteceu aqui: 20 testes verdes, o 21º com `UND_ERR_CONNECT_TIMEOUT`, e o
+ * relatório dizendo só "FALHA". O `obtido 500` da mesma execução era o servidor
+ * de dev sem banco, pela mesma razão — dois sintomas, uma causa, nenhum deles
+ * apontando para ela.
+ *
+ * As assinaturas abaixo são específicas de propósito: nada aqui casa com um
+ * teste que reprovou de verdade, então um defeito real continua aparecendo
+ * como defeito real.
+ */
+const SEM_INFRA = [
+  "UND_ERR_CONNECT_TIMEOUT",
+  "Error connecting to database",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "fetch failed",
+];
+
 const rodar = (nome, args) => {
   let saida = "";
   let ok = true;
@@ -179,6 +205,11 @@ const rodar = (nome, args) => {
     saida = execFileSync("node", args, {
       encoding: "utf8",
       env: { ...process.env, RR_BASE: BASE },
+      /* Captura o stderr em vez de deixá-lo vazar: o padrão despeja a pilha do
+         filho direto no terminal, e vinte linhas de rastreio antes do veredito
+         enterram justamente a linha que diz o que houve. O conteúdo não se
+         perde — ele entra em `saida` e é o que classifica FALHA de INFRA. */
+      stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
     saida = (e.stdout ?? "") + (e.stderr ?? "");
@@ -187,11 +218,19 @@ const rodar = (nome, args) => {
   /* A última linha não vazia é o veredito que cada teste imprime. */
   const linhas = saida.trim().split("\n").filter((l) => l.trim());
   const veredito = linhas[linhas.length - 1] ?? "(sem saída)";
-  if (!ok || !veredito.includes("PASSARAM")) {
+  const passou = ok && veredito.includes("PASSARAM");
+
+  if (!passou) {
+    const motivo = SEM_INFRA.find((m) => saida.includes(m));
+    if (motivo) {
+      infra++;
+      console.log(`  INFRA | ${nome.padEnd(16)} sem conexão (${motivo})`);
+      return;
+    }
     falhas++;
     console.log(`\n  FALHA | ${nome}\n${saida.split("\n").filter((l) => l.includes("FALHA")).join("\n")}`);
   }
-  console.log(`  ${ok && veredito.includes("PASSARAM") ? "ok  " : "FALHA"} | ${nome.padEnd(16)} ${veredito}`);
+  console.log(`  ${passou ? "ok  " : "FALHA"} | ${nome.padEnd(16)} ${veredito}`);
 };
 
 console.log("\n== unitários ==");
@@ -204,7 +243,46 @@ if (SEM_BANCO) {
 
 for (const t of SEM_BANCO ? [] : PONTA) {
   if (t === PONTA[0]) console.log(`\n== ponta a ponta contra ${BASE} ==`);
-  const semente = execFileSync("node", ["scripts/seed.mjs"], { encoding: "utf8" });
+
+  /*
+   * A semente é o único passo que rodava SEM proteção, e por isso era ele que
+   * derrubava a suíte inteira quando o banco não respondia: o execFileSync
+   * estourava aqui, fora de qualquer `catch`, e o processo morria despejando
+   * pilha em vez de dizer "sem conexão". Os testes já passavam por `rodar()`,
+   * que trata; a semente não passava por nada.
+   */
+  let semente;
+  try {
+    /*
+     * `stdio` explícito para CAPTURAR o stderr do seed em vez de deixá-lo
+     * vazar. O padrão do execFileSync despeja o stderr do filho direto no
+     * terminal, e uma pilha de vinte linhas antes da mensagem limpa enterra
+     * justamente a linha que diz o que fazer.
+     */
+    semente = execFileSync("node", ["scripts/seed.mjs"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (e) {
+    const saida = (e.stdout ?? "") + (e.stderr ?? "") + (e.message ?? "");
+    const motivo = SEM_INFRA.find((m) => saida.includes(m));
+
+    /* Conta o que REALMENTE deixou de rodar: esta e todas as seguintes. */
+    const restantes = PONTA.length - PONTA.indexOf(t);
+    infra += restantes;
+
+    if (motivo) {
+      console.log(`  INFRA | semente não rodou (${motivo})`
+        + ` — ${restantes} de ponta a ponta ficaram de fora`);
+    } else {
+      /* Causa não reconhecida: aí o detalhe é o que resolve, e ele aparece. */
+      console.log(`  INFRA | semente não rodou, por motivo não reconhecido:\n${saida.trim()}`);
+    }
+    /* Sem semente não há o que testar daqui para baixo, e insistir a cada um
+       dos seis só repetiria a mesma mensagem. */
+    break;
+  }
+
   /* Compacta: o teste so precisa do objeto, e uma linha so viaja inteira. */
   rodar(t, [arquivoDe(t), JSON.stringify(JSON.parse(semente))]);
 }
@@ -253,7 +331,26 @@ if (!SEM_BANCO) try {
  * que as agregações do painel foram conferidas quando nem foram tocadas.
  */
 const pulados = SEM_BANCO ? UNITARIOS_BANCO.length + PONTA.length : 0;
-console.log(`\n${falhas > 0 ? falhas + " SUÍTE(S) COM FALHA"
-  : pulados > 0 ? `os ${UNITARIOS.length} sem banco passaram — ${pulados} NÃO RODARAM`
-  : "SUÍTE INTEIRA PASSOU"}\n`);
-process.exit(falhas === 0 ? 0 : 1);
+
+/*
+ * Infra caída sai ANTES de tudo, e com instrução.
+ *
+ * Um "SUÍTE(S) COM FALHA" quando o que houve foi timeout até o Neon manda a
+ * pessoa procurar defeito onde não há nenhum. A distinção só vale se o veredito
+ * também a fizer.
+ */
+if (infra > 0) {
+  console.log(
+    `\n${infra} suíte(s) NÃO RODARAM por falta de conexão — isto não é teste reprovado.`
+    + "\nConfira a rede e o DATABASE_URL, e rode de novo."
+    + (falhas > 0 ? `\n\nE há ${falhas} com FALHA de verdade, acima.` : ""),
+  );
+} else {
+  console.log(`\n${falhas > 0 ? falhas + " SUÍTE(S) COM FALHA"
+    : pulados > 0 ? `os ${UNITARIOS.length} sem banco passaram — ${pulados} NÃO RODARAM`
+    : "SUÍTE INTEIRA PASSOU"}`);
+}
+console.log();
+
+/* Infra caída também reprova: a suíte não provou o que devia provar. */
+process.exit(falhas === 0 && infra === 0 ? 0 : 1);
