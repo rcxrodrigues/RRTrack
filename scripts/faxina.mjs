@@ -48,6 +48,32 @@ function dominioDoSite(guardado) {
     .replace(/^www\./, "");
 }
 
+/*
+ * Um valor guardado em `collector_host` pode ser CORRIGIDO para virar coletor?
+ *
+ * Coletor tem de ser SUBDOMÍNIO, e é aí que estava o defeito: o teste original
+ * aceitava também `c === limpo`. O limpador, aplicado a
+ * "t.https://transforlar.com/", devolve
+ * "transforlar.com" — ele lê "t.https" como esquema e come o prefixo inteiro.
+ * Isso passava por "pertence ao domínio" e seria GRAVADO, apontando o coletor
+ * para a loja em si, onde vive o Shopify, não o RRTrack.
+ *
+ * Prefixo torto não tem conserto automático: ninguém sabe se o dono queria
+ * "t." ou "track.". Então vira nulo, e a pessoa digita o certo no painel — uma
+ * linha a mais de trabalho, e zero chance de gravar besteira.
+ */
+function serveComoColetor(guardado, dominio) {
+  if (!guardado) return false;
+  const limpo = dominioDoSite(dominio);
+  const c = dominioDoSite(guardado);
+  /*
+   * `endsWith("." + limpo)` já exclui o apex sozinho: "transforlar.com" não
+   * termina em ".transforlar.com". Acrescentar `c !== limpo` seria condição
+   * que nunca dispara — e condição morta mente sobre o que o código verifica.
+   */
+  return !!c && c !== guardado && c.endsWith("." + limpo);
+}
+
 const plural = (n, um, muitos) => `${n} ${n === 1 ? um : muitos}`;
 let mudancas = 0;
 
@@ -137,12 +163,7 @@ for (const s of sites) {
   const coletorLimpo = s.collector_host ? dominioDoSite(s.collector_host) : null;
 
   const trocaDominio = limpo && limpo !== s.domain;
-  /* Coletor só é corrigido se continuar dentro do domínio do site. Fora disso
-     o valor é lixo e some: um coletor no domínio errado carregaria script de
-     terceiro no site da loja. */
-  const coletorServe = coletorLimpo
-    && coletorLimpo !== s.collector_host
-    && (coletorLimpo === limpo || coletorLimpo.endsWith("." + limpo));
+  const coletorServe = serveComoColetor(s.collector_host, s.domain);
   const coletorLixo = s.collector_host && !coletorServe && coletorLimpo !== s.collector_host;
 
   if (!trocaDominio && !coletorServe && !coletorLixo) {
