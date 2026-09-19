@@ -80,7 +80,44 @@ export async function receberVenda(
   if (Object.keys(conexao.credentials).length > 0) {
     try {
       credenciais = await decryptRecord(conexao.credentials);
-    } catch { /* credencial ilegivel: segue sem, e a assinatura nao confere */ }
+    } catch (e) {
+      /*
+       * CREDENCIAL ILEGÍVEL PARA A VERIFICAÇÃO DE ASSINATURA.
+       *
+       * Aqui havia um `catch` vazio que seguia adiante, e o efeito era o pior
+       * possível: sem credencial, `verify` devolve `sem_assinatura` — o mesmo
+       * sinal que um gateway que genuinamente não assina — e a linha abaixo
+       * trata isso como "não há como provar a origem" e ACEITA com 200. Ou
+       * seja: chave de cifragem incompatível DESLIGAVA a verificação de
+       * assinatura, em silêncio, para todos os gateways de uma vez.
+       *
+       * Não é hipotético. Acontece sempre que a CREDENTIALS_KEY do ambiente
+       * deixa de ser a que cifrou as linhas — troca de chave, restauração de
+       * backup, ambiente novo mal configurado. E o sintoma seria uma coluna
+       * `verified` virando false aos poucos, que ninguém olha.
+       *
+       * 500, e não 401, e a escolha é deliberada:
+       *
+       *   401 diria "sua assinatura está errada", o que é MENTIRA — quem
+       *   assinou fez certo. E a maioria dos gateways não repete um 401: a
+       *   venda seria perdida por um defeito que é nosso.
+       *
+       *   500 diz "o erro é meu". Gateway repete 5xx, então a venda fica na
+       *   fila de reentrega em vez de sumir, e há tempo de corrigir a chave
+       *   sem perder nada. E 5xx aparece no log da Vercel e no painel do
+       *   gateway — que é onde alguém precisa ver.
+       */
+      const motivo = e instanceof Error ? e.message : String(e);
+      console.error(
+        `[receber] credencial ilegível na conexão ${conexao.id} (${gateway}): ${motivo}.`
+        + " A CREDENTIALS_KEY deste ambiente não abre o que está gravado."
+        + " Diagnóstico: npm run conferir:credenciais",
+      );
+      return Response.json({
+        erro: "credencial do gateway ilegível neste ambiente",
+        detalhe: "não é a sua assinatura — é configuração nossa. Reenvie.",
+      }, { status: 500 });
+    }
   }
 
   const verificacao = await adapter.verify(
