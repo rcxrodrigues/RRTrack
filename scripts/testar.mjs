@@ -79,7 +79,7 @@ const COMPILAR = [
   "src/gateways/shopify.ts",
   "src/core/janela.ts", "src/core/robos.ts", "src/core/redes.ts", "src/core/normalizar.ts",
   "src/core/utm.ts", "src/core/versoes.ts", "src/core/dominio.ts", "src/ads/meta.ts",
-  "src/destinations/google.ts", "src/destinations/tiktok.ts",
+  "src/destinations/google.ts", "src/destinations/tiktok.ts", "src/destinations/ga4.ts",
   "src/ads/google.ts", "src/ads/tiktok.ts",
 ];
 
@@ -98,7 +98,7 @@ const COMPILAR = [
 const UNITARIOS_PUROS = [
   "taxas", "confirmacao", "tiktok", "google", "generico",
   "shopify", "produto-pagina", "normalizar", "janela",
-  "robos", "utm", "versoes", "coletor", "ads-meta",
+  "robos", "utm", "versoes", "coletor", "ga4", "ads-meta",
 ];
 
 /* Estes abrem conexão com o Postgres: precisam do `.env` preenchido. */

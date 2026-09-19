@@ -83,6 +83,27 @@ export interface ClickContext {
   fbp?: string;
   fbc?: string;
 
+  /*
+   * Identificadores do GA4, lidos dos cookies que o gtag.js cria no navegador.
+   *
+   * Não são gerados por nós, e a diferença importa: o `_fbp` da Meta nós
+   * criamos porque ninguém mais cria: sem o pixel dela no site, o cookie não
+   * existiria. O GA4 é o oposto — o gtag.js roda na página e cria o `_ga`
+   * sozinho. Inventar um `client_id` aqui criaria um SEGUNDO usuário para a
+   * mesma pessoa, e o relatório passaria a contar cada visitante duas vezes.
+   *
+   * Servem ao Measurement Protocol, que manda a compra nascida no webhook. Sem
+   * o mesmo `client_id`, aquela compra não se liga à sessão que a originou: o
+   * GA4 a atribui a um usuário novo, sem origem, e o funil quebra no último
+   * passo — justamente o que se queria medir.
+   *
+   * `gaSessionId` só cola se o evento chegar dentro de 24 h do início da
+   * sessão. Passado isso o GA4 ignora o campo e usa a sessão mais recente do
+   * cliente, que é o comportamento documentado.
+   */
+  gaClientId?: string;
+  gaSessionId?: string;
+
   /* Rede — exigidos pelo CAPI e pelo Enhanced Conversions do Google. */
   ip?: string;
   userAgent?: string;

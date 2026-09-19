@@ -254,6 +254,21 @@ export async function POST(req: Request): Promise<Response> {
     kwaiClickId: str(attr.kwai_click_id),
     fbp: str(body.fbp),
     fbc: str(body.fbc),
+
+    /*
+     * Os dois do GA4, lidos dos cookies `_ga` e `_ga_<ID>` pelo rr.js.
+     *
+     * Vêm quase sempre VAZIOS no primeiro beacon: o gtag.js carrega assíncrono
+     * e o nosso pulso costuma sair antes de o cookie existir. Por isso eles são
+     * COALESCE lá embaixo como todo o resto — o segundo beacon da mesma sessão
+     * preenche, e nenhum beacon posterior sem eles apaga o que já veio.
+     *
+     * Diferente de `fbp`, aqui não se GERA nada quando falta: client_id
+     * inventado abre um usuário novo no GA4 a cada compra, e a origem do
+     * tráfego fica com o id antigo. Ver o cabeçalho de src/destinations/ga4.ts.
+     */
+    gaClientId: str(body.ga_client_id),
+    gaSessionId: str(body.ga_session_id),
     externalId: str(body.external_id),
 
     /*
@@ -345,6 +360,21 @@ export async function POST(req: Request): Promise<Response> {
       ttclid: sql`COALESCE(EXCLUDED.ttclid, ${clickSessions.ttclid})`,
       fbp: sql`COALESCE(EXCLUDED.fbp, ${clickSessions.fbp})`,
       fbc: sql`COALESCE(EXCLUDED.fbc, ${clickSessions.fbc})`,
+      /*
+       * Aqui o COALESCE vale mais do que nos outros campos.
+       *
+       * O primeiro beacon quase nunca traz o `_ga` — o gtag.js ainda está
+       * carregando. Sem COALESCE, esse primeiro beacon gravaria nulo e o
+       * segundo, já com o cookie, seria o único a preencher; qualquer beacon
+       * posterior (um pulso de aba parada, por exemplo) apagaria de novo. A
+       * compra chegaria horas depois sem client_id, e o adaptador do GA4
+       * recusaria o envio — com razão, e por defeito nosso.
+       *
+       * E o valor novo vem na frente de propósito no `session_id`: quando a
+       * pessoa volta em outra sessão do GA4, é a sessão NOVA que interessa.
+       */
+      gaClientId: sql`COALESCE(EXCLUDED.ga_client_id, ${clickSessions.gaClientId})`,
+      gaSessionId: sql`COALESCE(EXCLUDED.ga_session_id, ${clickSessions.gaSessionId})`,
       externalId: sql`COALESCE(EXCLUDED.external_id, ${clickSessions.externalId})`,
       campaignId: sql`COALESCE(EXCLUDED.campaign_id, ${clickSessions.campaignId})`,
       campaignName: sql`COALESCE(EXCLUDED.campaign_name, ${clickSessions.campaignName})`,

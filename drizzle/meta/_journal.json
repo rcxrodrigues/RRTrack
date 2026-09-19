@@ -29,6 +29,13 @@
       "when": 1789779567788,
       "tag": "0003_simple_owl",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789833322587,
+      "tag": "0004_chubby_rictor",
+      "breakpoints": true
     }
   ]
 }

@@ -47,6 +47,19 @@ const PLATAFORMAS = [
 ];
 
 /*
+ * Para onde a conversão PODE ir — que não é a mesma lista de onde vem o gasto.
+ *
+ * O GA4 recebe conversão e não vende anúncio nenhum: não há conta de anúncio,
+ * não há gasto, não há ROAS a puxar de lá. Pô-lo em `PLATAFORMAS` faria a aba
+ * de Anúncios pedir credencial de uma coisa que não tem API de gasto — um
+ * cartão para sempre vazio, que parece configuração faltando.
+ */
+const PLATAFORMAS_DESTINO = [
+  ...PLATAFORMAS,
+  { id: "ga4", nome: "Google Analytics 4", cor: "#E8823D" },
+];
+
+/*
  * Cada plataforma pede credencial diferente, e a diferença não é cosmética.
  *
  * O TikTok aceita um token longo e pronto. O Google exige OAuth2 — refresh
@@ -659,6 +672,17 @@ export function Integracoes({
   });
 
   /*
+   * As propriedades do GA4, que o snippet carrega no navegador.
+   *
+   * Só as ATIVAS: uma propriedade removida na aba Pixel tem de sumir do
+   * snippet também, senão o gtag continuaria mandando evento para ela e o
+   * painel diria que ela não existe mais.
+   */
+  const medidoresGa4 = pixels
+    .filter((p) => p.ativo && p.plataforma === "ga4")
+    .map((p) => p.externalId);
+
+  /*
    * Devolve se gravou, e aceita sair de cena.
    *
    * `proprio` é para quem mostra a própria confirmação — hoje só a tabela de
@@ -946,7 +970,13 @@ export function Integracoes({
               </div>
             )}
 
-            <Copiavel multilinha valor={montarSnippet(site, base)} />
+            {/*
+              O snippet carrega o GA4 das propriedades CADASTRADAS, e por isso
+              ele muda quando uma é acrescentada na aba Pixel. Quem já colou o
+              código antes de cadastrar precisa colar de novo — o aviso abaixo
+              do cartão de GA4 diz isso.
+            */}
+            <Copiavel multilinha valor={montarSnippet(site, base, medidoresGa4)} />
 
             {/*
               `key` com a chave do site, nos DOIS, e isso não é enfeite.
@@ -1382,7 +1412,7 @@ export function Integracoes({
             </p>
 
             {pixels.filter((p) => p.ativo).map((p) => {
-              const plat = PLATAFORMAS.find((x) => x.id === p.plataforma);
+              const plat = PLATAFORMAS_DESTINO.find((x) => x.id === p.plataforma);
               return (
                 <div key={p.id} style={{
                   background: "var(--painel)", border: "1px solid var(--linha)",
@@ -1424,19 +1454,50 @@ export function Integracoes({
                   }}>Plataforma</span>
                   <select value={form.plataforma ?? "meta"}
                     onChange={(e) => setForm((f) => ({ ...f, plataforma: e.target.value }))}>
-                    {PLATAFORMAS.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    {PLATAFORMAS_DESTINO.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                   </select>
                 </label>
 
                 <Campo
-                  rotulo={form.plataforma === "google" ? "ID da conta de anúncio" : "ID do pixel"}
-                  placeholder={form.plataforma === "google" ? "123-456-7890" : "1342429849238924"}
+                  rotulo={form.plataforma === "google" ? "ID da conta de anúncio"
+                    : form.plataforma === "ga4" ? "ID de métrica" : "ID do pixel"}
+                  placeholder={form.plataforma === "google" ? "123-456-7890"
+                    : form.plataforma === "ga4" ? "G-XXXXXXXXXX" : "1342429849238924"}
                   dica={form.plataforma === "google"
                     ? "O Google recebe conversão na conta, não num pixel."
-                    : "Na Meta é o ID do conjunto de dados, no Events Manager."}
+                    : form.plataforma === "ga4"
+                      /*
+                       * O erro que esta dica evita: colar o ID DO FLUXO, que é
+                       * um número e fica na mesma tela. O Measurement Protocol
+                       * responde 204 para id inexistente — nada dá erro, e os
+                       * eventos simplesmente não aparecem em relatório nenhum.
+                       */
+                      ? "Administrador → Fluxos de dados → o seu fluxo da Web. Começa com G-; o ID do fluxo, que é só número, não serve."
+                      : "Na Meta é o ID do conjunto de dados, no Events Manager."}
                   {...campo("externalId")} />
 
-                {form.plataforma === "google" ? (
+                {form.plataforma === "ga4" ? (
+                  <>
+                    <Campo rotulo="API secret" type="password" placeholder="cole aqui"
+                      dica="No mesmo fluxo de dados → Measurement Protocol API secrets → Criar."
+                      {...campo("apiSecret")} />
+                    <div style={{
+                      marginTop: 4, padding: "11px 13px", borderRadius: 6,
+                      background: "var(--alerta-fundo)", border: "1px solid var(--alerta)",
+                      fontSize: 11.5, color: "var(--ink-medio)", lineHeight: 1.55,
+                    }}>
+                      O GA4 entra por <strong>duas portas</strong>, e o RRTrack usa as duas
+                      sem repetir nada: o navegador manda o funil (página vista, viu o
+                      produto, carrinho, checkout) e o servidor manda <strong>só a
+                      compra</strong>, quando o gateway confirma o pagamento.
+                      <br /><br />
+                      Por isso: <strong>não instale o gtag do GA4 no site</strong>. Ele
+                      passa a sair dentro do script do RRTrack — <strong>copie o código do
+                      topo desta tela de novo</strong> depois de salvar, porque ele muda
+                      agora. Tendo os dois, o GA4 conta tudo em dobro sem acusar erro.
+                    </div>
+                  </>
+                ) : form.plataforma === "google" ? (
                   <>
                     <Campo rotulo="Ação de conversão" placeholder="customers/123/conversionActions/456"
                       dica="Crie no Google Ads uma ação do tipo Importar → Cliques, e cole o nome do recurso dela."
@@ -1451,45 +1512,79 @@ export function Integracoes({
                   <Campo rotulo="Token da API de conversões" type="password" placeholder="cole aqui"
                     {...campo("token")} />
                 )}
-                <Campo rotulo="Apelido (opcional)" placeholder="Pixel principal" {...campo("label")} />
-                <Campo rotulo="Código de teste (opcional)" placeholder="TEST12345"
-                  dica="Com ele os eventos aparecem na aba de teste sem sujar os dados de produção."
-                  {...campo("testEventCode")} />
+                <Campo rotulo="Apelido (opcional)"
+                  placeholder={form.plataforma === "ga4" ? "GA4 da oferta" : "Pixel principal"}
+                  {...campo("label")} />
 
-                <div style={{ margin: "18px 0 13px" }}>
-                  <div style={{
-                    fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
-                    color: "var(--ink-tenue)", fontWeight: 600, marginBottom: 8,
-                  }}>Eventos a enviar</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                    {EVENTOS.map((e) => {
-                      const on = eventosSel.includes(e.id);
-                      return (
-                        <button key={e.id} onClick={() => setEventosSel((s) =>
-                          on ? s.filter((x) => x !== e.id) : [...s, e.id])} style={{
-                          padding: "5px 11px", borderRadius: 5, fontSize: 11.5, fontWeight: 500,
-                          border: `1px solid ${on ? "var(--positivo)" : "var(--linha-forte)"}`,
-                          background: on ? "var(--positivo-fundo)" : "transparent",
-                          color: on ? "var(--positivo)" : "var(--ink-tenue)",
-                        }}>{e.rotulo}</button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.5 }}>
-                    Página vista vem desligado: é o de maior volume e o de menor valor para
-                    otimização — uma chamada por página de cada visitante.
-                  </div>
-                </div>
+                {/*
+                  Os dois blocos abaixo não existem para o GA4, e esconder é
+                  mais honesto que mostrar desabilitado.
+
+                  CÓDIGO DE TESTE: é o `test_event_code` da Meta, uma aba
+                  separada no Events Manager. O GA4 não tem equivalente — ele
+                  tem um ENDPOINT de depuração, que é o que o botão "Testar
+                  conexão" já usa, e que não registra nada.
+
+                  EVENTOS A ENVIAR: pelo servidor o GA4 recebe UM evento, a
+                  compra. O resto do funil sai pelo gtag, do navegador, e
+                  mandar de novo daqui faria o GA4 contar duas vezes. Uma lista
+                  de caixas para marcar prometeria uma escolha que não existe.
+                */}
+                {form.plataforma !== "ga4" && (
+                  <>
+                    <Campo rotulo="Código de teste (opcional)" placeholder="TEST12345"
+                      dica="Com ele os eventos aparecem na aba de teste sem sujar os dados de produção."
+                      {...campo("testEventCode")} />
+
+                    <div style={{ margin: "18px 0 13px" }}>
+                      <div style={{
+                        fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase",
+                        color: "var(--ink-tenue)", fontWeight: 600, marginBottom: 8,
+                      }}>Eventos a enviar</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                        {EVENTOS.map((e) => {
+                          const on = eventosSel.includes(e.id);
+                          return (
+                            <button key={e.id} onClick={() => setEventosSel((s) =>
+                              on ? s.filter((x) => x !== e.id) : [...s, e.id])} style={{
+                              padding: "5px 11px", borderRadius: 5, fontSize: 11.5, fontWeight: 500,
+                              border: `1px solid ${on ? "var(--positivo)" : "var(--linha-forte)"}`,
+                              background: on ? "var(--positivo-fundo)" : "transparent",
+                              color: on ? "var(--positivo)" : "var(--ink-tenue)",
+                            }}>{e.rotulo}</button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--ink-tenue)", marginTop: 8, lineHeight: 1.5 }}>
+                        Página vista vem desligado: é o de maior volume e o de menor valor para
+                        otimização — uma chamada por página de cada visitante.
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                   <Botao disabled={salvando} onClick={() => salvar({
                     tipo: "pixel",
                     plataforma: form.plataforma ?? "meta",
                     externalId: form.externalId, token: form.token, label: form.label,
+                    apiSecret: form.apiSecret,
                     testEventCode: form.testEventCode,
                     conversionAction: form.conversionAction,
                     ...Object.fromEntries((CREDENCIAIS.google ?? []).map((c) => [c.chave, form[c.chave]])),
-                    eventos: eventosSel,
+                    /*
+                     * O GA4 grava `["purchase"]` — o que o servidor manda de
+                     * verdade, e só isso. Gravar a seleção da tela guardaria no
+                     * banco uma promessa que o código não cumpre: quem lesse a
+                     * linha depois concluiria que o add_to_cart está indo pelo
+                     * servidor, e ele vai pelo gtag, do navegador.
+                     *
+                     * E não é lista VAZIA de propósito: vazia significa "nada",
+                     * e no dia em que o disparo da venda passar a consultar
+                     * esta coluna — o disparo do navegador já consulta — o GA4
+                     * pararia de receber compra sem nada acusando.
+                     */
+                    eventos: form.plataforma === "ga4" ? ["purchase"] : eventosSel,
                   })}>{salvando ? "salvando…" : "Salvar pixel"}</Botao>
                   <Botao tipo="secundario" onClick={() => setEditando(null)}>Cancelar</Botao>
                 </div>
@@ -1795,9 +1890,20 @@ export function enderecoDoColetor(
 export function montarSnippet(
   site: { dominio: string; chave: string; coletor?: string | null; coletorVerificadoEm?: string | null; config: ConfigDoSite },
   base: string,
+  /*
+   * Os measurement ids do GA4 desta loja, que saem da tabela `destinations`.
+   *
+   * Vão para dentro do snippet porque o gtag.js precisa deles no navegador —
+   * e vêm da CONFIGURAÇÃO, nunca escritos no código: cada oferta tem a
+   * propriedade dela. Só o id, que é público e aparece em toda página com
+   * GA4; o api_secret fica cifrado no banco e só o servidor o lê.
+   */
+  ga4: string[] = [],
 ): string {
   const origem = enderecoDoColetor(site, base);
   const cfg = [`siteKey:"${site.chave}"`, `endpoint:"${origem}/rr/collect"`];
+
+  if (ga4.length) cfg.push(`ga4:${JSON.stringify(ga4)}`);
 
   if (site.config.viewContentOnLoad) cfg.push("viewContentOnLoad:true");
 

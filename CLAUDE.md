@@ -1,8 +1,8 @@
 # RRTrack — o que saber antes de mexer
 
 Rastreamento server-side: o navegador manda evento para cá, o gateway manda a
-venda por webhook, e daqui sai conversão para Meta, Google Ads e TikTok — com o
-gasto vindo de volta para fechar ROAS.
+venda por webhook, e daqui sai conversão para Meta, Google Ads, TikTok e GA4 — com
+o gasto vindo de volta para fechar ROAS.
 
 `README.md` explica o produto e as variáveis de ambiente. `RECUPERACAO.md`
 explica como levantar tudo do zero. Este arquivo é o resto: o que já foi
@@ -12,7 +12,7 @@ decidido, e o que quebra quando se decide diferente.
 
 ```bash
 npm run typecheck      # tsc --noEmit — rode SEMPRE antes de commitar
-npm test               # tudo: 21 unitários (14 sem banco + 7 com) + 6 de ponta a ponta
+npm test               # tudo: 22 unitários (15 sem banco + 7 com) + 6 de ponta a ponta
 npm run test:sem-banco # só o que dispensa .env — serve em clone novo
 npm run build          # o build da Vercel, rodando aqui
 npm run dev            # localhost:3000
@@ -82,8 +82,9 @@ versões diferentes do npm e o conflito trava o `git pull` de quem vier depois.
 ```
 src/core/        regras do negócio, sem saber de HTTP nem de plataforma
 src/gateways/    Appmax, pagou.ai, Shopify, Millions, genérico (Hotmart/Kiwify/Eduzz)
-src/destinations/ para onde a conversão vai: meta, google (Ads), tiktok
-src/ads/         de onde o gasto vem: as mesmas três, do outro lado
+src/destinations/ para onde a conversão vai: meta, google (Ads), tiktok, ga4
+src/ads/         de onde o gasto vem: meta, google, tiktok — do outro lado
+                 (o GA4 não tem gasto: ele recebe conversão e não vende anúncio)
 src/db/schema.ts as 19 tabelas
 src/ui/          componentes do painel
 app/api/         rotas
@@ -138,6 +139,11 @@ versão sem clicar é apostar.
   quem assinou certo, e gateway não repete 401, então a venda sumiria por
   defeito nosso. 5xx entra na fila de reentrega. Diagnóstico da causa:
   `npm run conferir:credenciais`.
+- **Provar o `rr.js` por expressão regular sobre o código-fonte.** Prova que a
+  linha está escrita, não que ela funciona. `scripts/dom-falso.cjs` monta um
+  navegador mínimo e RODA o arquivo que a Vercel serve; `teste-ga4` e
+  `teste-produto-pagina` passam por ele. Regex continua valendo para o que não
+  dá para rodar aqui — o que uma rota do servidor contém, por exemplo.
 
 ## Buracos conhecidos, de propósito
 
@@ -147,7 +153,8 @@ versão sem clicar é apostar.
   que são públicos.
 - **Sem retenção**: `dispatches.request_body` e `webhook_deliveries.raw_body`
   crescem para sempre.
-- **Sem GA4.** `src/destinations/google.ts` é Google **Ads**.
+- **`src/destinations/google.ts` é Google Ads**, não Analytics. O GA4 é
+  `ga4.ts`, ao lado — nomes parecidos, APIs sem nada em comum.
 - **Google Ads na v21**, deliberadamente atrás — versão maior lá quebra de
   verdade. O comentário em `core/versoes.ts` diz o que conferir antes de subir.
 - **Seis avisos do `npm audit` que ficam.** O README explica um a um por que
@@ -183,6 +190,54 @@ primeiro é servido estático e não importa de `src/`. Quando as duas primeiras
 divergiram, o servidor mandava `Domain=.me.uk`, o navegador recusava por ser
 sufixo público, e o cookie não existia para aquelas lojas — calado.
 `scripts/teste-coletor.mjs` compara as listas e reprova se saírem do ar.
+
+## O GA4, e as duas portas que não se substituem
+
+**`gtag.js` manda o que acontece na página. O Measurement Protocol manda o que
+não acontece na página — que é um evento só: a compra.**
+
+Ela nasce quando o gateway avisa que alguém pagou, horas depois de o navegador
+ter fechado, e por isso é a única que o servidor tem para contar. Todo o resto
+do funil o navegador já viu.
+
+**Mandar qualquer evento pelos dois faz o GA4 contar os dois.** A receita dobra,
+a taxa de conversão cai pela metade, e não há erro em lugar nenhum — só um
+número que parou de bater com a realidade. Por isso `supports` em
+`src/destinations/ga4.ts` tem **um item**, e o mapa `GA4` em `public/rr.js`
+**não tem `purchase`**. Acrescentar um evento de um lado exige responder antes
+"e o outro lado para de mandar esse?". `scripts/teste-ga4.mjs` roda o `rr.js` de
+verdade e reprova se a compra voltar ao navegador.
+
+E não é só duplicação: compra disparada no navegador conta venda que o gateway
+ainda vai recusar — pix não pago, cartão negado.
+
+**O gtag é carregado pelo `rr.js`, a partir da configuração.** O measurement id
+sai da linha de `destinations` e entra no snippet; nunca escrito no código.
+Duas coisas que o carregamento faz e que parecem detalhe:
+
+- `send_page_view: false` no `config` — senão o GA4 dispara um page_view sozinho
+  e o `rr.js` dispara o dele: dois por carregamento. O nosso vai porque também
+  cobre navegação por JavaScript, que o gtag sozinho não enxerga.
+- **Sai da frente inteiro se a página já tiver `gtag` ou `dataLayer`.** Duas
+  instalações contam tudo em dobro, e o sintoma é um relatório plausível. Quem
+  tem GTM quase sempre configura o GA4 por dentro dele.
+
+**O `client_id` é LIDO do cookie `_ga`, nunca gerado** — ao contrário do `_fbp`,
+que nós criamos porque sem o pixel da Meta ele não existiria. Inventar um aqui
+criaria um usuário novo a cada compra: a taxa de conversão iria ao teto e a
+origem do tráfego se perderia, porque quem tinha a origem era a sessão do
+navegador. Sem ele o adaptador **recusa o envio**, com o motivo na tela.
+
+O cookie só existe depois que o gtag carrega, então o primeiro beacon sai sem
+ele — daí o `COALESCE` em `/api/collect` e o pulso extra que o `rr.js` manda
+quando o `_ga` aparece.
+
+**`G-XXXXXXXXXX`, não o ID do fluxo.** Os dois ficam na mesma tela do Google. O
+Measurement Protocol responde **204 para qualquer coisa**, inclusive para
+measurement id inexistente e api_secret errado — então id trocado não dá erro
+em lugar nenhum, e nenhum evento aparece. Por isso a rota confere o formato ao
+gravar, e por isso "Testar conexão" usa `/debug/mp/collect`, que é o único
+endpoint que valida (e não registra nada).
 
 ## Estilo
 
