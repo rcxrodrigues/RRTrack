@@ -311,6 +311,20 @@ Comentário longo não é enfeite: quase todo comentário grande aqui é a lápi
 um defeito que custou caro. Ao mudar o código que ele descreve, **atualize-o** —
 comentário que virou mentira é pior que comentário nenhum.
 
+## O layout do painel não se mexe
+
+Decisão do dono, setembro de 2026: **a tela fica como está.** Cada oferta nova
+repete a mesma estrutura, e estrutura estável é o que torna a repetição barata
+— redesenhar obriga a reaprender, oferta por oferta.
+
+Isso tira do plano o tema claro, o mapa por região e o modal de payload, que
+eram a fase 6. **Não é "ainda não", é "não".** Quem for mexer aqui pede antes.
+
+O que continua valendo sem pedir nada: corrigir a tela que mostra número
+errado, e acrescentar campo para configuração que passou a existir — foi assim
+que o cartão do GA4 entrou na aba Pixel. A diferença é entre a tela dizer a
+verdade e a tela parecer outra.
+
 ## Para onde os painéis vão
 
 Decisão do dono, setembro de 2026: **o domínio do RRTrack deixa de hospedar
