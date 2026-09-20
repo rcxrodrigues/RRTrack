@@ -118,6 +118,44 @@
     } catch (e) { return false; }
   })();
 
+  /*
+   * O `client_id` do GA4, extraído do cookie `_ga`.
+   *
+   * Formato: "GA1.1.1234567890.1700000000". O client_id são os DOIS últimos
+   * campos juntos ("1234567890.1700000000") — não o cookie inteiro, e não só
+   * o primeiro número. Mandar o formato errado não dá erro: o Measurement
+   * Protocol aceita qualquer string como client_id, e o evento simplesmente
+   * cai num usuário que não existe.
+   *
+   * O "GA1.1" da frente é versão e número de partes do domínio, e varia: num
+   * subdomínio o segundo número é outro. Por isso pega-se do fim, não do
+   * começo.
+   */
+  function gaClientId() {
+    var v = getCookie("_ga");
+    if (!v) return undefined;
+    var p = v.split(".");
+    return p.length >= 4 ? p.slice(-2).join(".") : undefined;
+  }
+
+  /*
+   * O `session_id`, do cookie por propriedade `_ga_<ID>`.
+   *
+   * Formato: "GS1.1.1700000000.1.0.1700000005.0.0.0". O session_id é o
+   * TERCEIRO campo — o carimbo de início da sessão.
+   *
+   * O nome do cookie carrega o measurement id, que não conhecemos aqui: o
+   * snippet não recebe o do GA4. Então procura-se por prefixo. Havendo mais de
+   * um (site com duas propriedades), pega-se o primeiro: a compra vai para uma
+   * propriedade só, e qualquer uma das sessões é da mesma pessoa.
+   */
+  function gaSessionId() {
+    var m = document.cookie.match(/(?:^|;)\s*_ga_[A-Z0-9]+\s*=\s*([^;]+)/);
+    if (!m) return undefined;
+    var p = decodeURIComponent(m[1]).split(".");
+    return p.length >= 3 ? p[2] : undefined;
+  }
+
   function load() {
     try { return JSON.parse(window.localStorage.getItem(STORE) || "{}"); }
     catch (e) { return {}; }
@@ -319,6 +357,134 @@
     } catch (e) {}
   }
 
+  /* ------------------------------------------------------- GA4 (gtag.js) */
+
+  /*
+   * O GA4 do navegador, carregado A PARTIR DA CONFIGURAÇÃO.
+   *
+   * O measurement id vem da linha de `destinations` (plataforma "ga4"), sai no
+   * snippet e chega aqui. Nunca escrito no código: uma oferta por dashboard,
+   * cada uma com a propriedade dela.
+   *
+   * ESTA É A METADE DO NAVEGADOR. A outra é o Measurement Protocol, em
+   * src/destinations/ga4.ts, e elas não se substituem — leia o cabeçalho de lá
+   * antes de mexer em qualquer uma das duas. Resumo: daqui vai o que acontece
+   * na página; de lá vai só a compra, que nasce no webhook horas depois de o
+   * navegador ter fechado.
+   */
+
+  var GA4 = {
+    page_view: "page_view",
+    view_content: "view_item",
+    add_to_cart: "add_to_cart",
+    begin_checkout: "begin_checkout",
+    lead: "generate_lead"
+    /*
+     * `purchase` NÃO ESTÁ NESTA LISTA, e esta é a linha mais importante do
+     * bloco. A compra vai pelo servidor, quando o gateway confirma o
+     * pagamento. Mandá-la daqui TAMBÉM faria o GA4 contar as duas: a receita
+     * dobra no relatório, a taxa de conversão cai pela metade, e não há erro
+     * nenhum para investigar.
+     *
+     * E não é só duplicação: a compra disparada no navegador conta vendas que
+     * o gateway ainda vai recusar — pix que ninguém paga, cartão negado.
+     *
+     * A lista é FECHADA de propósito. Evento fora dela não vai para o GA4;
+     * mandar nome desconhecido só encheria a propriedade de evento que
+     * nenhum relatório lê.
+     */
+  };
+
+  var ga4 = Array.isArray(cfg.ga4) ? cfg.ga4 : (cfg.ga4 ? [cfg.ga4] : []);
+  var ga4Nosso = false;
+
+  if (ga4.length) {
+    /*
+     * JÁ EXISTE gtag (ou GTM) nesta página? Então saímos da frente inteiros.
+     *
+     * Duas instalações de GA4 na mesma página contam tudo duas vezes, e o
+     * sintoma é um relatório plausível — números maiores, nada quebrado. Se a
+     * loja já tem o GA4 pelo tema ou pelo Tag Manager, o certo é ela ter UM
+     * dos dois, e quem decide isso é quem configurou.
+     *
+     * `dataLayer` entra na checagem porque é o GTM: quem tem GTM quase sempre
+     * configura o GA4 por dentro dele, e dali nós não enxergamos.
+     *
+     * Continuamos LENDO o `_ga` mesmo assim — ler cookie não duplica nada, e é
+     * o que faz a compra do servidor cair na mesma pessoa que navegou.
+     */
+    if (window.gtag || window.dataLayer) {
+      if (window.console) {
+        console.warn("[rrtrack] esta página já tem gtag/dataLayer; o RRTrack não vai"
+          + " mandar evento para o GA4, para não contar duas vezes.");
+      }
+    } else {
+      window.dataLayer = window.dataLayer || [];
+      /* `arguments` inteiro, como o snippet oficial: o gtag lê a lista crua. */
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag("js", new Date());
+
+      /*
+       * `send_page_view: false` em toda propriedade, e não é detalhe.
+       *
+       * O `config` do GA4 dispara um page_view sozinho. Como o page_view
+       * também sai por `send()` logo abaixo — inclusive na navegação por
+       * JavaScript, que o gtag sozinho não enxerga — deixar o automático
+       * ligado daria dois por carregamento.
+       */
+      ga4.forEach(function (id) {
+        window.gtag("config", String(id), { send_page_view: false });
+      });
+
+      var g = document.createElement("script");
+      g.async = true;
+      g.src = "https://www.googletagmanager.com/gtag/js?id="
+        + encodeURIComponent(String(ga4[0]));
+      var antesDoGa = document.getElementsByTagName("script")[0];
+      antesDoGa.parentNode.insertBefore(g, antesDoGa);
+      ga4Nosso = true;
+    }
+  }
+
+  function aoGa4(name, params_) {
+    if (!ga4Nosso || !window.gtag) return;
+    var nome = GA4[name];
+    if (!nome) return;
+    /*
+     * Os parâmetros já saem no dialeto do GA4 — `paramsDe` monta
+     * items[{item_id,item_name,price,quantity}], value e currency, que é
+     * exatamente o formato de e-commerce dele. Quem traduz para a Meta é
+     * `paraMeta`, no sentido contrário.
+     */
+    try { window.gtag("event", nome, params_ || {}); } catch (e) {}
+  }
+
+  /*
+   * Um pulso quando o `_ga` finalmente aparecer.
+   *
+   * O cookie do GA4 é criado pelo gtag.js, que carrega assíncrono — então o
+   * nosso primeiro beacon sai ANTES dele existir, sempre. Sem isto, a sessão
+   * de clique de quem entra e compra pelo mesmo caminho ficaria sem
+   * `client_id`, e a compra do servidor seria recusada pelo adaptador (com
+   * razão: sem client_id ela viraria um usuário novo no GA4).
+   *
+   * O pulso é o evento mais barato que existe aqui: o coletor atualiza a
+   * sessão e responde 204 sem gravar linha de evento nenhuma.
+   *
+   * Roda também quando o gtag é da LOJA, e não nosso: ler o cookie serve
+   * igual nos dois casos.
+   */
+  if (!gaClientId()) {
+    (function esperarGa() {
+      var tentativas = 0;
+      var t = setInterval(function () {
+        if (gaClientId()) { clearInterval(t); send("ping"); return; }
+        /* Cinco segundos. Passou disso, não há GA4 nesta página. */
+        if (++tentativas > 20) clearInterval(t);
+      }, 250);
+    })();
+  }
+
   /* ---------------------------------------------------------------- envio */
 
   function send(name, params_, eventId) {
@@ -328,6 +494,7 @@
     var id = eventId || (name + "." + state.click_id + "." + Date.now());
 
     aoPixel(name, params_, id);
+    aoGa4(name, params_);
 
     var body = {
       site_key: siteKey,
@@ -338,6 +505,19 @@
       attribution: state.attribution,
       fbp: state.fbp,
       fbc: state.fbc,
+      /*
+       * Identificadores do GA4, LIDOS e nunca criados.
+       *
+       * O gtag.js roda na página e cria o `_ga` sozinho. Inventar um aqui
+       * faria o GA4 ver dois usuários onde há um — e a compra que sai daqui,
+       * horas depois pelo webhook, precisa cair na MESMA pessoa que navegou,
+       * senão ela chega sem origem e o funil quebra no último passo.
+       *
+       * Vazio quando não há gtag no site, e isso é correto: sem GA4 na página,
+       * não há sessão a que ligar a compra.
+       */
+      ga_client_id: gaClientId(),
+      ga_session_id: gaSessionId(),
       page_url: location.href,
       referrer: document.referrer || undefined,
       screen: screen.width + "x" + screen.height,

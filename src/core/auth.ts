@@ -52,14 +52,30 @@ export async function conferirSenha(senha: string, guardado: string): Promise<bo
   const esperado = deB64(hashB64);
   const obtido = await derivar(senha, deB64(salB64), iteracoes);
 
-  /*
-   * Comparação em tempo constante. `a === b` para no primeiro byte diferente,
-   * e essa diferença de tempo, medida muitas vezes, revela o hash byte a byte.
-   */
-  if (obtido.length !== esperado.length) return false;
+  return igualEmTempoConstante(obtido, esperado);
+}
+
+/**
+ * Compara sem entregar o segredo pelo relógio.
+ *
+ * `a === b` para no primeiro byte diferente, e essa diferença de tempo, medida
+ * muitas vezes, revela o valor byte a byte. Vale para hash de senha e para
+ * qualquer segredo comparado no servidor — o da rotina de manutenção, por
+ * exemplo.
+ *
+ * O tamanho diferente sai cedo de propósito: ele já é público (vai no corpo da
+ * requisição) e esconder isso custaria sem proteger nada.
+ */
+export function igualEmTempoConstante(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
   let diff = 0;
-  for (let i = 0; i < obtido.length; i++) diff |= obtido[i]! ^ esperado[i]!;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
   return diff === 0;
+}
+
+/** O mesmo, para texto. */
+export function textoIgualEmTempoConstante(a: string, b: string): boolean {
+  return igualEmTempoConstante(enc.encode(a), enc.encode(b));
 }
 
 /* ------------------------------------------------------------- sessões -- */

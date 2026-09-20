@@ -18,7 +18,12 @@ import { getGateway } from "@/gateways/registry";
 export const runtime = "nodejs";
 
 const PLATAFORMAS_ANUNCIO = ["meta", "google", "tiktok"];
-const PLATAFORMAS_PIXEL = ["meta", "google", "tiktok"];
+/*
+ * Para onde a conversão vai. O GA4 está aqui e NÃO está na lista de cima: ele
+ * recebe conversão e não tem API de gasto — não há conta de anúncio para
+ * cadastrar, não há ROAS a puxar dele.
+ */
+const PLATAFORMAS_PIXEL = ["meta", "google", "tiktok", "ga4"];
 
 function texto(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
@@ -388,6 +393,23 @@ export async function POST(req: Request): Promise<Response> {
           return Response.json({ erro: "plataforma e id do pixel são obrigatórios" }, { status: 400 });
         }
 
+        /*
+         * O measurement id do GA4 tem formato, e conferir aqui vale a linha.
+         *
+         * Na mesma tela do Google onde está o `G-XXXXXXXXXX` há o "ID do
+         * fluxo", que é só número — e é o que a pessoa copia quando os dois
+         * estão lado a lado. O Measurement Protocol aceita QUALQUER coisa: ele
+         * responde 204 para id inexistente, sem validar. Gravado errado, todo
+         * envio "dá certo", nenhum evento aparece em relatório nenhum, e não há
+         * onde olhar para descobrir por quê.
+         */
+        if (plataforma === "ga4" && !/^G-[A-Z0-9]{4,}$/i.test(externalId)) {
+          return Response.json({
+            erro: "o ID de métrica do GA4 começa com G- (ex.: G-ABC123XYZ)."
+              + " O ID do fluxo, que é só número, não serve.",
+          }, { status: 400 });
+        }
+
         const config: Record<string, unknown> = {};
         if (Array.isArray(corpo.eventos)) config.eventos = corpo.eventos;
         if (texto(corpo.textoBotaoCheckout)) config.textoBotaoCheckout = texto(corpo.textoBotaoCheckout);
@@ -406,7 +428,8 @@ export async function POST(req: Request): Promise<Response> {
          */
         const credenciais: Record<string, string> = {};
         if (token) credenciais.accessToken = await encryptValue(token);
-        for (const chave of ["developerToken", "clientId", "clientSecret", "refreshToken", "loginCustomerId", "conversionAction"]) {
+        /* `apiSecret` é do GA4 — ver src/destinations/ga4.ts. */
+        for (const chave of ["developerToken", "clientId", "clientSecret", "refreshToken", "loginCustomerId", "conversionAction", "apiSecret"]) {
           const v = texto(corpo[chave]);
           if (v) credenciais[chave] = await encryptValue(v);
         }

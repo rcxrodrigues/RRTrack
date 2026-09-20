@@ -156,7 +156,25 @@ export const sites = pgTable("sites", {
   }>().notNull().default({}),
 
   active: boolean("active").notNull().default(true),
-}, (t) => [uniqueIndex("sites_domain").on(t.domain)]);
+}, (t) => [
+  uniqueIndex("sites_domain").on(t.domain),
+  /*
+   * A CHAVE PÚBLICA É ÚNICA NO BANCO INTEIRO, e o índice é quem garante.
+   *
+   * É por ela que `/api/collect` descobre de que loja é o beacon — uma busca
+   * sem `tenantId`, porque o tenant é justamente o que ela responde. Havendo
+   * duas linhas com a mesma chave, o `limit(1)` escolhe uma das duas e o
+   * evento entra na loja errada. Sem erro, e com o painel da outra loja
+   * mostrando visita que não teve.
+   *
+   * Não era colisão aleatória que preocupava — são 96 bits. Era não haver nada
+   * IMPEDINDO uma duplicata: `regerar_chave` não confere, uma restauração
+   * pode repetir, e clonar a configuração de uma oferta para outra (que é o
+   * plano) copiaria a chave junto. O índice transforma isso em erro na hora
+   * de gravar, em vez de tráfego desviado em silêncio.
+   */
+  uniqueIndex("sites_public_key").on(t.publicKey),
+]);
 
 /* ------------------------------------------------------------- conexões -- */
 
@@ -199,7 +217,17 @@ export const gatewayConnections = pgTable("gateway_connections", {
 
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("gateway_conn_tenant").on(t.tenantId)]);
+}, (t) => [
+  index("gateway_conn_tenant").on(t.tenantId),
+  /*
+   * O SEGREDO DO WEBHOOK TAMBÉM É ÚNICO, e pelo mesmo motivo que a chave de
+   * site acima: ele está no caminho da URL que cada gateway tem cadastrada, e
+   * é por ele que `receberVenda` descobre a loja. Duas conexões com o mesmo
+   * segredo fariam a venda entrar na loja errada — dinheiro no faturamento de
+   * quem não vendeu, e faltando em quem vendeu.
+   */
+  uniqueIndex("gateway_conn_secret").on(t.webhookSecret),
+]);
 
 /*
  * Destinos de conversão: para onde as vendas são enviadas.
@@ -298,6 +326,21 @@ export const clickSessions = pgTable("click_sessions", {
 
   fbp: text("fbp"),
   fbc: text("fbc"),
+
+  /*
+   * Identificadores do GA4, lidos dos cookies que o gtag.js cria na página.
+   *
+   * Guardados na sessão e não derivados na hora do disparo porque a compra
+   * nasce HORAS depois, no webhook, quando o navegador já fechou. Sem eles a
+   * venda chega ao GA4 como usuário novo, sem origem — e o funil quebra no
+   * último passo, justamente o que se queria medir.
+   *
+   * NÃO são gerados por nós, ao contrário do `_fbp`. O gtag roda na página e
+   * cria o `_ga` sozinho; inventar um aqui criaria um segundo usuário para a
+   * mesma pessoa e o relatório contaria cada visitante duas vezes.
+   */
+  gaClientId: text("ga_client_id"),
+  gaSessionId: text("ga_session_id"),
 
   /*
    * Identificadores da estrutura do anúncio, extraídos das UTMs.
@@ -691,3 +734,31 @@ export const metaProfiles = pgTable("meta_profiles", {
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
   connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("meta_profiles_tenant_fb").on(t.tenantId, t.fbUserId)]);
+
+/*
+ * Contagem de chamadas nos endpoints públicos. Ver src/core/contencao.ts.
+ *
+ * A ÚNICA tabela sem `tenantId`, e a exceção é deliberada — vale explicar,
+ * porque a regra 1 diz o contrário e alguém vai vir conferir.
+ *
+ * Ela conta quem chega ANTES de se saber de que loja é a chamada: no
+ * `/api/collect` o IP é contado junto da busca do site, e no webhook o
+ * atacante nem tem segredo válido. Exigir `tenantId` aqui obrigaria a
+ * descobrir a loja primeiro — ou seja, a fazer o trabalho que a contenção
+ * existe para evitar.
+ *
+ * Também não é dado de negócio: nenhuma tela lê daqui, nada soma, e a linha
+ * morre em dois minutos. A `chave` já carrega o escopo, então contagem de uma
+ * loja não se mistura com a de outra.
+ *
+ * SEM `id` PRÓPRIO. A `chave` é a chave primária porque o upsert precisa
+ * colidir nela — e colidir é o mecanismo inteiro: duas funções simultâneas
+ * somam na mesma linha em vez de criarem duas.
+ */
+export const rateLimits = pgTable("rate_limits", {
+  /* "escopo:quem:janela" — ver chaveDe() em core/contencao.ts. */
+  chave: text("chave").primaryKey(),
+  contagem: integer("contagem").notNull().default(0),
+  /* Quem apaga é a rotina de retenção; o índice é o que faz a varredura sair barata. */
+  expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+}, (t) => [index("rate_limits_expira").on(t.expiraEm)]);

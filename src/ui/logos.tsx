@@ -52,8 +52,27 @@ export function LogoTikTok({ tamanho = 28 }: { tamanho?: number }) {
   );
 }
 
+export function LogoGA4({ tamanho = 28 }: { tamanho?: number }) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 40 40" aria-label="Google Analytics 4">
+      {/* As três barras em escada, que é a forma do Analytics. */}
+      <rect x="27" y="4" width="9" height="32" rx="4.5" fill="#E37400" />
+      <rect x="15.5" y="14" width="9" height="22" rx="4.5" fill="#F9AB00" />
+      <circle cx="8.5" cy="31.5" r="4.5" fill="#F9AB00" />
+    </svg>
+  );
+}
+
 export function LogoPlataforma({ id, tamanho }: { id: string; tamanho?: number }) {
   if (id === "meta") return <LogoMeta tamanho={tamanho} />;
   if (id === "google") return <LogoGoogleAds tamanho={tamanho} />;
+  if (id === "ga4") return <LogoGA4 tamanho={tamanho} />;
+  /*
+   * O TikTok é o último, e isso já foi um defeito esperando acontecer: era o
+   * `else` de qualquer id desconhecido, então uma plataforma nova aparecia no
+   * painel com a marca do TikTok — errado de um jeito que ninguém reporta como
+   * bug, só estranha. Hoje cada id tem o seu; acrescentando um, acrescente a
+   * linha aqui.
+   */
   return <LogoTikTok tamanho={tamanho} />;
 }

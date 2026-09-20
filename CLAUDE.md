@@ -1,8 +1,8 @@
 # RRTrack — o que saber antes de mexer
 
 Rastreamento server-side: o navegador manda evento para cá, o gateway manda a
-venda por webhook, e daqui sai conversão para Meta, Google Ads e TikTok — com o
-gasto vindo de volta para fechar ROAS.
+venda por webhook, e daqui sai conversão para Meta, Google Ads, TikTok e GA4 — com
+o gasto vindo de volta para fechar ROAS.
 
 `README.md` explica o produto e as variáveis de ambiente. `RECUPERACAO.md`
 explica como levantar tudo do zero. Este arquivo é o resto: o que já foi
@@ -12,7 +12,7 @@ decidido, e o que quebra quando se decide diferente.
 
 ```bash
 npm run typecheck      # tsc --noEmit — rode SEMPRE antes de commitar
-npm test               # tudo: 21 unitários (14 sem banco + 7 com) + 6 de ponta a ponta
+npm test               # tudo: 25 unitários (18 sem banco + 7 com) + 6 de ponta a ponta
 npm run test:sem-banco # só o que dispensa .env — serve em clone novo
 npm run build          # o build da Vercel, rodando aqui
 npm run dev            # localhost:3000
@@ -22,9 +22,17 @@ npm run dev            # localhost:3000
 testes não rodam e a saída **diz isso em vez de mentir que passou** — foi feita
 assim de propósito.
 
+**`DATABASE_URL_TESTE` no `.env` manda a suíte inteira para outro banco** — no
+Neon, um branch, que sai em segundos e não duplica dado. Vazio, ela usa o
+`DATABASE_URL` normal e **avisa, dizendo o host**, antes de escrever nele. Vale
+a pena preencher: a semente cria loja, conexão e destino, e os de ponta a ponta
+gravam venda; a limpeza do fim só roda se a suíte chegar ao fim.
+
 Os de ponta a ponta rodam contra **esta máquina** (`npm run dev` em outro
 terminal). Mirar outro endereço exige `npm test -- --remoto`, e isso é proteção,
 não burocracia: eles gravam lojas de teste no banco e disparam webhook no alvo.
+(O `--remoto` cuida do ENDEREÇO; do banco cuida o `DATABASE_URL_TESTE` acima —
+são as duas metades do mesmo estrago.)
 O padrão já foi produção, e o estrago não foi o que se espera — a semente é
 cifrada com a `CREDENTIALS_KEY` LOCAL, a produção decifra com a DELA, e todas as
 defesas de assinatura falharam em cascata. O relatório parecia buraco de
@@ -82,9 +90,10 @@ versões diferentes do npm e o conflito trava o `git pull` de quem vier depois.
 ```
 src/core/        regras do negócio, sem saber de HTTP nem de plataforma
 src/gateways/    Appmax, pagou.ai, Shopify, Millions, genérico (Hotmart/Kiwify/Eduzz)
-src/destinations/ para onde a conversão vai: meta, google (Ads), tiktok
-src/ads/         de onde o gasto vem: as mesmas três, do outro lado
-src/db/schema.ts as 19 tabelas
+src/destinations/ para onde a conversão vai: meta, google (Ads), tiktok, ga4
+src/ads/         de onde o gasto vem: meta, google, tiktok — do outro lado
+                 (o GA4 não tem gasto: ele recebe conversão e não vende anúncio)
+src/db/schema.ts as 20 tabelas
 src/ui/          componentes do painel
 app/api/         rotas
 public/rr.js     o script que roda no site do cliente
@@ -138,16 +147,26 @@ versão sem clicar é apostar.
   quem assinou certo, e gateway não repete 401, então a venda sumiria por
   defeito nosso. 5xx entra na fila de reentrega. Diagnóstico da causa:
   `npm run conferir:credenciais`.
+- **Provar o `rr.js` por expressão regular sobre o código-fonte.** Prova que a
+  linha está escrita, não que ela funciona. `scripts/dom-falso.cjs` monta um
+  navegador mínimo e RODA o arquivo que a Vercel serve; `teste-ga4` e
+  `teste-produto-pagina` passam por ele. Regex continua valendo para o que não
+  dá para rodar aqui — o que uma rota do servidor contém, por exemplo.
 
 ## Buracos conhecidos, de propósito
 
-- **Sem RLS.** O isolamento é por `tenantId` no código, que vale até alguém
-  esquecer um `where`.
-- **Sem rate limiting** em `/api/collect` e `/api/webhook/[gateway]/[secret]`,
-  que são públicos.
-- **Sem retenção**: `dispatches.request_body` e `webhook_deliveries.raw_body`
-  crescem para sempre.
-- **Sem GA4.** `src/destinations/google.ts` é Google **Ads**.
+- **Sem RLS.** O isolamento é por `tenantId` no código. O plano continua de pé,
+  mas o caminho é mais caro do que parecia e está medido em `teste-isolamento`:
+  `db.transaction()` **lança erro** no driver HTTP do Neon, e `SET LOCAL` não
+  cola porque ele não mantém conexão entre statements. O que existe é
+  `db.batch()`, que manda tudo num pedido HTTP dentro de uma transação — então
+  cada uma das **77 consultas** a tabela de negócio viraria um batch com
+  `set_config('app.tenant_id', …, true)` na frente. Enquanto isso não acontece,
+  a proteção é em tempo de COMMIT: `scripts/teste-isolamento.mjs` reprova
+  qualquer consulta nova que não filtre por `tenantId`, não aja por chave
+  primária, nem busque por coluna com índice único global.
+- **`src/destinations/google.ts` é Google Ads**, não Analytics. O GA4 é
+  `ga4.ts`, ao lado — nomes parecidos, APIs sem nada em comum.
 - **Google Ads na v21**, deliberadamente atrás — versão maior lá quebra de
   verdade. O comentário em `core/versoes.ts` diz o que conferir antes de subir.
 - **Seis avisos do `npm audit` que ficam.** O README explica um a um por que
@@ -184,6 +203,103 @@ divergiram, o servidor mandava `Domain=.me.uk`, o navegador recusava por ser
 sufixo público, e o cookie não existia para aquelas lojas — calado.
 `scripts/teste-coletor.mjs` compara as listas e reprova se saírem do ar.
 
+## Os endpoints públicos: contenção e retenção
+
+`/api/collect` e `/api/webhook/<gateway>/<segredo>` são abertos para a internet
+inteira, sem credencial. `src/core/contencao.ts` conta quem chega.
+
+**Os tetos erram para o lado do cliente, e isso é o desenho.** Beacon barrado é
+atribuição perdida em silêncio; webhook barrado é venda que não entra. Então os
+números são folgados (600/min por IP, 6.000/min por loja, 600/min por conexão),
+o estouro responde **429 com `Retry-After`** — o único 4xx que gateway trata
+como transitório e reentrega — e **falha ABERTO**: contagem que não pôde ser
+feita deixa passar.
+
+**Janela FIXA, não deslizante**, e a diferença é assumida: deslizante exigiria
+um carimbo por requisição, mais escrita no caminho mais quente. O custo é o
+dobro do teto na virada, que para teto de abuso não muda nada.
+
+**Não custa uma ida a mais ao banco**: `db.batch()` manda os contadores junto
+da busca do site. É também o único caminho transacional que existe aqui —
+`db.transaction()` lança "No transactions support" no driver HTTP do Neon.
+
+**Retenção** (`src/core/retencao.ts`, Vercel Cron às 4:17 UTC via `vercel.json`)
+**zera o corpo, não apaga a linha**: data, evento, status e chaves de
+correspondência ficam. Duas coisas que ela NUNCA pode zerar, e as duas
+custariam caro:
+
+- disparo com `next_attempt_at` marcado está **na fila de reenvio**, e o reenvio
+  reconstrói o pedido a partir do `request_body` guardado;
+- `raw_body` é `NOT NULL` — UPDATE para NULL estoura a restrição e derruba a
+  rotina inteira. Vai para string vazia.
+
+A rota precisa de `CRON_SECRET` no ambiente; **sem ela, a porta do cron não
+existe** (comparar contra variável vazia deixaria "Bearer undefined" entrar).
+`?conferir=1` diz quanto de corpo velho ainda sobrou — a resposta honesta para
+"a rotina está dando conta?".
+
+## As chaves que descobrem a loja sozinhas
+
+`sites.public_key` e `gateway_connections.webhook_secret` são buscados **sem
+`tenantId`**, porque o tenant é justamente o que eles respondem. Isso só é
+seguro com **índice único** — sem ele, duas linhas com o mesmo valor fazem o
+`limit(1)` escolher uma, e o evento (ou a VENDA) entra na loja errada, sem erro.
+
+Não era colisão aleatória que preocupava: são 96 bits. Era não haver nada
+IMPEDINDO a duplicata — `regerar_chave` não conferia, uma restauração pode
+repetir, e **clonar a configuração de uma oferta para outra, que é o plano,
+copiaria a chave junto**. A migração `0006` põe os dois índices; `npm run faxina`
+avisa se já houver duplicata, porque criar índice único em cima de uma FALHA e
+a mensagem do Postgres não diz quais linhas são.
+
+## O GA4, e as duas portas que não se substituem
+
+**`gtag.js` manda o que acontece na página. O Measurement Protocol manda o que
+não acontece na página — que é um evento só: a compra.**
+
+Ela nasce quando o gateway avisa que alguém pagou, horas depois de o navegador
+ter fechado, e por isso é a única que o servidor tem para contar. Todo o resto
+do funil o navegador já viu.
+
+**Mandar qualquer evento pelos dois faz o GA4 contar os dois.** A receita dobra,
+a taxa de conversão cai pela metade, e não há erro em lugar nenhum — só um
+número que parou de bater com a realidade. Por isso `supports` em
+`src/destinations/ga4.ts` tem **um item**, e o mapa `GA4` em `public/rr.js`
+**não tem `purchase`**. Acrescentar um evento de um lado exige responder antes
+"e o outro lado para de mandar esse?". `scripts/teste-ga4.mjs` roda o `rr.js` de
+verdade e reprova se a compra voltar ao navegador.
+
+E não é só duplicação: compra disparada no navegador conta venda que o gateway
+ainda vai recusar — pix não pago, cartão negado.
+
+**O gtag é carregado pelo `rr.js`, a partir da configuração.** O measurement id
+sai da linha de `destinations` e entra no snippet; nunca escrito no código.
+Duas coisas que o carregamento faz e que parecem detalhe:
+
+- `send_page_view: false` no `config` — senão o GA4 dispara um page_view sozinho
+  e o `rr.js` dispara o dele: dois por carregamento. O nosso vai porque também
+  cobre navegação por JavaScript, que o gtag sozinho não enxerga.
+- **Sai da frente inteiro se a página já tiver `gtag` ou `dataLayer`.** Duas
+  instalações contam tudo em dobro, e o sintoma é um relatório plausível. Quem
+  tem GTM quase sempre configura o GA4 por dentro dele.
+
+**O `client_id` é LIDO do cookie `_ga`, nunca gerado** — ao contrário do `_fbp`,
+que nós criamos porque sem o pixel da Meta ele não existiria. Inventar um aqui
+criaria um usuário novo a cada compra: a taxa de conversão iria ao teto e a
+origem do tráfego se perderia, porque quem tinha a origem era a sessão do
+navegador. Sem ele o adaptador **recusa o envio**, com o motivo na tela.
+
+O cookie só existe depois que o gtag carrega, então o primeiro beacon sai sem
+ele — daí o `COALESCE` em `/api/collect` e o pulso extra que o `rr.js` manda
+quando o `_ga` aparece.
+
+**`G-XXXXXXXXXX`, não o ID do fluxo.** Os dois ficam na mesma tela do Google. O
+Measurement Protocol responde **204 para qualquer coisa**, inclusive para
+measurement id inexistente e api_secret errado — então id trocado não dá erro
+em lugar nenhum, e nenhum evento aparece. Por isso a rota confere o formato ao
+gravar, e por isso "Testar conexão" usa `/debug/mp/collect`, que é o único
+endpoint que valida (e não registra nada).
+
 ## Estilo
 
 Comentário explica **por quê**, não o quê — e principalmente o que aconteceu
@@ -194,6 +310,20 @@ quando é da plataforma (`externalId`, `eventId`).
 Comentário longo não é enfeite: quase todo comentário grande aqui é a lápide de
 um defeito que custou caro. Ao mudar o código que ele descreve, **atualize-o** —
 comentário que virou mentira é pior que comentário nenhum.
+
+## O layout do painel não se mexe
+
+Decisão do dono, setembro de 2026: **a tela fica como está.** Cada oferta nova
+repete a mesma estrutura, e estrutura estável é o que torna a repetição barata
+— redesenhar obriga a reaprender, oferta por oferta.
+
+Isso tira do plano o tema claro, o mapa por região e o modal de payload, que
+eram a fase 6. **Não é "ainda não", é "não".** Quem for mexer aqui pede antes.
+
+O que continua valendo sem pedir nada: corrigir a tela que mostra número
+errado, e acrescentar campo para configuração que passou a existir — foi assim
+que o cartão do GA4 entrou na aba Pixel. A diferença é entre a tela dizer a
+verdade e a tela parecer outra.
 
 ## Para onde os painéis vão
 

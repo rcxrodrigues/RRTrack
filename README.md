@@ -1,10 +1,15 @@
 # RRTrack
 
 Plataforma própria de rastreamento e atribuição. Mede gasto, faturamento, lucro e ROAS
-— e, com os mesmos dados, alimenta Meta, Google e TikTok com sinal melhor do que o
-navegador sozinho consegue entregar.
+— e, com os mesmos dados, alimenta Meta, Google, TikTok e Google Analytics 4 com sinal
+melhor do que o navegador sozinho consegue entregar.
 
-Sem GTM. Sem Stape. Sem GA4.
+Sem GTM. Sem Stape.
+
+O GA4 entra por duas portas, e o RRTrack usa as duas sem repetir nada: `gtag.js`
+carregado pelo próprio `rr.js` manda o funil do navegador, e o Measurement Protocol
+manda **só a compra**, que nasce no webhook. Quem instalar o gtag do GA4 no site por
+fora passa a ter as duas coisas contando junto — ver `src/destinations/ga4.ts`.
 
 ## O problema que ele resolve
 
@@ -52,7 +57,7 @@ em `registry.ts`. Nada fora dessa pasta muda.
 src/core/        formato canônico, normalização de PII, identidade, junção, disparo
 src/db/          schema multi-loja e conexão
 src/gateways/    um arquivo por gateway
-src/destinations/ um arquivo por plataforma de anúncio
+src/destinations/ um arquivo por destino de conversão (Meta, Google Ads, TikTok, GA4)
 app/api/         coletor, roteador de webhook, reivindicação
 public/rr.js     o snippet de primeira parte
 scripts/         seed e testes

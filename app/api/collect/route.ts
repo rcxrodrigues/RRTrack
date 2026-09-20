@@ -16,6 +16,8 @@ import { dispatchBrowserEvent, normalizarEvento } from "@/core/dispatch";
 import { ehRobo } from "@/core/robos";
 import { ehRedeDaMeta } from "@/core/redes";
 import { extrairEstrutura } from "@/core/utm";
+import { ipDoCliente } from "@/core/ip";
+import { TETOS, cabeNoLimite, contar, estourou, respostaDeEstouro } from "@/core/contencao";
 
 export const runtime = "nodejs";
 
@@ -116,38 +118,6 @@ export async function OPTIONS(req: Request): Promise<Response> {
   return new Response(null, { status: 204, headers: corsHeaders(req.headers.get("origin")) });
 }
 
-function clientIp(req: Request): string | undefined {
-  /*
-   * `cf-connecting-ip` VEM PRIMEIRO, e isso não é preferência de estilo.
-   *
-   * Com a Cloudflare na frente, o `x-forwarded-for` que chega aqui traz o IP
-   * da BORDA DA CLOUDFLARE, não o do visitante — a Vercel reescreve o
-   * cabeçalho com o IP de quem falou com ela, e quem falou com ela foi o
-   * proxy. O sintoma foi uma loja de Belo Horizonte aparecendo como São Paulo
-   * e Rio de Janeiro, que é onde ficam os pontos de presença.
-   *
-   * O estrago não para no mapa. Este IP vai para a Meta como chave de
-   * correspondência: mandar o IP de um data center é pior que não mandar
-   * nada, porque associa a compra a um lugar onde ninguém mora.
-   *
-   * A Cloudflare põe o IP verdadeiro em `cf-connecting-ip`, e ela mesma
-   * sobrescreve esse cabeçalho na entrada — então não dá para forjar de fora.
-   */
-  const daCloudflare = req.headers.get("cf-connecting-ip");
-  if (daCloudflare?.trim()) return daCloudflare.trim();
-
-  /* Outros proxies usam este nome para a mesma coisa. */
-  const verdadeiro = req.headers.get("true-client-ip");
-  if (verdadeiro?.trim()) return verdadeiro.trim();
-
-  /* Sem proxy conhecido, o primeiro da cadeia é o cliente. */
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip") ?? undefined;
-}
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
@@ -160,9 +130,30 @@ export async function POST(req: Request): Promise<Response> {
    */
   const headers = new Headers(corsHeaders(req.headers.get("origin")));
 
+  /*
+   * O teto de corpo vem ANTES de ler o corpo, quando o `content-length` diz o
+   * tamanho — não adianta recusar 50 MB depois de já tê-los na memória.
+   */
+  if (!cabeNoLimite(req.headers.get("content-length"))) {
+    return new Response(null, { status: 413, headers });
+  }
+
   let body: Record<string, unknown>;
   try {
-    body = JSON.parse(await req.text()) as Record<string, unknown>;
+    const bruto = await req.text();
+    /*
+     * De novo, agora com o tamanho real: `Transfer-Encoding: chunked` não
+     * declara `content-length`, e confiar só no cabeçalho deixaria a porta
+     * aberta para quem simplesmente o omite.
+     *
+     * `.length` conta unidades UTF-16, que em UTF-8 nunca são MAIS que os
+     * bytes — então este corte pode deixar passar um corpo um pouco maior que
+     * o teto, e nunca recusa um menor. É o lado certo para errar.
+     */
+    if (!cabeNoLimite(null, bruto.length)) {
+      return new Response(null, { status: 413, headers });
+    }
+    body = JSON.parse(bruto) as Record<string, unknown>;
   } catch {
     return new Response(null, { status: 400, headers });
   }
@@ -176,6 +167,24 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   /*
+   * A chave de site tem formato, e conferi-lo aqui não é preciosismo.
+   *
+   * A contenção conta POR chave de site, e a chave vem do pedido. Sem este
+   * corte, quem mandasse uma chave inventada diferente a cada requisição
+   * criaria uma linha nova em `rate_limits` por chamada — a contenção viraria
+   * o vetor. Recusar antes de tocar no banco fecha isso e ainda economiza a
+   * consulta em cima de lixo.
+   *
+   * Propositalmente FROUXO: as chaves em produção são "pk_" + hexadecimal, mas
+   * a semente usa "pk_teste_…" e um dia pode surgir outro prefixo. Recusar uma
+   * chave legítima seria perda silenciosa de coleta — o beacon some, nada dá
+   * erro, e a venda vira tráfego direto.
+   */
+  if (!/^pk_[A-Za-z0-9_]{4,64}$/.test(siteKey)) {
+    return new Response(null, { status: 400, headers });
+  }
+
+  /*
    * Robô declarado não vira sessão nem evento.
    *
    * Responde 204, e não um erro, de propósito: erro convida a nova tentativa,
@@ -184,7 +193,7 @@ export async function POST(req: Request): Promise<Response> {
    * nasce — e como o descarte acontece ANTES de gravar, nenhuma agregação
    * precisa saber que robô existe. Ver src/core/robos.ts para o porquê.
    */
-  const ip = clientIp(req);
+  const ip = ipDoCliente(req);
 
   /*
    * Dois cortes, porque são dois tipos de robô.
@@ -206,7 +215,42 @@ export async function POST(req: Request): Promise<Response> {
    * A origem precisa ser um site cadastrado. Sem esta checagem, qualquer página
    * na internet poderia despejar eventos falsos na conta de qualquer loja.
    */
-  const [site] = await db.select().from(sites).where(eq(sites.publicKey, siteKey)).limit(1);
+  /*
+   * A contenção viaja JUNTO da busca do site, numa requisição só.
+   *
+   * `db.batch()` manda os três comandos no mesmo pedido HTTP, dentro de uma
+   * transação — então contar não custa uma ida a mais ao banco no caminho mais
+   * quente do sistema. (`db.transaction()` não serve: o driver HTTP do Neon
+   * lança "No transactions support" nele. `batch` é o que existe.)
+   *
+   * E FALHA ABERTO. Se o batch quebrar por qualquer motivo — tabela que ainda
+   * não migrou, por exemplo — cai-se na busca sozinha, que é exatamente o que
+   * esta rota fazia antes. Contenção que derruba coleta protege o banco e perde
+   * a venda: a troca errada. O teto existe contra abuso, não contra o cliente.
+   */
+  const agora_ms = Date.now();
+  let site: typeof sites.$inferSelect | undefined;
+  let contido = false;
+
+  try {
+    const [porIp, porLoja, achados] = await db.batch([
+      contar({ ...TETOS.coletaPorIp, quem: ip ?? "sem-ip" }, agora_ms),
+      contar({ ...TETOS.coletaPorLoja, quem: siteKey }, agora_ms),
+      db.select().from(sites).where(eq(sites.publicKey, siteKey)).limit(1),
+    ]);
+    site = achados[0];
+    contido = estourou(porIp[0]?.contagem, TETOS.coletaPorIp.teto)
+      || estourou(porLoja[0]?.contagem, TETOS.coletaPorLoja.teto);
+  } catch (e) {
+    console.error("[collect] contenção indisponível, seguindo sem ela:",
+      e instanceof Error ? e.message : String(e));
+    [site] = await db.select().from(sites).where(eq(sites.publicKey, siteKey)).limit(1);
+  }
+
+  if (contido) {
+    return respostaDeEstouro(agora_ms, TETOS.coletaPorIp.segundos, headers);
+  }
+
   if (!site || !site.active) return new Response(null, { status: 403, headers });
 
   /*
@@ -254,6 +298,21 @@ export async function POST(req: Request): Promise<Response> {
     kwaiClickId: str(attr.kwai_click_id),
     fbp: str(body.fbp),
     fbc: str(body.fbc),
+
+    /*
+     * Os dois do GA4, lidos dos cookies `_ga` e `_ga_<ID>` pelo rr.js.
+     *
+     * Vêm quase sempre VAZIOS no primeiro beacon: o gtag.js carrega assíncrono
+     * e o nosso pulso costuma sair antes de o cookie existir. Por isso eles são
+     * COALESCE lá embaixo como todo o resto — o segundo beacon da mesma sessão
+     * preenche, e nenhum beacon posterior sem eles apaga o que já veio.
+     *
+     * Diferente de `fbp`, aqui não se GERA nada quando falta: client_id
+     * inventado abre um usuário novo no GA4 a cada compra, e a origem do
+     * tráfego fica com o id antigo. Ver o cabeçalho de src/destinations/ga4.ts.
+     */
+    gaClientId: str(body.ga_client_id),
+    gaSessionId: str(body.ga_session_id),
     externalId: str(body.external_id),
 
     /*
@@ -345,6 +404,21 @@ export async function POST(req: Request): Promise<Response> {
       ttclid: sql`COALESCE(EXCLUDED.ttclid, ${clickSessions.ttclid})`,
       fbp: sql`COALESCE(EXCLUDED.fbp, ${clickSessions.fbp})`,
       fbc: sql`COALESCE(EXCLUDED.fbc, ${clickSessions.fbc})`,
+      /*
+       * Aqui o COALESCE vale mais do que nos outros campos.
+       *
+       * O primeiro beacon quase nunca traz o `_ga` — o gtag.js ainda está
+       * carregando. Sem COALESCE, esse primeiro beacon gravaria nulo e o
+       * segundo, já com o cookie, seria o único a preencher; qualquer beacon
+       * posterior (um pulso de aba parada, por exemplo) apagaria de novo. A
+       * compra chegaria horas depois sem client_id, e o adaptador do GA4
+       * recusaria o envio — com razão, e por defeito nosso.
+       *
+       * E o valor novo vem na frente de propósito no `session_id`: quando a
+       * pessoa volta em outra sessão do GA4, é a sessão NOVA que interessa.
+       */
+      gaClientId: sql`COALESCE(EXCLUDED.ga_client_id, ${clickSessions.gaClientId})`,
+      gaSessionId: sql`COALESCE(EXCLUDED.ga_session_id, ${clickSessions.gaSessionId})`,
       externalId: sql`COALESCE(EXCLUDED.external_id, ${clickSessions.externalId})`,
       campaignId: sql`COALESCE(EXCLUDED.campaign_id, ${clickSessions.campaignId})`,
       campaignName: sql`COALESCE(EXCLUDED.campaign_name, ${clickSessions.campaignName})`,

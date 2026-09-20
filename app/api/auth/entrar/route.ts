@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { db } from "@/db/index";
 import { users } from "@/db/schema";
 import { COOKIE, conferirSenha, criarSessao } from "@/core/auth";
+import { ipDoCliente } from "@/core/ip";
 
 export const runtime = "nodejs";
 
@@ -30,15 +31,11 @@ export async function POST(req: Request): Promise<Response> {
   if (!u?.passwordHash) return generico;
   if (!(await conferirSenha(senha, u.passwordHash))) return generico;
 
-  /* Mesma ordem do coletor: com Cloudflare na frente, o x-forwarded-for traz
-     a borda do proxy. Aqui o IP serve para reconhecer sessão suspeita, e o do
-     data center não reconhece nada. Ver app/api/collect/route.ts. */
-  const fwd = req.headers.get("cf-connecting-ip")
-    ?? req.headers.get("true-client-ip")
-    ?? req.headers.get("x-forwarded-for");
+  /* Aqui o IP serve para reconhecer sessão suspeita, e o da borda do proxy não
+     reconhece nada — a ordem dos cabeçalhos está em core/ip.ts, num lugar só. */
   const { token, expiraEm } = await criarSessao(u.id, {
     userAgent: req.headers.get("user-agent") ?? undefined,
-    ip: fwd?.split(",")[0]?.trim() ?? undefined,
+    ip: ipDoCliente(req),
   });
 
   const jar = await cookies();
