@@ -167,5 +167,131 @@ eq("o coletor busca a loja pela chave pública",
 eq("e o webhook pela conexão",
   /eq\(gatewayConnections\.webhookSecret, secret\)/.test(ler("src/core/receber.ts")), true);
 
+/* ------------------------------- escolher no escuro é sempre defeito -- */
+
+console.log("\n== nenhum limit(1) escolhe linha no escuro ==");
+
+/*
+ * A CLASSE DE ERRO QUE MAIS VOLTOU NESTE REPOSITÓRIO.
+ *
+ * `limit(1)` sem `orderBy` numa busca que pode casar mais de uma linha escolhe
+ * qualquer uma — e o Postgres não promete a mesma entre duas execuções. Três
+ * vezes isso mordeu:
+ *
+ *   o painel lia um site e a verificação do coletor gravava em OUTRO, então
+ *   clicar em verificar nunca "pegava";
+ *
+ *   a loja real ficava com a tela do site de teste, porque a escolha caía no
+ *   primeiro em ordem alfabética;
+ *
+ *   e o painel de `track.transforlar.com` abria numa loja de QA, pelo mesmo
+ *   motivo um nível acima.
+ *
+ * A regra: ou o filtro casa no máximo uma linha (chave primária, ou coluna com
+ * unicidade garantida pelo banco), ou a consulta diz QUAL linha quer com um
+ * `orderBy`. Não há terceira opção que não seja sorteio.
+ */
+
+/* Unicidade garantida pelo banco: `.primaryKey()`, `.unique()` e uniqueIndex. */
+const unicas = new Set(["id"]);
+for (const m of schema.matchAll(/(\w+):\s*\w+\("[\w_]+"[^)]*\)\.primaryKey\(\)/g)) unicas.add(m[1]);
+for (const m of schema.matchAll(/(\w+):\s*\w+\("[\w_]+"[^)]*\)[^,\n]*\.unique\(\)/g)) unicas.add(m[1]);
+const combos = [];
+for (const m of schema.matchAll(/uniqueIndex\("[\w_]+"\)\.on\(([^)]*)\)/g)) {
+  const cols = [...m[1].matchAll(/t\.(\w+)/g)].map((x) => x[1]);
+  if (cols.length === 1) unicas.add(cols[0]); else combos.push(cols);
+}
+
+eq("o schema declarou colunas únicas", unicas.size > 5, true);
+/* Se estas saírem do conjunto, o resto da varredura vira teatro. */
+for (const c of ["publicKey", "webhookSecret", "slug", "email"]) {
+  eq(`  ${c} conta como única`, unicas.has(c), true);
+}
+
+const noEscuro = [];
+for (const arq of arquivos) {
+  const src = ler(arq);
+  for (const m of src.matchAll(/\bdb\.select\(/g)) {
+    const i = m.index;
+    let j = i, prof = 0, fim = -1;
+    while (j < src.length) {
+      const c = src[j];
+      if (c === "(") prof++;
+      else if (c === ")") prof--;
+      else if (c === ";" && prof === 0) { fim = j; break; }
+      j++;
+    }
+    const t = src.slice(i, fim < 0 ? i + 500 : fim);
+    if (!t.includes(".limit(1)") || t.includes("orderBy")) continue;
+
+    const filtradas = [...t.matchAll(/eq\(\s*\w+\.(\w+)\s*,/g)].map((x) => x[1]);
+    if (filtradas.some((c) => unicas.has(c))) continue;
+    if (combos.some((cb) => cb.every((c) => filtradas.includes(c)))) continue;
+
+    noEscuro.push(`${arq}:${src.slice(0, i).split("\n").length} — filtra por [${filtradas.join(", ")}]`);
+  }
+}
+eq("nenhuma consulta sorteia a linha", noEscuro, []);
+
+/* --------------------------- o endereço decide a loja, não o cookie -- */
+
+console.log("\n== em track.<oferta>, quem manda é o endereço ==");
+
+/*
+ * O DEFEITO QUE ISTO IMPEDE DE VOLTAR, e ele aconteceu de verdade.
+ *
+ * Todos os subdomínios apontam para o MESMO app e o MESMO banco — a Vercel
+ * serve o projeto inteiro em qualquer domínio ligado a ele. Então o subdomínio
+ * sozinho não isola nada: `track.transforlar.com` abria a loja que o cookie
+ * dissesse e, sem cookie, a PRIMEIRA da lista.
+ *
+ * A lista é `ORDER BY tenants.name`. Com uma loja chamada "QA Interface
+ * Renomeada" na conta, abrir o painel da Transforlar num navegador sem cookie
+ * mostrava a loja de QA. Endereço certo, dado de outra oferta na tela, e nada
+ * indicando a troca.
+ */
+const lojaAtualFonte = ler("src/core/loja-atual.ts");
+const layout = ler("app/(painel)/layout.tsx");
+
+eq("o endereço é consultado antes do cookie",
+  lojaAtualFonte.indexOf("lojaDoEndereco") < lojaAtualFonte.indexOf("COOKIE_LOJA)?.value"), true);
+/*
+ * A linha que fecha o buraco: preso é preso. Sem ela o código volta a cair no
+ * cookie, e o cookie volta a discordar do endereço.
+ */
+eq("preso ao endereço NÃO cai no cookie",
+  /if \(doEndereco\.prende\) return doEndereco\.loja;/.test(lojaAtualFonte), true);
+/*
+ * O casamento usa a MESMA função que decide se o cookie de primeira parte cola.
+ * Duas noções de "mesmo site" divergiriam, e a divergência apareceria como
+ * painel abrindo na loja errada em um domínio e certo em outro.
+ */
+eq("e usa mesmoSite, não comparação de texto",
+  lojaAtualFonte.includes("mesmoSite(host, s.domain)"), true);
+/*
+ * A busca NÃO filtra pelas lojas do usuário: filtrar faria "endereço de loja
+ * que não é sua" parecer "endereço que não representa loja nenhuma" — e aí
+ * cairia no cookie e mostraria outra, que é o comportamento removido.
+ */
+eq("procura entre TODOS os sites ativos",
+  /\.from\(sites\)\.where\(eq\(sites\.active, true\)\)/.test(lojaAtualFonte), true);
+
+console.log("\n  -- e a tela diz quando o painel é de outra loja --");
+eq("existe a mensagem, em vez de trocar calada",
+  layout.includes("Este painel é de outra loja"), true);
+eq("e ela só aparece quando o endereço prende",
+  /endereco\.prende && !endereco\.loja/.test(layout), true);
+
+console.log("\n  -- e o seletor some onde não há o que trocar --");
+/*
+ * Um seletor em `track.<oferta>` só serviria para alguém abrir a oferta errada
+ * sem querer. No domínio do RRTrack ele fica, porque lá o painel é console e é
+ * de lá que uma oferta nova nasce.
+ */
+eq("o layout esvazia a lista quando o endereço prende",
+  /lojas=\{endereco\.prende \? \[\] : ctx\.lojas\}/.test(layout), true);
+eq("e a navegação mostra o nome parado em vez do seletor",
+  /lojas\.length > 0\s*\n?\s*\? <SeletorLoja/.test(ler("src/ui/navegacao.tsx")), true);
+
 console.log("\n" + (f === 0 ? "TODOS OS TESTES PASSARAM" : f + " FALHA(S)") + "\n");
 process.exit(f === 0 ? 0 : 1);

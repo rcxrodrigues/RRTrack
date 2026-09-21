@@ -12,7 +12,7 @@
  * navegador serve — e é por isso que ele precisa valer pouco tempo e uma vez só.
  */
 
-import { and, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/db/index";
 import { metaLinks, metaProfiles } from "@/db/schema";
 import { decryptValue, encryptValue } from "@/core/crypto";
@@ -144,8 +144,26 @@ export async function salvarPerfil(
 }
 
 export async function perfilDaLoja(tenantId: string): Promise<Perfil | null> {
+  /*
+   * O MAIS RECENTE, e não "o primeiro que o banco devolver".
+   *
+   * O índice único é `(tenantId, fbUserId)`: uma loja PODE ter mais de um
+   * perfil do Facebook conectado. Acontece justamente com quem usa antidetect
+   * — o consentimento sai num navegador, depois em outro, e cada conta pessoal
+   * vira um perfil.
+   *
+   * Sem ordem, o `limit(1)` escolhia um dos dois sem critério: o painel
+   * mostrava o nome e a validade de um enquanto o token usado era do outro.
+   * Token vencido de um lado e válido do outro dá "conta desconectada" sem
+   * nada explicando — e reconectar não resolvia, porque a reconexão criava o
+   * terceiro e o sorteio continuava.
+   *
+   * O mais recente é o que a pessoa acabou de conectar, que é exatamente o que
+   * ela espera ver depois de reconectar para consertar um token vencido.
+   */
   const [linha] = await db.select().from(metaProfiles)
     .where(eq(metaProfiles.tenantId, tenantId))
+    .orderBy(desc(metaProfiles.connectedAt))
     .limit(1);
 
   if (!linha) return null;

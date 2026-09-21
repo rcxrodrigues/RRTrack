@@ -269,7 +269,32 @@ export function Navegacao({
       */}
       {/* O seletor precisa do nome da loja para servir de alguma coisa; em
           52px sobraria só a sacola, que não diz qual dashboard está aberto. */}
-      {!recolhido && <SeletorLoja atual={lojaAtual} lojas={lojas} />}
+      {/*
+        Lista vazia = o ENDEREÇO já decidiu a loja (track.<oferta>). Aí não há o
+        que trocar, e um seletor ali só serviria para alguém abrir a oferta
+        errada sem querer. O nome fica, parado: você precisa saber em qual
+        painel está, mesmo sem poder sair dele por aqui.
+      */}
+      {!recolhido && (lojas.length > 0
+        ? <SeletorLoja atual={lojaAtual} lojas={lojas} />
+        : (
+          <div style={{ padding: "0 14px 14px" }}>
+            <div style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 7,
+              padding: "6px 8px", borderRadius: 5,
+              border: "1px solid transparent", color: "var(--ink-fraco)",
+            }}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                   strokeWidth="1.5" style={{ flexShrink: 0 }}>
+                <path d="M2.5 6h11l-1 7.5h-9L2.5 6zM5.5 6V4a2.5 2.5 0 0 1 5 0v2" />
+              </svg>
+              <span style={{
+                flexGrow: 1, fontSize: 11.5, fontWeight: 500,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>{lojaAtual?.nome ?? "sem dashboard"}</span>
+            </div>
+          </div>
+        ))}
 
       {/* navegação */}
       <nav style={{ flexGrow: 1, overflowY: "auto", padding: "0 10px" }}>

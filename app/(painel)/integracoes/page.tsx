@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/index";
 import { adAccounts, destinations, gatewayConnections, metaProfiles, sites } from "@/db/schema";
@@ -42,9 +42,18 @@ export default async function PaginaIntegracoes() {
      */
     db.select().from(sites).where(and(eq(sites.tenantId, loja.id), eq(sites.active, true)))
       .orderBy(sites.domain),
-    /* Só o nome e o prazo: o token nunca sai do servidor. */
+    /*
+     * Só o nome e o prazo: o token nunca sai do servidor.
+     *
+     * E o MAIS RECENTE — a mesma ordem de `perfilDaLoja`, que é quem escolhe o
+     * token de verdade. Uma loja pode ter mais de um perfil conectado (o índice
+     * único é por `fbUserId`), e sem a ordem esta tela mostrava o nome de um
+     * enquanto o sistema usava o token de outro. Divergir daquela ordem é pior
+     * que não mostrar nada.
+     */
     db.select({ nome: metaProfiles.name, expiraEm: metaProfiles.tokenExpiresAt })
-      .from(metaProfiles).where(eq(metaProfiles.tenantId, loja.id)).limit(1),
+      .from(metaProfiles).where(eq(metaProfiles.tenantId, loja.id))
+      .orderBy(desc(metaProfiles.connectedAt)).limit(1),
   ]);
 
   const base = process.env.RR_BASE ?? "https://rr-track.vercel.app";

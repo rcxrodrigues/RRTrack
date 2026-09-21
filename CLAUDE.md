@@ -311,19 +311,57 @@ Comentário longo não é enfeite: quase todo comentário grande aqui é a lápi
 um defeito que custou caro. Ao mudar o código que ele descreve, **atualize-o** —
 comentário que virou mentira é pior que comentário nenhum.
 
-## O layout do painel não se mexe
+## Quem decide qual loja o painel mostra é o ENDEREÇO
 
-Decisão do dono, setembro de 2026: **a tela fica como está.** Cada oferta nova
-repete a mesma estrutura, e estrutura estável é o que torna a repetição barata
-— redesenhar obriga a reaprender, oferta por oferta.
+`track.transforlar.com` é a loja dona do site `transforlar.com`. Ponto: sem
+cookie, sem seletor, sem escolha.
 
-Isso tira do plano o tema claro, o mapa por região e o modal de payload, que
-eram a fase 6. **Não é "ainda não", é "não".** Quem for mexer aqui pede antes.
+**Por que isso precisou virar regra.** Todos os subdomínios apontam para o MESMO
+app e o MESMO banco — a Vercel serve o projeto inteiro em qualquer domínio
+ligado a ele. O subdomínio sozinho não isola nada. Antes disto, a loja vinha de
+um cookie; cookie é por domínio, então abrir `track.transforlar.com` pela
+primeira vez não tinha cookie nenhum e o código caía na PRIMEIRA loja da lista
+— que é `ORDER BY tenants.name`. Com uma loja de QA na conta, o painel da
+Transforlar abria mostrando a de QA. Endereço certo, dado de outra oferta na
+tela, nada indicando a troca. **Aconteceu.**
 
-O que continua valendo sem pedir nada: corrigir a tela que mostra número
-errado, e acrescentar campo para configuração que passou a existir — foi assim
-que o cartão do GA4 entrou na aba Pixel. A diferença é entre a tela dizer a
-verdade e a tela parecer outra.
+O casamento usa `mesmoSite()`, a MESMA função que decide se o cookie de
+primeira parte cola — duas noções de "mesmo site" divergiriam, e a divergência
+apareceria como painel abrindo certo num domínio e errado noutro.
+
+Consequências, todas de propósito:
+
+- **o seletor de loja some** em `track.<oferta>`; fica só o nome, parado. No
+  domínio do RRTrack ele continua, porque lá o painel é console — é de lá, ou
+  do `npm run cadastrar`, que uma oferta nova nasce;
+- **"adicionar loja" some junto**, pelo mesmo motivo;
+- e abrir o `track.` de uma loja a que você não tem acesso **diz isso**, em vez
+  de mostrar outra. A busca varre TODOS os sites ativos, não só os seus:
+  filtrar pelos seus faria "loja que não é sua" parecer "endereço que não
+  representa loja nenhuma", e aí cairia no cookie de novo.
+
+`scripts/teste-isolamento.mjs` reprova se qualquer uma dessas voltar atrás.
+
+## Escolher linha no escuro é sempre defeito
+
+`limit(1)` sem `orderBy` numa busca que pode casar mais de uma linha **sorteia**
+— e o Postgres não promete a mesma entre duas execuções. Esta classe mordeu
+três vezes: o painel lia um site e a verificação do coletor gravava em outro; a
+loja real ficava com a tela do site de teste; e o painel de `track.transforlar.com`
+abria numa loja de QA. Sempre o mesmo defeito, um nível acima a cada vez.
+
+A regra: **ou o filtro casa no máximo uma linha** (chave primária, ou coluna com
+unicidade garantida pelo banco), **ou a consulta diz qual linha quer** com um
+`orderBy`. Não há terceira opção que não seja sorteio. `teste-isolamento`
+percorre todo `db.select(...).limit(1)` e reprova o que não se encaixar.
+
+Um caso que passou despercebido por muito tempo e vale de exemplo: o índice
+único de `meta_profiles` é `(tenantId, fbUserId)` — uma loja PODE ter dois
+perfis do Facebook conectados, e é o caso de quem usa antidetect. As duas
+consultas pegavam `limit(1)` sem ordem, então o painel mostrava o nome de um
+enquanto o token usado era do outro. Hoje as duas ordenam por `connectedAt`
+decrescente, e **a mesma ordem nos dois lugares** — divergir ali seria pior que
+não mostrar nada.
 
 ## Para onde os painéis vão
 
